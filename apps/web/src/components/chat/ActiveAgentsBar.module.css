@@ -1,0 +1,144 @@
+/* Active subAgent/teammate strip — floats at the conversation panel's top-right.
+   Same frosted-glass recipe as RoleFilterBar / TaskProgressHud. Sizing per spec:
+   28px tall container, 24px circular avatars, 4px from the top, 8px from the
+   right. The right offset additionally clears the chat scrollbar gutter via
+   --chat-scrollbar-width (0 when the overlay scrollbar needs none). */
+.bar {
+  position: absolute;
+  top: 4px;
+  right: calc(8px + var(--chat-scrollbar-width, 0px));
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 4px;
+  border-radius: 14px;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  /* Width adapts to content; cap so a long agent list scrolls horizontally
+     instead of overlapping the whole header row. Scrollbar is hidden. */
+  max-width: calc(100% - 16px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* UA reset for the circular hit target: <button> brings its own border/padding/
+   font, which would break the 24px content box. */
+.avatarBtn {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s;
+}
+/* Focus-within (not focused): dim the rest, keep the selected avatar solid. */
+.barFocused .avatarBtn {
+  opacity: 0.45;
+}
+.barFocused .avatarBtnActive {
+  opacity: 1;
+}
+/* Non-matchable (unresolved teammate) — shown but not clickable. */
+.avatarBtn[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+/* Keyboard focus ring drawn inset so the horizontally-scrolling container does
+   not clip it (overflow-x:auto also clips the y-axis). */
+.avatarBtn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  /* currentColor glyphs (sub-search/sub-plan/sub/teammate) must match the
+     in-conversation avatar foreground in both themes. */
+  color: var(--model-logo-mono);
+}
+.avatar > :global(svg) {
+  width: 100%;
+  height: 100%;
+}
+
+/* Trailing (ALL) chip — the always-restore-everything fallback. */
+.allAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Mobile: .mobileChatInner applies zoom 0.6 (iOS uses transform scale), which
+   would shrink the 24px avatar to ~14px and the ALL label to an unreadable
+   size. Counter-scale the strip so its effective size stays usable. pad-mode
+   restores zoom to 1, so the enlargement must be reverted there. */
+@media (max-width: 768px) {
+  .bar {
+    height: 40px;
+    top: 6px;
+    gap: 6px;
+    padding: 0 6px;
+    border-radius: 20px;
+  }
+  .avatarBtn,
+  .avatar,
+  .allAvatar {
+    width: 34px;
+    height: 34px;
+  }
+  .allAvatar {
+    font-size: 12px;
+  }
+}
+
+/* pad-mode (iPad / narrow-window desktop with the pad class) restores zoom to 1,
+   so the mobile enlargement above must be reverted to the desktop sizes there —
+   otherwise a portrait iPad renders a 40px strip / 34px avatars at full zoom. */
+:global(html.pad-mode) .bar {
+  height: 28px;
+  top: 4px;
+  gap: 4px;
+  padding: 0 4px;
+  border-radius: 14px;
+}
+:global(html.pad-mode) .avatarBtn,
+:global(html.pad-mode) .avatar,
+:global(html.pad-mode) .allAvatar {
+  width: 24px;
+  height: 24px;
+}
+:global(html.pad-mode) .allAvatar {
+  font-size: 9px;
+}

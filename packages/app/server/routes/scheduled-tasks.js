@@ -165,10 +165,19 @@ function _publicTask(t) {
 // List payload keeps the full prompt OUT (it may carry secrets and every logged-in
 // viewer can read the list — security P2-3). Full prompts only ship when the project
 // resolves (bound / registry / live instance — see listHandler's fullPrompt gate).
+// Attachments (absolute paths, usernames) and template snapshots get the same treatment.
 function _listTask(t) {
   const p = _publicTask(t);
   p.promptSummary = String(t.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  // Attachments-only tasks have no prompt text — fall back to file names so the list
+  // row and toasts never render blank.
+  if (!p.promptSummary && Array.isArray(t.attachments) && t.attachments.length) {
+    p.promptSummary = `[${t.attachments.map(a => a.name).filter(Boolean).join(', ')}]`.slice(0, 200);
+  }
   delete p.prompt;
+  delete p.attachments;
+  delete p.template;
+  delete p.templateContent;
   return p;
 }
 
@@ -190,6 +199,8 @@ function createHandler(req, res, parsedUrl, isLocal, deps) {
       out = await createTask(LOG_DIR, {
         project, cwd: resolved.cwd, prompt: body.prompt, mode: body.mode,
         schedule: body.schedule, enabled: body.enabled,
+        template: body.template, templateContent: body.templateContent,
+        attachments: body.attachments,
       }, Date.now());
     } catch (err) {
       reportSwallowed('scheduled-tasks.create', err);
@@ -210,6 +221,8 @@ function updateHandler(req, res, parsedUrl, isLocal, deps) {
     try {
       out = await updateTask(LOG_DIR, id, {
         prompt: body.prompt, mode: body.mode, schedule: body.schedule, enabled: body.enabled,
+        template: body.template, templateContent: body.templateContent,
+        attachments: body.attachments,
       }, Date.now());
     } catch (err) {
       reportSwallowed('scheduled-tasks.update', err);

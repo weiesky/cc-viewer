@@ -129,6 +129,41 @@ describe('ScheduleTaskModal component', () => {
     assert.ok(/const expr = draft\.cronExpr\.trim\(\);\s*return expr \? \{ kind: 'cron', expr \} : null;/.test(MODAL), 'empty cron returns null');
   });
 
+  // ── UltraPlan template + attachments embedding (the shared panel) ──────────
+  it('embeds the shared UltraplanPanel with the empty template as the default tab', () => {
+    assert.ok(/import UltraplanPanel from '\.\.\/terminal\/UltraplanPanel'/.test(MODAL), 'shared panel imported');
+    assert.ok(/<UltraplanPanel/.test(MODAL) && /\bembedded\b/.test(MODAL) && /\bhideHeader\b/.test(MODAL) && /\bhideSend\b/.test(MODAL), 'panel embedded without popover chrome');
+    // The none tab leads the templates override; the draft defaults to it.
+    assert.ok(/\{ key: 'none', kind: 'none' \}/.test(MODAL), 'empty-template tab leads the list');
+    assert.ok(/template: 'none'/.test(MODAL), 'draft defaults to the empty template');
+    assert.ok(/attachments: \[\]/.test(MODAL), 'draft carries an attachments array');
+  });
+
+  it('saves the RAW prompt and passes template/attachments to the API (assembly happens server-side)', () => {
+    const save = MODAL.match(/const handleSave = useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
+    assert.ok(save, 'handleSave body located');
+    assert.ok(/assembleScheduledPrompt/.test(save[1]), 'save pre-checks the assembled length');
+    assert.ok(!/buildLocalUltraplan/.test(save[1]), 'save must NOT wrap the prompt itself');
+    assert.ok(/templateContent/.test(save[1]) && /attachments: draft\.attachments/.test(save[1]), 'template snapshot + attachments are sent');
+    // The snapshot actually comes from the selected expert's content.
+    assert.ok(/templateContent = item\.content/.test(save[1]), 'snapshot is taken from the expert body');
+    // A dangling custom expert on an EXISTING task keeps the stored snapshot (omitted field).
+    assert.ok(/isUpdateTask/.test(save[1]), 'update path preserves the stored snapshot for a dangling expert');
+    // Double-submit + summary-shape guards (Cmd/Ctrl+Enter path).
+    assert.ok(/if \(savingRef\.current\) return/.test(save[1]), 'in-flight guard present');
+    assert.ok(/selectedTask\.prompt === undefined/.test(save[1]), 'summary-shape save guard present');
+    // The assemble-and-send path lives server-side in the executor.
+    const executor = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'packages', 'app', 'server', 'lib', 'scheduled-task-executor.js'), 'utf8');
+    assert.ok(/assembleScheduledPrompt\(task\)/.test(executor), 'executor assembles at fire time');
+  });
+
+  it('attachments upload requires the persistent path (tmp files die before a task fires)', () => {
+    assert.ok(/if \(!data\.persistPath\) throw new Error/.test(MODAL), 'upload fails when the persist copy is missing');
+    assert.ok(!/data\.persistPath \|\| data\.path/.test(MODAL), 'no silent fallback to the /tmp path');
+    // No import from TerminalPanel — it already imports this modal (cycle).
+    assert.ok(!/from '\.\.\/terminal\/TerminalPanel'/.test(MODAL), 'must not import TerminalPanel');
+  });
+
   it('drops scheduled-task responses from a previous project', () => {
     assert.ok(/const loadProject = project;/.test(MODAL), 'loadTasks captures the requested project');
     assert.ok(/projectRef\.current/.test(MODAL), 'guard compares against the live project ref');
@@ -166,5 +201,30 @@ describe('ScheduleTaskModal component', () => {
     assert.ok(/\.titleRow\s*\{[\s\S]{0,200}flex-wrap: wrap/.test(MODAL_CSS), 'title row can wrap');
     assert.ok(!/\.listHeader\s*\{/.test(MODAL_CSS), 'listHeader style removed');
     assert.ok(!/\.muted\s*\{/.test(MODAL_CSS), 'muted style removed');
+  });
+
+  it('once quick-fill buttons use offsets whose keys all have i18n entries', () => {
+    assert.ok(/const ONCE_QUICK_OFFSETS = \[/.test(MODAL), 'offsets constant present');
+    // Group is gated on the once kind and clicks write back to the DatePicker state.
+    assert.ok(/draft\.scheduleKind === 'once' && \([\s\S]{0,300}styles\.onceQuickGroup/.test(MODAL), 'group gated on once kind');
+    assert.ok(/styles\.onceQuickGroup/.test(MODAL) && /styles\.onceQuickBtn/.test(MODAL), 'quick group + button classes used');
+    assert.ok(/updateDraft\(\{ onceAt:/.test(MODAL), 'click writes onceAt');
+    assert.ok(/type="button"/.test(MODAL), 'buttons do not submit forms');
+    assert.ok(/t\(`ui\.schedule\.quick\.\$\{o\.key\}`\)/.test(MODAL), 'labels resolve through ui.schedule.quick.*');
+    assert.ok(/dayjs\(\)\.add\(o\.minutes, 'minute'\)/.test(MODAL), 'click fills DatePicker from current time');
+    // The CSS module must actually define the classes (a rename would silently unstyle).
+    assert.ok(/\.onceQuickGroup\s*\{/.test(MODAL_CSS), 'onceQuickGroup defined in CSS');
+    assert.ok(/\.onceQuickBtn\s*\{[\s\S]{0,400}font-size: 12px/.test(MODAL_CSS), 'onceQuickBtn defined with 12px font');
+    assert.ok(/\.onceQuickBtn:hover/.test(MODAL_CSS), 'hover rule defined');
+    // Key → minutes pairs must stay exactly the five documented offsets.
+    const offsetsBlock = MODAL.match(/const ONCE_QUICK_OFFSETS = \[([\s\S]*?)\];/);
+    assert.ok(offsetsBlock, 'offsets block located');
+    const pairs = [...offsetsBlock[1].matchAll(/key: '([^']+)', minutes: (\d+)/g)].map(m => [m[1], Number(m[2])]);
+    assert.deepEqual(pairs, [['5m', 5], ['10m', 10], ['30m', 30], ['1h', 60], ['3h', 180]], 'offset key/minutes unchanged');
+    // Every offset key must have a matching i18n block (t() silently falls back to the raw key).
+    const I18N = read('src/i18n.js');
+    for (const [k] of pairs) {
+      assert.ok(I18N.includes(`"ui.schedule.quick.${k}": {`), `i18n entry for quick.${k}`);
+    }
   });
 });

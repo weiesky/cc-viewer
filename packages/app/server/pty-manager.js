@@ -1,13 +1,14 @@
 import { resolveNativePath, LOG_DIR } from '../findcc.js';
 import { normalizeSessionCwd } from './lib/v2/layout.js';
 import { fileURLToPath } from 'node:url';
-import { join, dirname, sep } from 'node:path';
-import { chmodSync, statSync } from 'node:fs';
+import { join, dirname, sep, resolve } from 'node:path';
+import { chmodSync, statSync, existsSync } from 'node:fs';
 import { platform, arch, homedir } from 'node:os';
 import { createRequire } from 'node:module';
 import { prepareEmbeddedShellSpawn, stripClaudeNoFlickerUnlessOptedIn, applyClaudeAltScreenPref } from './lib/terminal-env.js';
 import { killPtyTree } from './lib/term-signals.js';
 import { findSafeSliceStart, splitTrailingIncomplete } from './lib/ansi-safe-slice.js';
+import { imDir } from './lib/im/im-lock.js';
 import { resolveSpawnModel } from './lib/spawn-model-resolver.js';
 import { mergeSettingsIntoArgs } from './lib/settings-merge.js';
 import { projectKeyForCwd } from './lib/system-prompt-snapshots.js';
@@ -18,6 +19,7 @@ import { randomBytes } from 'node:crypto';
 import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, insertBeforeDashDash } from './lib/launch-config.js';
 export { withDefaultThinkingDisplay } from './lib/launch-config.js';
 import { reportSwallowed } from './lib/error-report.js';
+import { ensureOnboardingAndTrust } from './lib/ensure-hooks.js';
 import { t, tFor } from './i18n.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -389,6 +391,21 @@ async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath 
   env.CCV_PROXY_MODE = '1'; // tell interceptor.js not to start a server again
   env.CCV_LOG_DIR = LOG_DIR; // let the forked Claude Code process find the same
   // profile.json etc. resources
+  // IM worker CodeFuse config-dir fallback is handled in cli.js runImMode
+  // (before runCliMode), so that ensureHooks() writes to the same directory
+  // the child will read. Here we only need to inherit the already-resolved
+  // CLAUDE_CONFIG_DIR from process.env (which the env copy above already does).
+  // Pre-seed onboarding + trust state so Claude never blocks on interactive
+  // confirmation dialogs ("Yes, I accept" / "Yes, I trust this folder") in
+  // headless environments. Only applies to the IM worker's OWN working directory
+  // (imDir) — a user-launched workspace inside an IM worker must NOT silently
+  // accept trust on behalf of the user (security boundary).
+  if (process.env.CCV_IM_PLATFORM && cwd) {
+    const imWorkspace = imDir(process.env.CCV_IM_PLATFORM);
+    if (resolve(cwd) === resolve(imWorkspace)) {
+      ensureOnboardingAndTrust({ configDir: env.CLAUDE_CONFIG_DIR, workspacePath: cwd });
+    }
+  }
   // Self-report project (2026-10, multi-PTY): every main-PTY claude ALSO tags its
   // requests with `x-ccv-project-dir` = its own cwd, so the writer routes its
   // writes to ITS project — not the (possibly re-bound) server project. This is
@@ -599,8 +616,8 @@ async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath 
   let command = claudePath;
   let args = ['--settings', settingsJson, ...launchArgs];
 
-  // If it is the npm version (cli.js), it must run under node
-  if (isNpmVersion && claudePath.endsWith('.js')) {
+  // If it is the npm version (cli.js / cli.cjs), it must run under node
+  if (isNpmVersion && (claudePath.endsWith('.js') || claudePath.endsWith('.cjs'))) {
     command = nodePath;
     args = [claudePath, '--settings', settingsJson, ...launchArgs];
   }
@@ -616,9 +633,13 @@ async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath 
   // A (re)spawn starts a fresh conversation — drop any sessionId a prior life
   // on this record resolved to, so a stale sid never misroutes a send.
   if (s.sessionId) { sidToKey.delete(s.sessionId); s.sessionId = null; }
+  // Clear any latched boot-blocked state from a previous life on this record —
+  // the respawn may succeed where the prior attempt was blocked.
+  s._bootBlockedState = null;
   // Boot-window anchor for the injection fallback tiers below (same clock as the
   // comparison — _now(), never Date.now(), so tests can steer both ends together).
   const spawnedAt = _now();
+  s._spawnedAt = spawnedAt; // also stored on the record for getPtyBootState()
 
   s.ptyProcess = pty.spawn(command, args, {
     name: 'xterm-256color',
@@ -1529,6 +1550,84 @@ export function getCurrentWorkspace() {
 export function getOutputBuffer() {
   const s = _active();
   return s ? s.outputBuffer : '';
+}
+
+// ─── PTY boot-state detection ───
+// Patterns that indicate the Claude PTY is blocked on an interactive dialog
+// instead of being ready to accept prompts. Used by the IM bridge to fail fast
+// with a clear error instead of letting the message sit until the 120s timeout.
+//
+// IMPORTANT: Ink renders dialog options as separately positioned words using
+// cursor-forward ANSI sequences (ESC[<n>G) instead of literal spaces. The raw
+// output looks like: "Yes,\x1b[12GI\x1b[14Gtrust\x1b[20Gthis\x1b[25Gfolder".
+// We normalize the buffer by stripping ANSI sequences before matching.
+//
+// To avoid false positives from normal conversation (e.g. a user asking about
+// "trust" or "onboarding"), detection is only active during a boot window
+// (first N ms after spawn) and only scans the last portion of the buffer.
+// Once a dialog is detected during the window, the state is LATCHED — it
+// persists until the PTY exits, so a user messaging minutes after boot still
+// gets the fail-fast error instead of the 120s timeout.
+const _BOOT_WINDOW_MS = 30_000; // 30s after spawn — enough for slow container starts
+const _BOOT_SCAN_TAIL = 4096;   // only scan the last 4KB (current screenful)
+
+// Strip ANSI escape sequences (cursor movement, colors, etc.) so that Ink's
+// positioned rendering ("Yes,\x1b[12GI\x1b[14Gtrust...") becomes plain text
+// ("Yes, I trust this folder").
+function _stripAnsi(str) {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ' ');
+}
+
+const _BOOT_PATTERNS = {
+  'blocked-on-trust': [
+    /yes,?\s+i\s+trust\s+this\s+folder/i,
+    /do\s+you\s+trust\s+this\s+folder/i,
+  ],
+  'blocked-on-onboarding': [
+    /yes,?\s+i\s+accept/i,
+  ],
+};
+
+/**
+ * Detect whether the active PTY is ready, still booting, blocked on an
+ * interactive dialog, or has exited. Returns one of:
+ *   'ready'               — PTY is running and no blocking dialog detected
+ *   'booting'             — PTY is running but within the boot window
+ *   'blocked-on-trust'    — "Yes, I trust this folder" dialog detected (latched)
+ *   'blocked-on-onboarding' — onboarding/first-run dialog detected (latched)
+ *   'exited'              — PTY process has exited
+ *   'no-pty'              — no PTY record exists
+ *
+ * Latching: once a dialog is detected during the boot window, the state is
+ * stored on the record and returned for the PTY's lifetime. This prevents
+ * the 30s window from expiring while the dialog is still on screen.
+ */
+export function getPtyBootState() {
+  const s = _active();
+  if (!s) return 'no-pty';
+  if (!s.ptyProcess) return 'exited';
+  // Return latched state if a dialog was previously detected.
+  if (s._bootBlockedState) return s._bootBlockedState;
+  // Only detect blocking dialogs during the boot window. After that, any
+  // match would be a false positive from normal conversation content.
+  const elapsed = _now() - (s._spawnedAt || 0);
+  if (elapsed > _BOOT_WINDOW_MS) return 'ready';
+  const buf = s.outputBuffer || '';
+  if (buf.length < 50) return 'booting';
+  // Only scan the tail of the buffer — the current screen content. Older
+  // output may contain legitimate uses of trigger words from conversation.
+  const tail = _stripAnsi(buf.slice(-_BOOT_SCAN_TAIL));
+  for (const [state, patterns] of Object.entries(_BOOT_PATTERNS)) {
+    for (const re of patterns) {
+      if (re.test(tail)) {
+        // Latch the state so it persists beyond the boot window.
+        s._bootBlockedState = state;
+        return state;
+      }
+    }
+  }
+  return 'ready';
 }
 
 /**

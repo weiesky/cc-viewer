@@ -1660,6 +1660,7 @@ async function _doStart() {
                 getPtyState: pmb.getPtyState,
                 getPtyKind: pmb.getPtyKind,
                 getPtySkipPermissions: pmb.getPtySkipPermissions,
+                getPtyBootState: pmb.getPtyBootState,
                 isStreaming: () => streamingState.active,
                 getConfig: () => loadConfig(id),
                 // 钉钉 AI 卡片逐字流式的文本源（仅 worker 注入）：对话过程中读主 agent 累计文本，
@@ -2396,6 +2397,31 @@ async function setupTerminalWebSocket(httpServer) {
         }
       }
 
+      // Replay the authoritative sdk-task table so a refreshed/reconnected client can
+      // reconcile its delta-only tracker (the active-agents strip) — a task frame lost in
+      // a WS gap is no longer unrecoverable, and a session switch drops the table so the
+      // prior session's agents never linger. Unlike the snapshots above, an EMPTY
+      // `tasks: []` is authoritative (reconciles the client to "no tasks") and must be
+      // sent. Anchor by view instance (exact) else view project — sdk-skills parity. When
+      // the anchor resolves to no session at all, synthesize that empty frame for a bound
+      // view so the reconcile is not silently lost; an unbound view sends nothing.
+      if (isSdkMode && _sdkGetSdkTaskSnapshot) {
+        const anchor = ws._ccvViewInstance
+          ? { instanceKey: ws._ccvViewInstance }
+          : (_viewProj ? { project: _viewProj } : null);
+        const taskSnap = anchor ? _sdkGetSdkTaskSnapshot(anchor) : _sdkGetSdkTaskSnapshot();
+        const taskFrame = taskSnap || ((ws._ccvViewInstance || ws._ccvViewProject) ? {
+          type: 'sdk-task-snapshot',
+          ...(ws._ccvViewProject ? { project: ws._ccvViewProject } : {}),
+          ...(ws._ccvViewInstance ? { instanceKey: ws._ccvViewInstance } : {}),
+          sessionId: null,
+          tasks: [],
+        } : null);
+        if (taskFrame && _sdkFrameForView(taskFrame)) {
+          try { ws.send(JSON.stringify(taskFrame)); } catch {}
+        }
+      }
+
       // Replay the chat-composer busy queue so a refreshed/reconnected page restores the
       // floating queued-message bubbles (server is the source of truth in both modes).
       replayQueueSnapshot();
@@ -2571,6 +2597,24 @@ async function setupTerminalWebSocket(httpServer) {
                 const stateSnap = stateAnchor ? _sdkGetSessionStateSnapshot(stateAnchor) : _sdkGetSessionStateSnapshot();
                 if (stateSnap && (!ws._ccvViewInstance || stateSnap.instanceKey === ws._ccvViewInstance)) {
                   try { ws.send(JSON.stringify(stateSnap)); } catch (err) { reportSwallowed('sdk.session-state-replay', err); }
+                }
+              }
+              // Replay the authoritative sdk-task table for the JUST-viewed workspace
+              // (skills parity) so switching back to a workspace whose agent is mid-run
+              // restores the active-agents strip immediately, and an empty table clears
+              // a previously viewed workspace's agents. Anchor AND filter against the
+              // freshly-stamped view — _sdkFrameForView closes over the connection-time
+              // _viewProj, which is the departing view on a cross-workspace attach.
+              if (_sdkGetSdkTaskSnapshot) {
+                const taskAnchor = ws._ccvViewInstance
+                  ? { instanceKey: ws._ccvViewInstance }
+                  : (ws._ccvViewProject ? { project: ws._ccvViewProject } : null);
+                const taskSnap = taskAnchor ? _sdkGetSdkTaskSnapshot(taskAnchor) : _sdkGetSdkTaskSnapshot();
+                if (taskSnap) {
+                  const fp = (typeof taskSnap.cwd === 'string' && taskSnap.cwd) ? (projectKeyForCwd(taskSnap.cwd) || null) : null;
+                  if (!fp || !ws._ccvViewProject || fp === ws._ccvViewProject) {
+                    try { ws.send(JSON.stringify(taskSnap)); } catch { }
+                  }
                 }
               }
               replayQueueSnapshot();
@@ -4043,6 +4087,10 @@ export function setSdkGetMcpStatusSnapshot(fn) { _sdkGetMcpStatusSnapshot = fn; 
 /** Reference to sdk-manager's getSessionStateSnapshot (set by cli.js after import). */
 let _sdkGetSessionStateSnapshot = null;
 export function setSdkGetSessionStateSnapshot(fn) { _sdkGetSessionStateSnapshot = fn; }
+
+/** Reference to sdk-manager's getSdkTaskSnapshot (set by cli.js after import). */
+let _sdkGetSdkTaskSnapshot = null;
+export function setSdkGetSdkTaskSnapshot(fn) { _sdkGetSdkTaskSnapshot = fn; }
 
 /** Reference to sdk-manager's sendQueuedNow (set by cli.js after import). */
 let _sdkSendQueuedNow = null;

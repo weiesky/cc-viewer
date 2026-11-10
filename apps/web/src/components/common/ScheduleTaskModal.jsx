@@ -1,10 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useContext } from 'react';
 import { Modal, Button, Input, Radio, Select, Switch, InputNumber, DatePicker, TimePicker, Tooltip, message } from 'antd';
 import dayjs from 'dayjs';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { reportSwallowed } from '../../utils/errorReport';
 import { subscribeScheduledTasks } from '../../utils/scheduledTaskEvents';
+import { resizeImageIfNeeded } from '../../utils/imageResize';
+import { assembleScheduledPrompt } from '@ccv/core/ultraplanTemplates';
+import { buildExpertList } from '../../utils/ultraplanExperts';
+import { UltraplanController } from '../../utils/ultraplanController';
+import { SettingsContext } from '../../contexts/SettingsContext';
+import UltraplanPanel from '../terminal/UltraplanPanel';
+import CustomUltraplanEditModal from '../terminal/CustomUltraplanEditModal';
+import ImageLightbox from './ImageLightbox';
 import {
   describeSchedule, deriveTaskUiStatus, formatNextRun, formatTimestamp,
   runStatusLabel, reasonLabel, errorLabel,
@@ -13,10 +21,50 @@ import styles from './ScheduleTaskModal.module.css';
 
 const KINDS = ['hourly', 'daily', 'weekdays', 'weekly', 'cron', 'once'];
 
+// Quick-fill offsets for the one-time DatePicker, in minutes.
+const ONCE_QUICK_OFFSETS = [
+  { key: '5m', minutes: 5 },
+  { key: '10m', minutes: 10 },
+  { key: '30m', minutes: 30 },
+  { key: '1h', minutes: 60 },
+  { key: '3h', minutes: 180 },
+];
+
+// Mirrors the server-side cap (scheduled-task-store.js MAX_PROMPT_LEN); checked before
+// save so an over-long assembled prompt (template + attachment paths + text) fails fast.
+const MAX_PROMPT_LEN = 20000;
+// Mirrors the server-side attachment cap.
+const MAX_ATTACHMENTS = 20;
+
+// Same pipeline as TerminalPanel.uploadFileAndGetPath, but returns the PERSISTENT path:
+// a scheduled task can fire days later, after the /tmp copy has been cleaned, while
+// persistPath (~/.claude/cc-viewer/<project>/images/) survives — and stays inside the
+// file-access allowlist, so the executor's Claude can still read it at fire time.
+async function _uploadAttachment(file) {
+  const MAX_SIZE = 100 * 1024 * 1024; // 100MB
+  let upload = file;
+  try { upload = await resizeImageIfNeeded(file, 2000); } catch (err) { reportSwallowed('schedule-modal.upload-resize', err); upload = file; }
+  if (upload.size > MAX_SIZE) throw new Error(t('ui.ultraplan.uploadTooLarge', { max: '100MB' }));
+  const form = new FormData();
+  form.append('file', upload);
+  const res = await fetch(apiUrl('/api/upload'), { method: 'POST', body: form });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || !data.ok) throw new Error((data && data.error) || t('ui.ultraplan.uploadFailed'));
+  // A scheduled attachment MUST land on the persistent path — the /tmp copy can be
+  // cleaned days before the task fires, silently dead-linking the prompt prefix.
+  if (!data.persistPath) throw new Error(t('ui.ultraplan.uploadFailed'));
+  return data.persistPath;
+}
+
 function _emptyDraft() {
   return {
     id: null,
     prompt: '',
+    // UltraPlan template tab. 'none' = empty template (default): the raw prompt is
+    // sent as-is. Builtin keys wrap via ULTRAPLAN_VARIANTS; 'custom:<id>' uses the
+    // expert body snapshot (templateContent) taken at save time.
+    template: 'none',
+    attachments: [],
     mode: 'inject',
     scheduleKind: 'daily',
     hourlyMinute: 0,
@@ -26,6 +74,29 @@ function _emptyDraft() {
     onceAt: null,
     enabled: true,
   };
+}
+
+// A draft counts as "blank" when nothing in it differs from the pristine new-task
+// form. Blank drafts carry no user work, so closing/switching away must NOT prompt
+// the discard-confirm — even if `dirty` was flipped by an incidental focus/click
+// (e.g. opening the TimePicker and cancelling, or typing into the prompt and
+// deleting it again). The template tab alone is NOT content: switching it without
+// typing anything still counts as blank.
+function _isBlankDraft(draft) {
+  const e = _emptyDraft();
+  return (
+    draft.id === null
+    && draft.prompt.trim() === ''
+    && (!Array.isArray(draft.attachments) || draft.attachments.length === 0)
+    && draft.mode === e.mode
+    && draft.scheduleKind === e.scheduleKind
+    && draft.hourlyMinute === e.hourlyMinute
+    && draft.time === e.time
+    && draft.weeklyDay === e.weeklyDay
+    && draft.cronExpr === e.cronExpr
+    && draft.onceAt === null
+    && draft.enabled === e.enabled
+  );
 }
 
 // Build the API schedule object from the draft's UI fields. Returns null when invalid.
@@ -49,6 +120,8 @@ function _taskToDraft(task) {
   return {
     id: task.id,
     prompt: task.prompt || '',
+    template: task.template || 'none',
+    attachments: Array.isArray(task.attachments) ? task.attachments : [],
     mode: task.mode || 'inject',
     scheduleKind: s.kind || 'daily',
     hourlyMinute: s.minute ?? 0,
@@ -82,6 +155,116 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
   // While set, the auto-select in loadTasks must not re-pick tasks[0] — that
   // would immediately bounce the blank form back to the first task.
   const newTaskMode = useRef(false);
+
+  // ── UltraPlan panel wiring (experts mirror + controller + sub-modals) ──────
+  // The modal is a function component, so the shared UltraplanController (built for
+  // class hosts) is bridged through an explicit key map: ultraplanFiles→attachments,
+  // ultraplanVariant→template, expert keys→the preferences mirror state. draftRef
+  // always points at the latest draft so controller reads never go stale.
+  const { preferences, updatePreferences } = useContext(SettingsContext);
+  const [expertPrefs, setExpertPrefs] = useState({ experts: [], order: [], hidden: [], ready: false });
+  const [customEditor, setCustomEditor] = useState({ open: false, item: null });
+  const [lightbox, setLightbox] = useState(null);
+
+  // The component stays mounted while closed, so destroyOnHidden does not reset these
+  // two sub-overlays — reset them on close, or they would resurface on the next open.
+  useEffect(() => {
+    if (!open) { setLightbox(null); setCustomEditor({ open: false, item: null }); }
+  }, [open]);
+
+  const draftRef = useRef(draft);
+  useEffect(() => { draftRef.current = draft; }, [draft]);
+  const expertPrefsRef = useRef(expertPrefs);
+  useEffect(() => { expertPrefsRef.current = expertPrefs; }, [expertPrefs]);
+
+  // Hydrate the expert mirror from SettingsContext (same source TerminalPanel/ChatView
+  // derive from props.preferences). Never touches the draft or dirty flag.
+  useEffect(() => {
+    if (!preferences) return;
+    setExpertPrefs({
+      experts: Array.isArray(preferences.customUltraplanExperts) ? preferences.customUltraplanExperts : [],
+      order: Array.isArray(preferences.ultraplanExpertOrder) ? preferences.ultraplanExpertOrder : [],
+      hidden: Array.isArray(preferences.ultraplanExpertHidden) ? preferences.ultraplanExpertHidden : [],
+      ready: true,
+    });
+  }, [preferences]);
+
+  // Dangling custom template: a 'custom:<id>' template whose expert no longer exists
+  // falls back to 'none' ONLY for brand-new drafts. For a saved task the stored
+  // templateContent snapshot still fires (executor uses the snapshot, not live prefs),
+  // so rewriting template→'none' here would permanently drop the snapshot on the next
+  // unrelated save — keep the key and let handleSave omit a fresh snapshot instead.
+  // Builtin keys and 'none' are always valid and must NOT be reset (the shared hosts'
+  // visibleExpertKeys fallback would otherwise clobber the empty-template default).
+  useEffect(() => {
+    if (!expertPrefs.ready || draft.id !== null) return;
+    const cur = draft.template;
+    if (typeof cur === 'string' && cur.startsWith('custom:')
+        && !expertPrefs.experts.some(e => 'custom:' + e.id === cur)) {
+      setDraft(d => (d.template === cur ? { ...d, template: 'none' } : d));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expertPrefs, draft.template]);
+
+  const ultraplanRef = useRef(null);
+  if (!ultraplanRef.current) {
+    ultraplanRef.current = new UltraplanController({
+      getState: () => ({
+        ultraplanFiles: draftRef.current.attachments,
+        customUltraplanExperts: expertPrefsRef.current.experts,
+        ultraplanExpertOrder: expertPrefsRef.current.order,
+        ultraplanExpertHidden: expertPrefsRef.current.hidden,
+        ultraplanVariant: draftRef.current.template,
+      }),
+      // Translate the controller's hardcoded host keys onto draft fields / expert
+      // mirror. Draft writes go through updateDraft (sets dirty); expert mirror
+      // writes are preferences-backed and must not mark the task form dirty.
+      setState: (updater) => {
+        const prev = {
+          ultraplanFiles: draftRef.current.attachments,
+          customUltraplanExperts: expertPrefsRef.current.experts,
+          ultraplanExpertOrder: expertPrefsRef.current.order,
+          ultraplanExpertHidden: expertPrefsRef.current.hidden,
+          ultraplanVariant: draftRef.current.template,
+        };
+        const patch = typeof updater === 'function' ? updater(prev) : updater;
+        if (!patch) return;
+        // Merge against the LIVE draft so overlapping upload/paste completions never
+        // drop a file: a patch that grows the list wins (it carries the new file);
+        // a same-length patch is a remove (controller's handleRemoveFile filters by
+        // index) — apply it as-is; a patch computed from a stale prev (shorter than
+        // the live list) is an append racing a completed sibling — keep the live list.
+        if ('ultraplanFiles' in patch) {
+          setDraft(d => {
+            const next = Array.isArray(patch.ultraplanFiles) ? patch.ultraplanFiles : [];
+            if (next.length < d.attachments.length && next.length !== d.attachments.length - 1) return d;
+            return { ...d, attachments: next.slice(0, MAX_ATTACHMENTS) };
+          });
+          setDirty(true);
+        }
+        if ('ultraplanVariant' in patch) {
+          setDraft(d => ({ ...d, template: patch.ultraplanVariant }));
+          setDirty(true);
+        }
+        if ('customUltraplanExperts' in patch || 'ultraplanExpertOrder' in patch || 'ultraplanExpertHidden' in patch) {
+          setExpertPrefs(p => ({
+            ...p,
+            ...('customUltraplanExperts' in patch ? { experts: patch.customUltraplanExperts } : {}),
+            ...('ultraplanExpertOrder' in patch ? { order: patch.ultraplanExpertOrder } : {}),
+            ...('ultraplanExpertHidden' in patch ? { hidden: patch.ultraplanExpertHidden } : {}),
+          }));
+        }
+      },
+      onUpdatePreferences: (p) => updatePreferences(p),
+      uploadFile: (file) => _uploadAttachment(file),
+      messageError: (msg) => message.error(msg),
+      closeEditor: () => setCustomEditor({ open: false, item: null }),
+      // Deleting the selected custom expert falls back to the empty template here
+      // (the popover hosts keep their codeExpert default).
+      fallbackVariant: 'none',
+    });
+  }
+  const ultraplan = ultraplanRef.current;
 
   const isNew = draft.id === null;
   const selectedTask = useMemo(() => tasks.find(t2 => t2.id === selectedId) || null, [tasks, selectedId]);
@@ -214,7 +397,8 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
   const updateDraft = useCallback((patch) => { setDraft(d => ({ ...d, ...patch })); setDirty(true); }, []);
 
   const handleSelect = useCallback((task) => {
-    if (dirty && draft.id !== (task && task.id)) {
+    // Blank drafts (no prompt, no schedule tweaks) carry no work — don't ask to discard.
+    if (dirty && !_isBlankDraft(draft) && draft.id !== (task && task.id)) {
       Modal.confirm({
         title: t('ui.schedule.discardConfirm'),
         onOk: () => { newTaskMode.current = false; setDirty(false); setSelectedId(task ? task.id : null); if (task) setDraft(_taskToDraft(task)); },
@@ -224,10 +408,10 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
     newTaskMode.current = false;
     setSelectedId(task ? task.id : null);
     if (task) { setDraft(_taskToDraft(task)); setDirty(false); }
-  }, [dirty, draft.id]);
+  }, [dirty, draft]);
 
   const handleNew = useCallback(() => {
-    if (dirty) {
+    if (dirty && !_isBlankDraft(draft)) {
       Modal.confirm({
         title: t('ui.schedule.discardConfirm'),
         onOk: () => { newTaskMode.current = true; setDirty(false); setSelectedId(null); setDraft(_emptyDraft()); },
@@ -237,24 +421,64 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
     newTaskMode.current = true;
     setSelectedId(null);
     setDraft(_emptyDraft());
-  }, [dirty, project, spawnAvailable]);
+  }, [dirty, draft, project, spawnAvailable]);
 
+  // Synchronous in-flight guard: Cmd/Ctrl+Enter in the embedded panel calls onSend on
+  // every keydown (no e.repeat filter), and `saving` state is stale inside this closure,
+  // so a held/double chord would POST twice and duplicate a new task. The shortcut must
+  // also respect the Save button's disabled reasons (unchanged existing task / legacy).
+  const savingRef = useRef(false);
   const handleSave = useCallback(async () => {
+    if (savingRef.current) return;
+    if ((!dirty && draft.id !== null) || selectedTask?.legacy) return;
+    // A summary-shape task (project/instance unresolved → prompt/attachments stripped)
+    // must never be overwritten with a blanked form.
+    if (selectedTask && selectedTask.prompt === undefined) return;
+    const isUpdateTask = draft.id !== null;
     const schedule = _draftToSchedule(draft);
-    if (!draft.prompt.trim()) { message.error(t('ui.schedule.error.invalid_prompt')); return; }
+    if (!draft.prompt.trim() && draft.attachments.length === 0) { message.error(t('ui.schedule.error.invalid_prompt')); return; }
     if (!schedule) { message.error(t('ui.schedule.error.invalid_schedule')); return; }
+    // Custom template: snapshot the expert body so later edits/deletions of the expert
+    // do not change what fires. A dangling id keeps the STORED snapshot — omitting the
+    // field on update lets the server preserve it; only a brand-new task (no stored
+    // snapshot to preserve) falls back to the empty template.
+    let templateContent;
+    let template = draft.template;
+    if (typeof template === 'string' && template.startsWith('custom:')) {
+      const item = expertPrefs.experts.find(e => 'custom:' + e.id === template);
+      if (!item) {
+        if (isUpdateTask) {
+          // keep template + existing snapshot
+        } else {
+          template = 'none';
+          setDraft(d => ({ ...d, template: 'none' }));
+        }
+      } else {
+        templateContent = item.content;
+      }
+    }
+    // Pre-check the assembled length against the server cap (template + quoted
+    // attachment paths + text) so it fails here instead of as a save rejection.
+    const assembled = assembleScheduledPrompt({ prompt: draft.prompt, template, templateContent, attachments: draft.attachments });
+    if (!assembled || assembled.length > MAX_PROMPT_LEN) { message.error(t('ui.schedule.error.invalid_prompt')); return; }
+    savingRef.current = true;
     setSaving(true);
     try {
       const isUpdate = draft.id !== null;
+      // prompt stores the RAW user text only — the template wrapper and attachment
+      // paths are injected at fire time by the executor (assembleScheduledPrompt).
       // When the mode control is hidden (PTY mode), never overwrite an existing task's
       // stored mode — the user had no way to see or change it.
-      const updateBody = { id: draft.id, prompt: draft.prompt, schedule, enabled: draft.enabled };
+      const updateBody = {
+        id: draft.id, prompt: draft.prompt, schedule, enabled: draft.enabled,
+        template, templateContent, attachments: draft.attachments,
+      };
       if (spawnAvailable) updateBody.mode = draft.mode;
       const { ok, data } = await _fetchJson(isUpdate ? '/api/scheduled-tasks/update' : '/api/scheduled-tasks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(isUpdate
           ? updateBody
-          : { project, instance, prompt: draft.prompt, mode: draft.mode, schedule, enabled: draft.enabled }),
+          : { project, instance, prompt: draft.prompt, mode: draft.mode, schedule, enabled: draft.enabled, template, templateContent, attachments: draft.attachments }),
       });
       if (!ok || data.ok === false) {
         message.error(`${t('ui.schedule.saveFailed')}: ${errorLabel(data.error)}`);
@@ -268,9 +492,10 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
       reportSwallowed('schedule-modal.save', err);
       message.error(t('ui.schedule.saveFailed'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
-  }, [draft, project, instance, loadTasks]);
+  }, [draft, dirty, selectedTask, project, instance, loadTasks, expertPrefs]);
 
   const handleDelete = useCallback(() => {
     if (!draft.id) return;
@@ -320,12 +545,14 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
   }, [onResumeSession, onClose]);
 
   const handleCancel = useCallback(() => {
-    if (dirty) {
+    // Skip the discard-confirm when the draft is still the pristine blank form —
+    // nothing was actually entered, so there is no work to lose.
+    if (dirty && !_isBlankDraft(draft)) {
       Modal.confirm({ title: t('ui.schedule.discardConfirm'), onOk: () => { setDirty(false); onClose(); } });
       return;
     }
     onClose();
-  }, [dirty, onClose]);
+  }, [dirty, draft, onClose]);
 
   // ── render ────────────────────────────────────────────────────────────────
   const canRunNow = !isNew && !dirty;
@@ -347,6 +574,7 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
       footer={null}
       width={860}
       destroyOnHidden
+      keyboard={!lightbox}
       styles={{ content: { background: 'var(--bg-elevated)', border: '1px solid var(--border-light)' }, header: { background: 'var(--bg-elevated)', borderBottom: 'none' } }}
     >
       <div className={styles.layout}>
@@ -382,11 +610,27 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
         <div className={styles.detailPane}>
           <div className={styles.field}>
             <label className={styles.label}>{t('ui.schedule.prompt')}</label>
-            <Input.TextArea
-              rows={3}
-              value={draft.prompt}
+            <UltraplanPanel
+              embedded
+              hideHeader
+              hideSend
+              templates={[{ key: 'none', kind: 'none' }, ...buildExpertList(expertPrefs.experts, expertPrefs.order, expertPrefs.hidden).filter(d => !d.hidden)]}
+              variant={draft.template}
+              prompt={draft.prompt}
+              files={draft.attachments}
+              customExperts={expertPrefs.experts}
+              expertOrder={expertPrefs.order}
+              expertHidden={expertPrefs.hidden}
               placeholder={t('ui.schedule.promptPlaceholder')}
-              onChange={e => updateDraft({ prompt: e.target.value })}
+              maxFiles={MAX_ATTACHMENTS}
+              onVariantChange={(key) => updateDraft({ template: key })}
+              onPromptChange={(text) => updateDraft({ prompt: text })}
+              onSend={handleSave}
+              onUpload={ultraplan.handleUpload}
+              onPaste={ultraplan.handlePaste}
+              onRemoveFile={ultraplan.handleRemoveFile}
+              onPreviewImage={(img) => setLightbox(img)}
+              onOpenCustomEditor={(item) => setCustomEditor({ open: true, item })}
             />
           </div>
 
@@ -469,6 +713,20 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
                 />
               )}
             </div>
+            {draft.scheduleKind === 'once' && (
+              <div className={styles.onceQuickGroup}>
+                {ONCE_QUICK_OFFSETS.map(o => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    className={styles.onceQuickBtn}
+                    onClick={() => updateDraft({ onceAt: dayjs().add(o.minutes, 'minute').startOf('minute') })}
+                  >
+                    {t(`ui.schedule.quick.${o.key}`)}
+                  </button>
+                ))}
+              </div>
+            )}
             {schedule && preview.length > 0 && (
               <div className={styles.scheduleMeta}>
                 <span className={styles.nextRun}>{t('ui.schedule.nextRun')}: {formatNextRun(preview[0], tz)}</span>
@@ -477,7 +735,7 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
           </div>
 
           <div className={styles.actions}>
-            <Button type="primary" loading={saving} onClick={handleSave} disabled={(!dirty && !isNew) || !!selectedTask?.legacy}>
+            <Button type="primary" loading={saving} onClick={handleSave} disabled={(!dirty && !isNew) || !!selectedTask?.legacy || (selectedTask && selectedTask.prompt === undefined)}>
               {t('ui.schedule.save')}
             </Button>
             <Tooltip title={dirty ? t('ui.schedule.runNowDirtyHint') : ''}>
@@ -512,6 +770,17 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
           )}
         </div>
       </div>
+      {/* Custom expert editor (shared with the UltraPlan popover hosts) and the
+          attachment preview lightbox — rendered inside the modal tree, lightbox
+          zIndex above the antd modal so previews stay on top. */}
+      <CustomUltraplanEditModal
+        open={customEditor.open}
+        initial={customEditor.item}
+        onSave={(item) => ultraplan.saveExpert(item)}
+        onDelete={(id) => ultraplan.deleteExpert(id)}
+        onClose={() => setCustomEditor({ open: false, item: null })}
+      />
+      {lightbox && <ImageLightbox src={lightbox.src} alt={lightbox.alt} zIndex={1100} onClose={() => setLightbox(null)} />}
     </Modal>
   );
 }

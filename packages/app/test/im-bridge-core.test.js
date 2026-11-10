@@ -389,6 +389,77 @@ describe('DingTalk AI-card streaming (streamTimer)', () => {
   });
 });
 
+// ─── startup-blocked detection (getPtyBootState) ───
+// When the Claude PTY is blocked on an interactive dialog (trust/onboarding) or
+// has exited, the bridge must fail fast with a clear error instead of letting the
+// message sit until the 120s reply-timeout.
+
+describe('startup-blocked detection', () => {
+  let bootState;
+
+  function depsWithBootState(getConfig) {
+    return {
+      ...deps(getConfig),
+      getPtyBootState: () => bootState,
+    };
+  }
+
+  beforeEach(async () => {
+    // __resetAllForTests clears the global activeInjection (unlike __resetForTests(id)
+    // which only clears it when activeInjection.platformId === id). Previous tests
+    // (e.g. streaming) may leave an activeInjection that would block drainQueue.
+    core.__resetAllForTests();
+    recA.onInbound = null; recA.sends = []; recA.acks = 0;
+    recB.onInbound = null; recB.sends = []; recB.acks = 0;
+    injects = []; ptyEsc = 0;
+    streaming = false; ptyKind = 'claude'; ptyRunning = true; skipPerm = false; injectOk = true;
+    bootState = 'ready';
+    await core.startBridge('imA', depsWithBootState(() => cfgA));
+    if (!recA.onInbound) throw new Error('startBridge did not set onInbound');
+  });
+
+  it('blocked-on-trust → immediate startupError, no injection, no 120s wait', async () => {
+    bootState = 'blocked-on-trust';
+    await inbound(recA, { msgId: 'bt1', content: 'hello' });
+    await tick(); // let the fire-and-forget sendReply settle
+    // Message must NOT be injected into the PTY
+    assert.equal(injects.length, 0, 'blocked-on-trust must not inject');
+    // Must reply with startupError immediately
+    assert.equal(recA.sends.length, 1);
+    assert.match(recA.sends[0].content, /启动未完成|startup incomplete/i);
+  });
+
+  it('blocked-on-onboarding → immediate startupError', async () => {
+    bootState = 'blocked-on-onboarding';
+    await inbound(recA, { msgId: 'bo1', content: 'hello' });
+    await tick();
+    assert.equal(injects.length, 0);
+    assert.equal(recA.sends.length, 1);
+    assert.match(recA.sends[0].content, /启动未完成|startup incomplete/i);
+  });
+
+  it('ready → normal injection proceeds', async () => {
+    bootState = 'ready';
+    await inbound(recA, { msgId: 'rd1', content: 'hello' });
+    assert.equal(injects.length, 1, 'ready state must inject normally');
+  });
+
+  it('booting → normal injection proceeds (may still be starting)', async () => {
+    bootState = 'booting';
+    await inbound(recA, { msgId: 'bt2', content: 'hello' });
+    assert.equal(injects.length, 1, 'booting state must not block injection');
+  });
+
+  it('missing getPtyBootState dep → normal injection proceeds (backwards compat)', async () => {
+    core.__resetForTests('imA');
+    recA.onInbound = null; recA.sends = []; recA.acks = 0;
+    injects = [];
+    await core.startBridge('imA', deps(() => cfgA)); // no getPtyBootState
+    await inbound(recA, { msgId: 'bc1', content: 'hello' });
+    assert.equal(injects.length, 1, 'missing dep must not block injection');
+  });
+});
+
 after(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });

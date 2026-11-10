@@ -606,6 +606,22 @@ function drainQueue(inst) {
       void sendReply(inst, item, tr(inst, 'noSession'));
       continue;
     }
+    // Boot-state gate: when the Claude PTY is blocked on an interactive dialog
+    // (trust confirmation, onboarding), fail fast with a clear error instead of
+    // letting the message sit until the 120s timeout. This turns a silent hang
+    // into an actionable diagnostic.
+    // NOTE: 'exited' is NOT handled here — the !st.running check above already
+    // catches exited PTYs and replies 'noSession'. This gate only covers the
+    // "running but blocked on a dialog" case.
+    if (typeof d.getPtyBootState === 'function') {
+      const bootState = d.getPtyBootState();
+      if (bootState === 'blocked-on-trust' || bootState === 'blocked-on-onboarding') {
+        inst.queue.shift();
+        audit(inst, 'startup-blocked', { conversationId: item.conversationId, bootState });
+        void sendReply(inst, item, tr(inst, 'startupError'));
+        continue;
+      }
+    }
     inst.queue.shift();
     const cfg = d.getConfig();
     const skipPerm = d.getPtySkipPermissions();

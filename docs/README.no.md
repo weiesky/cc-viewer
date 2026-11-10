@@ -151,7 +151,7 @@ Etter konfigurasjon bruker du `claude`-kommandoen som normalt. Besøk `http://lo
 
 ### Planlagte oppgaver
 
-Åpne **Planlagte oppgaver** fra (+)-menyen (chat-inndatafeltet eller terminalverktøylinjen) for å kjøre en prompt på en tidsplan: en forhåndsinnstilling (hver time/daglig/ukedager/ukentlig), en egendefinert 5-felts cron eller et engangstidspunkt. En oppgave injiserer prompten i den gjeldende økten eller starter en ny isolert headless-økt (kun SDK-modus). Oppgaver lagres per prosjekt og planlegges i serverens tidssone med et lite jitter; en kryssprosess-fillås forhindrer dobbeltkjøring, og etter omstart eller dvale hentes den siste missede kjøringen innen 7 dager. Du kan **Kjøre nå**, pause/gjenoppta, slette og se de siste 20 kjøringene. Merk: en oppgave kjører bare mens `ccv` kjører.
+Åpne **Planlagte oppgaver** fra (+)-menyen (chat-inndatafeltet eller terminalverktøylinjen) for å kjøre en prompt på en tidsplan: en forhåndsinnstilling (hver time/daglig/ukedager/ukentlig), en egendefinert 5-felts cron eller et engangstidspunkt. En oppgave injiserer prompten i den gjeldende økten eller starter en ny isolert headless-økt (kun SDK-modus). Oppgaver lagres per prosjekt og planlegges i serverens tidssone med et lite jitter; en kryssprosess-fillås forhindrer dobbeltkjøring, og etter omstart eller dvale hentes den siste missede kjøringen innen 7 dager. Du kan **Kjøre nå**, pause/gjenoppta, slette og se de siste 20 kjøringene. Merk: en oppgave kjører bare mens `ccv` kjører. Oppgavens prompt gjenbruker UltraPlan-inndatapanelet: velg en ekspertmalfane («Tom mal» som standard, uten innpakning) og lim inn/last opp vedlegg — innpakning og stier settes sammen ved kjøretid.
 
 ### Programmeringsmodus
 

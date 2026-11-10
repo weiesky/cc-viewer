@@ -603,3 +603,182 @@ describe('lib/ensure-hooks.js — CCV_HOOK_TIMEOUT_S env 变体（子进程 cano
     assert.equal(r.t, 3600);
   });
 });
+
+// ── resolveClaudeJsonPath + ensureOnboardingAndTrust ──
+// These functions pre-seed Claude Code's onboarding/trust state so headless
+// IM workers never block on interactive confirmation dialogs.
+
+describe('resolveClaudeJsonPath', () => {
+  // Uses subprocesses: module-level constants (LOG_DIR etc.) are computed at
+  // import time, so each case needs a fresh env + fresh import.
+  // NOTE: does NOT reuse runInSubprocess — that template already imports
+  // readFileSync/existsSync/resolve, which would collide with our probeBody's
+  // own dynamic imports of the same names.
+  function probe(envOver, probeBody) {
+    const home = mkdtempSync(join(tmpdir(), 'ccv-ensure-hooks-sub-'));
+    const code = `
+import { resolveClaudeJsonPath } from ${JSON.stringify(MODULE_PATH)};
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+${probeBody}
+`;
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: home };
+    delete env.CCV_HOOK_TIMEOUT_S;
+    for (const [k, v] of Object.entries(envOver)) {
+      if (v === undefined) delete env[k]; else env[k] = String(v);
+    }
+    try {
+      const out = execFileSync(process.execPath, ['--input-type=module', '-e', code], { env, encoding: 'utf-8' });
+      const lastLine = out.trim().split('\n').filter(Boolean).pop();
+      return JSON.parse(lastLine);
+    } finally {
+      try { rmSync(home, { recursive: true, force: true }); } catch {}
+    }
+  }
+
+  it('default (no CLAUDE_CONFIG_DIR): resolves to ~/.claude.json (home, not ~/.claude/.claude.json)', () => {
+    // Must strip NODE_TEST_CONTEXT so getClaudeConfigDir() returns the real home
+    // dir, and set HOME to a fake home so the assertion is exact.
+    const fakeHome = mkdtempSync(join(tmpdir(), 'ccv-fake-home-'));
+    try {
+      const r = probe({ CLAUDE_CONFIG_DIR: undefined, NODE_TEST_CONTEXT: undefined, HOME: fakeHome }, `
+        process.stdout.write(JSON.stringify({ p: resolveClaudeJsonPath() }));
+      `);
+      assert.equal(r.p, join(fakeHome, '.claude.json'), `must resolve to ~/.claude.json, got ${r.p}`);
+      assert.ok(!r.p.includes(join(fakeHome, '.claude', '.claude.json')), 'must NOT be ~/.claude/.claude.json');
+    } finally {
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it('custom CLAUDE_CONFIG_DIR → <dir>/.claude.json', () => {
+    const customDir = mkdtempSync(join(tmpdir(), 'ccv-custom-cfg-'));
+    try {
+      const r = probe({ CLAUDE_CONFIG_DIR: customDir }, `
+        process.stdout.write(JSON.stringify({ p: resolveClaudeJsonPath(process.env.CLAUDE_CONFIG_DIR) }));
+      `);
+      assert.ok(r.p.startsWith(customDir), `must be inside the custom config dir (${customDir}), got ${r.p}`);
+      assert.ok(r.p.endsWith('.claude.json'));
+    } finally {
+      rmSync(customDir, { recursive: true, force: true });
+    }
+  });
+
+  it('.config.json takes precedence when it exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccv-claude-json-'));
+    try {
+      writeFileSync(join(dir, '.config.json'), '{}');
+      const r = probe({ CLAUDE_CONFIG_DIR: dir }, `
+        process.stdout.write(JSON.stringify({ p: resolveClaudeJsonPath(process.env.CLAUDE_CONFIG_DIR) }));
+      `);
+      assert.ok(r.p.endsWith('.config.json'), 'must prefer .config.json over .claude.json');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('ensureOnboardingAndTrust', () => {
+  // Same subprocess pattern as resolveClaudeJsonPath above — fresh env per case.
+  function probe(envOver, probeBody) {
+    const home = mkdtempSync(join(tmpdir(), 'ccv-ensure-hooks-sub-'));
+    const code = `
+import { ensureOnboardingAndTrust, resolveClaudeJsonPath } from ${JSON.stringify(MODULE_PATH)};
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+${probeBody}
+`;
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: home };
+    delete env.CCV_HOOK_TIMEOUT_S;
+    for (const [k, v] of Object.entries(envOver)) {
+      if (v === undefined) delete env[k]; else env[k] = String(v);
+    }
+    try {
+      const out = execFileSync(process.execPath, ['--input-type=module', '-e', code], { env, encoding: 'utf-8' });
+      const lastLine = out.trim().split('\n').filter(Boolean).pop();
+      return JSON.parse(lastLine);
+    } finally {
+      try { rmSync(home, { recursive: true, force: true }); } catch {}
+    }
+  }
+
+  it('writes hasCompletedOnboarding + trustedFolders + projects.hasTrustDialogAccepted', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccv-onboard-'));
+    const workspace = join(dir, 'workspace');
+    mkdirSync(workspace, { recursive: true });
+    try {
+      const r = probe({ CLAUDE_CONFIG_DIR: dir }, `
+        ensureOnboardingAndTrust({ configDir: process.env.CLAUDE_CONFIG_DIR, workspacePath: ${JSON.stringify(workspace)} });
+        const p = resolveClaudeJsonPath(process.env.CLAUDE_CONFIG_DIR);
+        const j = JSON.parse(readFileSync(p, 'utf-8'));
+        process.stdout.write(JSON.stringify(j));
+      `);
+      assert.equal(r.hasCompletedOnboarding, true);
+      assert.equal(r.trustedFolders[workspace], true);
+      assert.equal(r.projects[workspace].hasTrustDialogAccepted, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('is idempotent — second run does not rewrite the file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccv-onboard-'));
+    const workspace = join(dir, 'ws');
+    mkdirSync(workspace, { recursive: true });
+    try {
+      const r = probe({ CLAUDE_CONFIG_DIR: dir }, `
+        ensureOnboardingAndTrust({ configDir: process.env.CLAUDE_CONFIG_DIR, workspacePath: ${JSON.stringify(workspace)} });
+        const p = resolveClaudeJsonPath(process.env.CLAUDE_CONFIG_DIR);
+        const { statSync } = await import('node:fs');
+        const mtime1 = statSync(p).mtimeMs;
+        ensureOnboardingAndTrust({ configDir: process.env.CLAUDE_CONFIG_DIR, workspacePath: ${JSON.stringify(workspace)} });
+        const mtime2 = statSync(p).mtimeMs;
+        process.stdout.write(JSON.stringify({ same: mtime1 === mtime2 }));
+      `);
+      assert.equal(r.same, true, 'second run must not touch the file (idempotent)');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves existing fields (projects, mcpServers, oauthAccount)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccv-onboard-'));
+    const workspace = join(dir, 'ws');
+    mkdirSync(workspace, { recursive: true });
+    const jsonPath = join(dir, '.claude.json');
+    writeFileSync(jsonPath, JSON.stringify({
+      projects: { '/other': { lastModelUsage: {} } },
+      mcpServers: { myserver: { command: 'npx' } },
+      oauthAccount: { email: 'user@example.com' },
+    }));
+    try {
+      const r = probe({ CLAUDE_CONFIG_DIR: dir }, `
+        ensureOnboardingAndTrust({ configDir: process.env.CLAUDE_CONFIG_DIR, workspacePath: ${JSON.stringify(workspace)} });
+        const p = resolveClaudeJsonPath(process.env.CLAUDE_CONFIG_DIR);
+        process.stdout.write(JSON.stringify(JSON.parse(readFileSync(p, 'utf-8'))));
+      `);
+      assert.equal(r.mcpServers.myserver.command, 'npx', 'existing mcpServers must be preserved');
+      assert.equal(r.oauthAccount.email, 'user@example.com', 'existing oauthAccount must be preserved');
+      assert.ok(r.projects['/other'], 'existing projects must be preserved');
+      assert.equal(r.projects[workspace].hasTrustDialogAccepted, true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('never overwrites a corrupt file (P0 safety rule)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccv-onboard-'));
+    const jsonPath = join(dir, '.claude.json');
+    writeFileSync(jsonPath, 'not valid json{{{');
+    try {
+      const r = probe({ CLAUDE_CONFIG_DIR: dir }, `
+        ensureOnboardingAndTrust({ configDir: process.env.CLAUDE_CONFIG_DIR, workspacePath: '/tmp/ws' });
+        const p = resolveClaudeJsonPath(process.env.CLAUDE_CONFIG_DIR);
+        process.stdout.write(JSON.stringify({ content: readFileSync(p, 'utf-8') }));
+      `);
+      assert.equal(r.content, 'not valid json{{{', 'corrupt file must be left untouched');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

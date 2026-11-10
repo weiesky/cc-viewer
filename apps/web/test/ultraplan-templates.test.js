@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCustomTemplate, buildLocalUltraplan, ULTRAPLAN_VARIANTS } from '../src/utils/ultraplanTemplates.js';
+import { buildCustomTemplate, buildLocalUltraplan, assembleScheduledPrompt, ULTRAPLAN_VARIANTS } from '../src/utils/ultraplanTemplates.js';
 import { t } from '../src/i18n.js';
 
 describe('ultraplanTemplates: buildCustomTemplate', () => {
@@ -108,5 +108,63 @@ describe('ultraplanTemplates: buildLocalUltraplan', () => {
     assert.ok(out.includes('DRAFT'));
     assert.ok(out.includes('auditor role'));
     assert.ok(out.endsWith('task'));
+  });
+
+  it('variant=none returns the user prompt verbatim (empty template)', () => {
+    assert.equal(buildLocalUltraplan('just do it', 'none'), 'just do it');
+    assert.ok(!buildLocalUltraplan('x', 'none').includes('<system-reminder>'));
+    // seedPlan only makes sense with a wrapper — ignored under 'none'.
+    assert.equal(buildLocalUltraplan('x', 'none', 'DRAFT'), 'x');
+  });
+});
+
+describe('ultraplanTemplates: assembleScheduledPrompt (scheduled-task fire-time assembly)', () => {
+  it('prefixes attachments as quoted paths ahead of the raw prompt', () => {
+    const out = assembleScheduledPrompt({
+      prompt: 'summarize these',
+      attachments: [{ name: 'a.png', path: '/home/u/.claude/cc-viewer/p/images/a.png' }, { name: 'b.txt', path: '/tmp/b.txt' }],
+    });
+    assert.equal(out, '"/home/u/.claude/cc-viewer/p/images/a.png" "/tmp/b.txt" summarize these');
+  });
+
+  it('attachments-only task still produces a dispatchable prompt', () => {
+    assert.equal(assembleScheduledPrompt({ prompt: '', attachments: [{ name: 'a', path: '/p/a.png' }] }), '"/p/a.png"');
+  });
+
+  it('returns empty string when there is nothing to send', () => {
+    assert.equal(assembleScheduledPrompt({ prompt: '  ' }), '');
+    assert.equal(assembleScheduledPrompt({}), '');
+  });
+
+  it('template=none or absent sends the raw input (no wrapper)', () => {
+    assert.equal(assembleScheduledPrompt({ prompt: 'x', template: 'none' }), 'x');
+    assert.equal(assembleScheduledPrompt({ prompt: 'x' }), 'x');
+  });
+
+  it('builtin template wraps via buildLocalUltraplan, attachments inside the user part', () => {
+    const out = assembleScheduledPrompt({ prompt: 'x', template: 'codeExpert', attachments: [{ name: 'a', path: '/p/a.png' }] });
+    assert.ok(out.startsWith('<system-reminder>'));
+    assert.ok(out.endsWith('"/p/a.png" x'), `paths+text should be the trailing user part: ${out.slice(-80)}`);
+  });
+
+  it('custom template uses the stored templateContent snapshot', () => {
+    const out = assembleScheduledPrompt({ prompt: 'x', template: 'custom:cue-1', templateContent: 'You are an auditor.' });
+    assert.ok(out.includes('<system-reminder>'));
+    assert.ok(out.includes('You are an auditor.'));
+    assert.ok(out.endsWith('x'));
+  });
+
+  it('custom template with a missing/empty snapshot degrades to the raw input (never drops the task)', () => {
+    assert.equal(assembleScheduledPrompt({ prompt: 'x', template: 'custom:cue-gone' }), 'x');
+    assert.equal(assembleScheduledPrompt({ prompt: 'x', template: 'custom:cue-1', templateContent: '  ' }), 'x');
+  });
+
+  it('unknown template keys send verbatim (fail-open, never block a scheduled run)', () => {
+    assert.equal(assembleScheduledPrompt({ prompt: 'x', template: 'whatever' }), 'x');
+  });
+
+  it('strips stray double quotes from stored paths before quoting', () => {
+    const out = assembleScheduledPrompt({ prompt: '', attachments: [{ name: 'a', path: '/p/we"ird.png' }] });
+    assert.equal(out, '"/p/weird.png"');
   });
 });

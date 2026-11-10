@@ -17,14 +17,18 @@
  * - Tasks with `skipTranscript` are background/ambient tasks (not user-visible
  *   TODO items) and are excluded from the checklist.
  *
- * Frame loss: sdk-task is delta-only with no snapshot replay, but the HUD is
- * an ephemeral display — only future tasks self-heal on new frame arrival;
- * a missed task_started means later frames for that taskId are dropped.
+ * Frame loss: the live sdk-task relay is delta-only — between snapshots a
+ * missed task_started means later frames for that taskId are dropped. On WS
+ * (re)connect the server replays its bounded authoritative table and
+ * applySnapshot reconciles the client view (resurrecting tasks whose start
+ * frame was lost, dropping ones the server no longer tracks).
  * Session switches reset the tracker via AppBase's clear points and via
  * the sessionId-change guard inside applyFrame.
  */
 
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './taskStore.js';
+import { AGENT_TASK_TYPES } from './activeAgents.js';
+import { AGENT_PROMPT_SNIPPET_LEN } from '@ccv/core/contentFilter';
 
 /** @type {Map<string, object>} */
 let _tasks = new Map();
@@ -116,6 +120,14 @@ export function applyFrame(frame) {
         if (frame.description != null) existing.subject = frame.description;
         if (frame.summary != null) existing.description = frame.summary;
         if (frame.taskType != null) existing.taskType = frame.taskType;
+        // Refresh the agent-identity fields when the re-fire frame carries them
+        // (conditional merge: the server only forwards fields that are present, so
+        // a field absent from the frame keeps its previous value). They join the
+        // MainAgent's Agent tool_use for the real name.
+        if (frame.toolUseId != null) existing.toolUseId = frame.toolUseId;
+        if (AGENT_TASK_TYPES.has(frame.taskType) && typeof frame.prompt === 'string') {
+          existing.promptSnippet = frame.prompt.slice(0, AGENT_PROMPT_SNIPPET_LEN);
+        }
         existing.status = 'in_progress';
         existing.createdAt = Date.now();
         _publish();
@@ -130,6 +142,14 @@ export function applyFrame(frame) {
         owner: null,
         teammateName: null,
         agentId: null,
+        // Agent-identity fields for the active-agents strip. toolUseId joins the
+        // MainAgent's Agent/Task tool_use block (exact match) for the real
+        // name/subagent_type; promptSnippet is the prompt-prefix fallback. Only
+        // agent taskTypes carry a prompt worth retaining (bounded).
+        toolUseId: frame.toolUseId != null ? frame.toolUseId : null,
+        promptSnippet: (AGENT_TASK_TYPES.has(frame.taskType) && typeof frame.prompt === 'string')
+          ? frame.prompt.slice(0, AGENT_PROMPT_SNIPPET_LEN)
+          : null,
         taskType: frame.taskType ?? null,
         createdAt: Date.now(),
       });
@@ -200,6 +220,74 @@ export function resetForView() {
   _sessionId = null;
   _ownerKey = null;
   clearTaskStore();
+}
+
+/**
+ * Reset on a session boundary WITHIN the same workspace (review: stale-strip).
+ * /clear or an in-place resume/fork replaces the session but may emit no sdk-task
+ * frame for a while; without a reset the previous session's in_progress agents
+ * would linger in the store (strip never auto-hides, focus never clears). ChatView
+ * calls this when sdk-session-state reports a sessionId different from the last one
+ * it saw. The next sdk-task frame re-seeds via the owner/session-change branch.
+ */
+export function resetForSession() {
+  _tasks = new Map();
+  _sessionId = null;
+  _ownerKey = null;
+  clearTaskStore();
+}
+
+/**
+ * Reconcile the tracker to the server's authoritative sdk-task table (WS reconnect
+ * replay of `sdk-task-snapshot`). The live relay is delta-only — a frame lost in a
+ * WS gap is unrecoverable from the stream alone — so on reconnect the server sends
+ * its bounded table and the client REPLACES its view. This is the authoritative
+ * source: it both resurrects tasks whose started-frame was missed AND (critically)
+ * drops tasks the server no longer tracks (a lost terminal frame, or a session the
+ * server switched away from), so the active-agents strip can no longer linger.
+ *
+ * Tasks with `skipTranscript === true` are ambient/housekeeping and excluded, same
+ * as the live task_started path.
+ *
+ * @param {object} frame - { sessionId, cwd, instanceKey, tasks: Array<server task> }
+ */
+export function applySnapshot(frame) {
+  if (!frame || typeof frame !== 'object' || !Array.isArray(frame.tasks)) return;
+  const tasks = frame.tasks;
+  const next = new Map();
+  for (const t of tasks) {
+    if (!t || t.taskId == null) continue;
+    // Guard with `=== true` so a snapshot from an older server that lacks the
+    // flag still seeds the task (absent ≠ ambient).
+    if (t.skipTranscript === true) continue;
+    const taskId = String(t.taskId);
+    next.set(taskId, {
+      taskId,
+      subject: t.description ?? null,
+      description: t.summary ?? null,
+      activeForm: null,
+      status: _mapStatus(t.status) || (t.terminal ? 'failed' : 'in_progress'),
+      owner: null,
+      teammateName: null,
+      agentId: null,
+      toolUseId: t.toolUseId != null ? t.toolUseId : null,
+      promptSnippet: (AGENT_TASK_TYPES.has(t.taskType) && typeof t.promptSnippet === 'string')
+        ? t.promptSnippet.slice(0, AGENT_PROMPT_SNIPPET_LEN)
+        : null,
+      taskType: t.taskType ?? null,
+      createdAt: Date.now(),
+      ...(t.usage ? { usage: t.usage } : {}),
+    });
+  }
+  _tasks = next;
+  if (frame.sessionId) _sessionId = frame.sessionId;
+  // Adopt the snapshot's workspace ownership: the table it carries belongs to
+  // this cwd/instanceKey, so the NEXT live frame from the same workspace must
+  // not hit applyFrame's owner-change branch (a null/stale _ownerKey would wipe
+  // everything just resurrected). A frame without owner info leaves it as-is.
+  const owner = _frameOwner(frame);
+  if (owner) _ownerKey = owner;
+  _publish();
 }
 
 /** Test hook: restore pristine module state. */

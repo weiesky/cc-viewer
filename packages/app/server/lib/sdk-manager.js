@@ -36,6 +36,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
 import { readPrefsRaw } from './prefs-store.js';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
+import { AGENT_PROMPT_SNIPPET_LEN } from '@ccv/core/contentFilter';
 import {
   computeAutoApprove,
   createAutoApproveState,
@@ -328,18 +329,17 @@ function _isBareClearCommand(text) {
  * delta for the client to apply, and `skip_transcript` is forwarded as
  * `skipTranscript` so the UI stage can decide whether to hide ambient tasks.
  *
- * Two constraints the UI stage MUST respect (server-side, this round is pure relay):
+ * Two constraints the UI stage MUST respect:
  *  - TWO status vocabularies share the wire: `task_notification.status` is
  *    `completed|failed|stopped`, while `task_updated.patch.status` is
  *    `pending|running|completed|failed|killed` — adjacent but disjoint domains.
  *    A client that naively merges `{...task, ...frame}` then `{...frame.patch}`
  *    will mis-render; discriminate by `subtype` before reading `status`.
- *  - NO server-side task table → NOT reconnect-replayed (unlike sdk-init's
- *    `_lastInitSnapshot`). A frame missed during a WS gap (page refresh / 2s
- *    reconnect) is NOT recoverable; an in-flight task is invisible to a late
- *    client. Accept-as-ephemeral vs add a bounded last-state map is a UI-stage
- *    decision (see sdk-mode-todo-list; if replay is wanted, reuse task-state.js's
- *    reducer semantics rather than growing a second table here).
+ *  - The live relay is delta-only, but every frame is ALSO folded into a bounded
+ *    per-session table (taskId → latest folded state, cap 64, reset on session
+ *    boundaries) and replayed as an authoritative `sdk-task-snapshot` on WS
+ *    reconnect — a frame missed during a gap is recoverable, and an empty table
+ *    replays as `tasks: []` so the client reconciles to "no tasks".
  *
  * Note: the 4 subtypes relayed here are the PUBLIC contract (sdk.d.ts SDKMessage
  * union). The SDK additionally emits @internal `task_summary` / `post_turn_summary`
@@ -384,6 +384,41 @@ function _normalizeSdkTask(msg) {
     if (Object.keys(patch).length > 0) out.patch = patch;
   }
   return out;
+}
+
+/**
+ * Fold one normalized sdk-task frame into a server-side table entry (the latest
+ * known state per taskId). task_started seeds; task_progress/updated merge fields
+ * (patch.status is authoritative for updated); task_notification marks terminal.
+ * Kept deliberately small — the full prompt is retained only as a bounded snippet,
+ * shared via @ccv/core's AGENT_PROMPT_SNIPPET_LEN so the client tracker truncates
+ * identically.
+ */
+const _SDK_TASK_TERMINAL = new Set(['completed', 'failed', 'stopped', 'killed']);
+function _foldSdkTask(prev, frame) {
+  const next = { ...(prev || {}), taskId: frame.taskId };
+  if (frame.sessionId != null) next.sessionId = frame.sessionId;
+  if (frame.toolUseId != null) next.toolUseId = frame.toolUseId;
+  if (frame.taskType != null) next.taskType = frame.taskType;
+  if (frame.description != null) next.description = frame.description;
+  if (frame.patch && frame.patch.description != null) next.description = frame.patch.description; // task_updated delta
+  if (frame.summary != null) next.summary = frame.summary;
+  if (frame.prompt != null) next.promptSnippet = String(frame.prompt).slice(0, AGENT_PROMPT_SNIPPET_LEN);
+  // Retained so getSdkTaskSnapshot can hide ambient tasks from the replay while the
+  // entry still participates in session-boundary detection (a skipTranscript first
+  // frame may be the only task frame carrying the new sessionId).
+  if (frame.skipTranscript != null) next.skipTranscript = frame.skipTranscript === true;
+  if (frame.workflowName != null) next.workflowName = frame.workflowName;
+  if (frame.lastToolName != null) next.lastToolName = frame.lastToolName;
+  if (frame.usage != null) next.usage = frame.usage;
+  // Status: notification carries the terminal word; updated carries it in patch.
+  if (frame.subtype === 'task_notification' && frame.status != null) next.status = frame.status;
+  else if (frame.patch && frame.patch.status != null) next.status = frame.patch.status;
+  else if (frame.status != null) next.status = frame.status;
+  else if (!next.status) next.status = frame.subtype === 'task_started' ? 'running' : 'pending';
+  next.terminal = _SDK_TASK_TERMINAL.has(next.status);
+  next.updatedAt = Date.now();
+  return next;
 }
 
 // ── Per-session factory ──────────────────────────────────────────────────────
@@ -491,6 +526,15 @@ function _createSession(key, cwd) {
   // turn-correlated, so it gets no turn-end/compact trigger and none of the in-flight gate
   // (fetching/queued/seq) machinery above. It reuses the same CTX_USAGE_TIMEOUT_MS bound.
   let _lastMcpStatus = null;
+  // Bounded server-side sdk-task table (review: stale active-agents strip). Until now
+  // the relay was stateless — a frame missed during a WS gap was unrecoverable, so a
+  // late/refreshed client never learned an in-flight agent, and a client whose
+  // terminal frame was lost kept the agent "active" forever. This bounded map (one
+  // entry per taskId, per sessionId) lets a reconnecting client reconcile to the
+  // server's authoritative view. Cleared on session boundaries like _lastInitSnapshot.
+  let _sdkTaskTable = new Map(); // taskId -> normalized sdk-task frame (latest)
+  let _sdkTaskTableSessionId = null; // sessionId the table belongs to
+  const _SDK_TASK_TABLE_CAP = 64; // bounded: oldest evicted beyond this
   // Pending canUseTool promises: id → { kind, resolve, replay, startedAt, timeoutMs }
   // replay is the exact broadcast payload that announced this approval — retained so a
   // fresh WS connection can re-announce it (server.js connection replay), otherwise a
@@ -1556,6 +1600,14 @@ function _createSession(key, cwd) {
           // /clear may reinitialize instead of returning a normal result. The new session is
           // now authoritative, so context reads may resume (without resuming the old session).
           if (_ctxUsageClearPending && msg.session_id) _ctxUsageClearPending = false;
+          // Session boundary for the task table: /clear re-inits with a new session_id but
+          // may emit no task frame until the next task starts (the task-frame boundary in
+          // the task branch only fires once one arrives), and a task that was in flight
+          // gets no terminal frame — without this reset a reconnect would resurrect it.
+          if (msg.session_id && msg.session_id !== _sdkTaskTableSessionId) {
+            _sdkTaskTable = new Map();
+            _sdkTaskTableSessionId = msg.session_id;
+          }
           if (_broadcastWs && Array.isArray(msg.slash_commands) && msg.slash_commands.length > 0
             && msg.session_id !== _initAnnouncedSid) {
             _initAnnouncedSid = msg.session_id;
@@ -1602,10 +1654,26 @@ function _createSession(key, cwd) {
           // SDK background-task / subagent progress (SDK 0.2.x system subtypes). The TODO
           // HUD (TaskProgressHud) is hook-fed and never fires in SDK mode; this is a
           // separate, lossless relay so clients can observe task lifecycle (incl.
-          // failed/stopped/killed terminal states the TODO HUD vocabulary lacks). The
-          // server keeps no task table here — pure forward, merge semantics left to the
-          // client (task_updated.patch is a wire-safe delta, not a full snapshot).
-          _broadcastWs({ type: 'sdk-task', cwd: _cwd, instanceKey, ..._normalizeSdkTask(msg) });
+          // failed/stopped/killed terminal states the TODO HUD vocabulary lacks). Folded
+          // into a bounded server-side table for reconnect replay (a frame lost in a WS
+          // gap is no longer unrecoverable); merge semantics stay client-side.
+          const sdkTaskFrame = { type: 'sdk-task', cwd: _cwd, instanceKey, ..._normalizeSdkTask(msg) };
+          // Maintain the authoritative table (sessionId-scoped, bounded). A new sessionId
+          // resets the table so a /clear or in-place resume never leaks the prior session's
+          // tasks into a reconnecting client's view.
+          if (sdkTaskFrame.taskId) {
+            if (sdkTaskFrame.sessionId && sdkTaskFrame.sessionId !== _sdkTaskTableSessionId) {
+              _sdkTaskTable = new Map();
+              _sdkTaskTableSessionId = sdkTaskFrame.sessionId;
+            }
+            _sdkTaskTable.delete(sdkTaskFrame.taskId); // re-insert for LRU order
+            _sdkTaskTable.set(sdkTaskFrame.taskId, _foldSdkTask(_sdkTaskTable.get(sdkTaskFrame.taskId), sdkTaskFrame));
+            while (_sdkTaskTable.size > _SDK_TASK_TABLE_CAP) {
+              const oldest = _sdkTaskTable.keys().next().value;
+              _sdkTaskTable.delete(oldest);
+            }
+          }
+          _broadcastWs(sdkTaskFrame);
         }
         break;
 
@@ -2627,6 +2695,8 @@ function _createSession(key, cwd) {
       _lastInitSnapshot = null; // don't replay the OLD session's sdk-init to the new one
       _lastSkillsSnapshot = null; // same for the skill surface
       _lastSessionState = null; // same for the session-state snapshot — new session starts idle
+      _sdkTaskTable = new Map(); // drop the outgoing session's task table
+      _sdkTaskTableSessionId = null;
       _clearStateHeartbeat();
       _suspectGeneration = false;
       _lastFailedTurn = null; // the failure belongs to the outgoing session — never retry it into this one
@@ -2651,6 +2721,8 @@ function _createSession(key, cwd) {
     _initAnnouncedSid = '';
     _lastInitSnapshot = null;
     _lastSkillsSnapshot = null;
+    _sdkTaskTable = new Map(); // full reset: drop the task table too
+    _sdkTaskTableSessionId = null;
     // Tell clients BEFORE nulling the snapshot: a re-init/launch mid-turn would
     // otherwise leave the spinner lit with no frame ever clearing it (the new
     // session starts idle and the state-change guard would swallow the first
@@ -2725,6 +2797,19 @@ function _createSession(key, cwd) {
     getContextUsageSnapshot: () => _lastContextUsage,
     getMcpStatusSnapshot: () => _lastMcpStatus,
     getSkillsSnapshot: () => _lastSkillsSnapshot,
+    // Authoritative sdk-task table for WS reconnect replay: a refreshed/reconnected
+    // client reconciles its delta-only tracker to this snapshot (sessionId-scoped).
+    // ALWAYS returns a frame — an empty `tasks: []` is authoritative ("no tasks"),
+    // otherwise a client that missed the session boundary keeps its stale agents.
+    // skipTranscript entries are tracked (they carry the session boundary) but hidden
+    // from the replay, matching the live path that never shows ambient tasks.
+    getSdkTaskSnapshot: () => ({
+      type: 'sdk-task-snapshot',
+      cwd: _cwd,
+      instanceKey,
+      sessionId: _sdkTaskTableSessionId,
+      tasks: [..._sdkTaskTable.values()].filter((t) => t.skipTranscript !== true),
+    }),
     fetchContextUsage: async () => {
       // On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
       // then reply. Unlike _refreshContextUsage this bypasses the in-flight gate (an explicit
@@ -3234,6 +3319,23 @@ export function getContextUsageSnapshot(anchor) {
 export function getMcpStatusSnapshot(anchor) {
   const sess = anchor ? _sessionForAnchor(anchor) : _active();
   return sess ? sess.getMcpStatusSnapshot() : null;
+}
+
+/**
+ * WS reconnect replay getter for the authoritative sdk-task table.
+ *
+ * `anchor` (optional, skills-snapshot parity — resolved by _sessionForAnchor):
+ *   - { instanceKey }            exact registered instance
+ *   - { cwd }                    exact normalized cwd
+ *   - { project }                sanitized/raw basename; ambiguous → null
+ * No anchor → the ACTIVE session. Returns the always-present `sdk-task-snapshot`
+ * frame ({ type, cwd, instanceKey, sessionId, tasks }) — tasks may be empty — or
+ * null only when the anchor resolves to no registered session (the caller sends
+ * nothing; an anchor failure must not replay a foreign workspace's table).
+ */
+export function getSdkTaskSnapshot(anchor) {
+  const sess = anchor ? _sessionForAnchor(anchor) : _active();
+  return sess ? sess.getSdkTaskSnapshot() : null;
 }
 
 /**

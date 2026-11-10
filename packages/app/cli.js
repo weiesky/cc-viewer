@@ -314,7 +314,7 @@ async function runProxyCommand(args) {
     let npmCliEntry = null;
     if (requestedClaude) {
       const selection = assertUsableClaudeSelection(resolvePreferredClaudeSelection());
-      if (selection?.isNpmVersion && selection.path.endsWith('.js')) {
+      if (selection?.isNpmVersion && (selection.path.endsWith('.js') || selection.path.endsWith('.cjs'))) {
         npmCliEntry = selection.path;
         cmd = process.execPath;
       } else if (selection?.path) {
@@ -719,6 +719,29 @@ async function runImMode(platformId) {
   // （manager 拉起的 worker 由 buildChildEnv 已剥离全部 CCV_*，此处对其为 no-op，仅覆盖手动启动路径）。
   delete process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT;
 
+  // CodeFuse config-dir fallback: when the worker is launched directly (not via
+  // the CodeFuse engine), CLAUDE_CONFIG_DIR is unset and Claude would fall back
+  // to ~/.claude/ — which may lack .claude.json and trigger the first-run
+  // onboarding/trust dialogs. Probe the known CodeFuse config dirs and pin the
+  // one that already has a .claude.json so the worker inherits the engine's
+  // pre-seeded trust state. This MUST happen before runCliMode so that
+  // ensureHooks() writes to the same directory the child will read.
+  if (!process.env.CLAUDE_CONFIG_DIR) {
+    const { homedir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { existsSync } = await import('node:fs');
+    const home = homedir();
+    const candidates = [
+      process.env.CCV_CODEFUSE_ENGINE_CC,
+      join(home, '.codefuse', 'engine', 'cc'),
+      join(home, '.codefuse', 'fuse', 'engine', 'cc'),
+    ];
+    const cfEngineCc = candidates.find((p) => p && existsSync(join(p, '.claude.json')));
+    if (cfEngineCc) {
+      process.env.CLAUDE_CONFIG_DIR = cfEngineCc;
+    }
+  }
+
   // worker 全自动：skip-permissions + 不开浏览器，工作目录设为 IM_<id>/
   return runCliMode(['--dangerously-skip-permissions'], dir, true);
 }
@@ -926,6 +949,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkGetContextUsageSnapshot(sdkManager.getContextUsageSnapshot);
   serverMod.setSdkGetMcpStatusSnapshot(sdkManager.getMcpStatusSnapshot);
   serverMod.setSdkGetSessionStateSnapshot(sdkManager.getSessionStateSnapshot);
+  serverMod.setSdkGetSdkTaskSnapshot(sdkManager.getSdkTaskSnapshot);
   // Busy-queue bubble actions (queue-send-now / queue-remove / queue-clear / replay).
   serverMod.setSdkSendQueuedNow(sdkManager.sendQueuedNow);
   serverMod.setSdkRemoveQueued(sdkManager.removeQueued);

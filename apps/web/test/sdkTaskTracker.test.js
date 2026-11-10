@@ -9,7 +9,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyFrame, clear, __resetForTests } from '../src/utils/sdkTaskTracker.js';
+import { applyFrame, applySnapshot, clear, __resetForTests } from '../src/utils/sdkTaskTracker.js';
 import { getSnapshot, getTasks, __resetForTests as resetTaskStore } from '../src/utils/taskStore.js';
 
 beforeEach(() => {
@@ -46,6 +46,45 @@ describe('utils/sdkTaskTracker.js', () => {
     applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Reworked' });
     assert.equal(getTasks()[0].status, 'in_progress');
     assert.equal(getTasks()[0].subject, 'Reworked');
+  });
+
+  it('task_started retains toolUseId and a bounded promptSnippet for agent tasks', () => {
+    const longPrompt = 'p'.repeat(5000);
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'Explore', taskType: 'local_agent', toolUseId: 'toolu_1', prompt: longPrompt });
+    const t = getTasks()[0];
+    assert.equal(t.toolUseId, 'toolu_1');
+    assert.equal(t.promptSnippet.length, 1024);
+    assert.equal(t.promptSnippet, longPrompt.slice(0, 1024));
+  });
+
+  it('task_started does not retain prompt for non-agent tasks', () => {
+    applyFrame({ subtype: 'task_started', taskId: 'b1', sessionId: 's1', description: 'Run tests', taskType: 'local_bash', toolUseId: 'toolu_2', prompt: 'npm test' });
+    const t = getTasks()[0];
+    assert.equal(t.toolUseId, 'toolu_2');
+    assert.equal(t.promptSnippet, null);
+  });
+
+  it('task_started re-fire refreshes toolUseId/promptSnippet for a reused taskId', () => {
+    // NO terminal state in between: re-firing while the task is still in_progress
+    // hits the `existing` branch directly (a completed task would instead trigger
+    // the all-terminal batch reset and rebuild via the new-task path).
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'Old', taskType: 'local_agent', toolUseId: 'toolu_old', prompt: 'old prompt' });
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'New', taskType: 'local_agent', toolUseId: 'toolu_new', prompt: 'new prompt' });
+    const tasks = getTasks();
+    assert.equal(tasks.length, 1, 're-fire reuses the same task slot (no new row)');
+    assert.equal(tasks[0].toolUseId, 'toolu_new');
+    assert.equal(tasks[0].promptSnippet, 'new prompt');
+    assert.equal(tasks[0].subject, 'New');
+  });
+
+  it('task_started re-fire keeps prior toolUseId/promptSnippet when the new frame omits them', () => {
+    // Conditional-merge semantics: fields absent from the re-fire frame retain
+    // their previous values (the server only forwards fields that are present).
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'Old', taskType: 'local_agent', toolUseId: 'toolu_old', prompt: 'old prompt' });
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'New', taskType: 'local_agent' });
+    const t = getTasks()[0];
+    assert.equal(t.toolUseId, 'toolu_old', 'omitted toolUseId is retained');
+    assert.equal(t.promptSnippet, 'old prompt', 'omitted prompt is retained');
   });
 
   it('task_updated applies status patch with mapping', () => {
@@ -208,5 +247,81 @@ describe('utils/sdkTaskTracker.js', () => {
   it('sessionId tracks the latest frame', () => {
     applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Task' });
     assert.equal(getSnapshot().sessionId, 's1');
+  });
+
+  describe('applySnapshot (authoritative reconnect reconcile)', () => {
+    it('resurrects a task whose started-frame was missed AND drops one the server no longer tracks', () => {
+      // Client saw only t_live; server also has t_missed (its frame was lost) and has
+      // since dropped t_stale (its terminal frame was lost client-side).
+      applyFrame({ subtype: 'task_started', taskId: 't_live', sessionId: 's1', description: 'Live' });
+      applyFrame({ subtype: 'task_started', taskId: 't_stale', sessionId: 's1', description: 'Stale' });
+
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_live', taskType: 'local_agent', toolUseId: 'toolu_live', status: 'running', description: 'Live', promptSnippet: 'p' },
+          { taskId: 't_missed', taskType: 'in_process_teammate', toolUseId: 'toolu_missed', status: 'running', description: 'Missed', promptSnippet: 'q' },
+        ],
+      });
+
+      const ids = getTasks().map((t) => t.taskId).sort();
+      assert.deepEqual(ids, ['t_live', 't_missed'], 'stale dropped, missed resurrected');
+      assert.equal(getSnapshot().sessionId, 's1');
+      const missed = getTasks().find((t) => t.taskId === 't_missed');
+      assert.equal(missed.status, 'in_progress');
+      assert.equal(missed.toolUseId, 'toolu_missed');
+      assert.equal(missed.promptSnippet, 'q');
+    });
+
+    it('a live frame from the snapshot\'s own workspace keeps the resurrected tasks', () => {
+      // Regression: the snapshot must adopt cwd/instanceKey ownership. Otherwise
+      // the next live frame's owner-change branch sees owner !== _ownerKey (null)
+      // and wipes everything the snapshot just restored.
+      applySnapshot({
+        cwd: '/w/a', instanceKey: 'inst-a', sessionId: 's1',
+        tasks: [
+          { taskId: 't1', taskType: 'local_agent', toolUseId: 'toolu_1', status: 'running', description: 'A', promptSnippet: 'p' },
+          { taskId: 't2', taskType: 'in_process_teammate', status: 'running', description: 'B' },
+        ],
+      });
+      assert.deepEqual(getTasks().map((t) => t.taskId), ['t1', 't2']);
+      applyFrame({ subtype: 'task_progress', taskId: 't1', cwd: '/w/a', instanceKey: 'inst-a', sessionId: 's1', lastToolName: 'Bash', description: 'working' });
+      const tasks = getTasks();
+      assert.deepEqual(tasks.map((t) => t.taskId), ['t1', 't2'], 'same-workspace frame must not reset');
+      assert.equal(tasks[0].lastToolName, 'Bash');
+      assert.equal(tasks[0].subject, 'working');
+      assert.equal(getSnapshot().sessionId, 's1');
+      // A frame from a DIFFERENT workspace still resets (owner-change branch).
+      applyFrame({ subtype: 'task_progress', taskId: 't1', cwd: '/w/b', instanceKey: 'inst-b', sessionId: 's1' });
+      assert.deepEqual(getTasks(), []);
+    });
+
+    it('excludes skipTranscript entries but keeps tasks from servers without the flag', () => {
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_visible', taskType: 'local_agent', status: 'running', description: 'Visible' },
+          { taskId: 't_ambient', taskType: 'local_agent', status: 'running', description: 'Ambient', skipTranscript: true },
+        ],
+      });
+      assert.deepEqual(getTasks().map((t) => t.taskId), ['t_visible']);
+    });
+
+    it('maps terminal statuses so a resurrected-then-finished agent is not revived as active', () => {
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [{ taskId: 't_done', taskType: 'local_agent', status: 'completed', terminal: true, description: 'Done' }],
+      });
+      const t = getTasks().find((x) => x.taskId === 't_done');
+      assert.equal(t.status, 'completed');
+    });
+
+    it('ignores malformed snapshots', () => {
+      applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Keep' });
+      applySnapshot(null);
+      applySnapshot({});
+      applySnapshot({ tasks: 'nope' });
+      assert.deepEqual(getTasks().map((t) => t.taskId), ['t1'], 'unchanged on malformed input');
+    });
   });
 });

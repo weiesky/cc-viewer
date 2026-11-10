@@ -463,6 +463,33 @@ describe('findcc: configured Claude executable', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('.cjs entry is detected as npm version (needs node to run)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-cjs-'));
+    try {
+      const cjsPath = join(root, 'claude.cjs');
+      writeFileSync(cjsPath, '// npm cjs entry\n');
+      chmodSync(cjsPath, 0o755);
+      const r = resolveExplicitClaudePath(cjsPath);
+      assert.equal(r.isNpmVersion, true, '.cjs must be treated as npm version');
+      assert.equal(r.path, realpathSync(cjsPath), 'path must be the realpath');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('.js entry is detected as npm version (existing behavior)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-js-'));
+    try {
+      const jsPath = join(root, 'claude.js');
+      writeFileSync(jsPath, '// npm js entry\n');
+      chmodSync(jsPath, 0o755);
+      const r = resolveExplicitClaudePath(jsPath);
+      assert.equal(r.isNpmVersion, true, '.js must be treated as npm version');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 // ═══════════ resolvePreferredClaudeSelection priority: native > path > npm ═══════════

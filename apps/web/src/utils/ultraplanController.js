@@ -86,10 +86,12 @@ export class UltraplanController {
     const st = this.host.getState();
     const next = st.customUltraplanExperts.filter(e => e.id !== id);
     this.persistExperts(next);
-    // 如果当前选中的就是被删的，回退到首个可见专家（无可见则 codeExpert）
+    // If the deleted expert was the selected one, fall back to the host-preferred key
+    // (fallbackVariant — the schedule-task panel uses the empty template 'none'),
+    // then the first visible expert, then codeExpert.
     if (st.ultraplanVariant === 'custom:' + id) {
       const visible = visibleExpertKeys(next, st.ultraplanExpertOrder, st.ultraplanExpertHidden);
-      this.host.setState({ ultraplanVariant: visible[0] || 'codeExpert' });
+      this.host.setState({ ultraplanVariant: this.host.fallbackVariant || visible[0] || 'codeExpert' });
     }
     this.host.closeEditor();
   };

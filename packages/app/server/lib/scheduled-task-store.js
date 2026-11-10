@@ -31,7 +31,7 @@
 // Boundary: L1-lib. Imports L1 (cron/schedule-model/json-store/scheduled-task-runs-store)
 // + L0-leaf (pid-alive) + node builtins. Must NOT import L2 (pty-manager/sdk-manager/…).
 
-import { join } from 'node:path';
+import { join, isAbsolute } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mutateJson, readJsonStrict } from './json-store.js';
@@ -39,6 +39,7 @@ import { isPidAlive } from './pid-alive.js';
 import { normalizeSchedule, nextBaseFor, occurrencesAtOrBefore, jitterForTaskId } from './schedule-model.js';
 import { appendRuns, appendRun, deleteRunsForTask, findRunByClaimId } from './scheduled-task-runs-store.js';
 import { reportSwallowed } from './error-report.js';
+import { assembleScheduledPrompt } from '@ccv/core/ultraplanTemplates';
 
 const LEGACY_FILE_NAME = 'scheduled-tasks.json';
 const PREFS_FILE_NAME = 'preferences.json';
@@ -46,6 +47,11 @@ const VERSION = 1;
 const MAX_TASKS_PER_PROJECT = 50;
 const MAX_RUNS = 20;
 const MAX_PROMPT_LEN = 20_000;
+// Attachments ride the task so the executor can prefix quoted paths at fire time
+// (the stored prompt stays the raw user text). Bounded: prefs is pretty-printed and
+// rewritten on every claim/finalize, so strings must not be unbounded.
+const MAX_ATTACHMENTS = 20;
+const MAX_ATTACHMENT_STR = 1024;
 const SUMMARY_LEN = 200;
 const CATCH_UP_WINDOW_MS = 7 * 24 * 3600 * 1000; // 7 days
 // A claim whose owner pid is unreadable is reclaimed after this age (pid-reuse
@@ -152,13 +158,79 @@ export function mutateScheduledTasks(root, mutator) {
 }
 
 function _newId(prefix) { return `${prefix}_${randomBytes(8).toString('hex')}`; }
+
+// A stored path becomes a quoted prefix in the fire-time prompt, so it must be a
+// plain absolute path: no quotes, no control chars (LF/CR/ESC would break the
+// single-line structure and could smuggle hidden instructions into the prompt).
+function _isValidAttachmentPath(p) {
+  if (typeof p !== 'string' || !p || p.length > MAX_ATTACHMENT_STR) return false;
+  if (!isAbsolute(p)) return false;
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f"\\]/.test(p)) return false;
+  return true;
+}
+
+// Validate + normalize a task's UltraPlan fields. Absent fields → {} (no change /
+// not set), so old clients and partial updates (pause/resume) are unaffected.
+// Returns { ok:true, fields } | { ok:false, reason }.
+function _normalizeUltraplanFields(draft) {
+  const fields = {};
+  if (draft.template !== undefined) {
+    if (typeof draft.template !== 'string' || !draft.template || draft.template.length > 200) {
+      return { ok: false, reason: 'invalid_template' };
+    }
+    fields.template = draft.template;
+  }
+  if (draft.templateContent !== undefined) {
+    if (typeof draft.templateContent !== 'string' || draft.templateContent.length > MAX_PROMPT_LEN) {
+      return { ok: false, reason: 'invalid_template' };
+    }
+    fields.templateContent = draft.templateContent;
+  }
+  if (draft.attachments !== undefined) {
+    const list = draft.attachments;
+    if (!Array.isArray(list) || list.length > MAX_ATTACHMENTS) return { ok: false, reason: 'invalid_attachments' };
+    for (const a of list) {
+      if (!a || typeof a !== 'object'
+          || typeof a.name !== 'string' || !a.name || a.name.length > MAX_ATTACHMENT_STR
+          || !_isValidAttachmentPath(a.path)) {
+        return { ok: false, reason: 'invalid_attachments' };
+      }
+    }
+    fields.attachments = list.map(a => ({ name: a.name, path: a.path }));
+  }
+  return { ok: true, fields };
+}
+
+// Final bound on what actually gets dispatched. The per-field caps above allow a
+// combined ~60KB prompt (20k text + 20k template + 20×1KB paths); cap the assembled
+// result so the injected prompt stays within the documented maximum.
+function _assembledWithinLimit(fields, task) {
+  const probe = {
+    prompt: fields.prompt !== undefined ? fields.prompt : task?.prompt,
+    template: fields.template !== undefined ? fields.template : task?.template,
+    templateContent: fields.templateContent !== undefined ? fields.templateContent : task?.templateContent,
+    attachments: fields.attachments !== undefined ? fields.attachments : task?.attachments,
+  };
+  return assembleScheduledPrompt(probe).length <= MAX_PROMPT_LEN;
+}
+
 function _summarize(prompt) {
   const s = String(prompt == null ? '' : prompt).replace(/\s+/g, ' ').trim();
   return s.length > SUMMARY_LEN ? `${s.slice(0, SUMMARY_LEN - 1)}…` : s;
 }
 
+// Attachments-only tasks have an empty prompt — fall back to the attachment names so
+// run history and completion toasts never render a blank summary.
+function _summarizeTask(task) {
+  const s = _summarize(task.prompt);
+  if (s) return s;
+  const names = (Array.isArray(task.attachments) ? task.attachments : []).map(a => a.name).filter(Boolean);
+  return names.length ? `[${names.join(', ')}]` : s;
+}
+
 function _makeRun(task, fields) {
-  return { id: _newId('run'), summary: _summarize(task.prompt), ...fields };
+  return { id: _newId('run'), summary: _summarizeTask(task), ...fields };
 }
 
 // History is best-effort: a flush failure is reported but never fails the state change
@@ -207,16 +279,23 @@ export function getTask(root, id) {
 }
 
 /**
- * Create a task. draft = { project, cwd, prompt, mode, schedule, enabled }.
+ * Create a task. draft = { project, cwd, prompt, mode, schedule, enabled,
+ * template?, templateContent?, attachments? }. prompt is the RAW user text; the
+ * UltraPlan wrapper + attachment paths are assembled at fire time (executor).
  * The ONLY writer allowed to create the `scheduledTasks` prefs key (legacy tombstone).
  */
 export async function createTask(root, draft, now = Date.now()) {
   const norm = normalizeSchedule(draft.schedule, now);
   if (!norm.ok) return { ok: false, reason: norm.error, detail: norm.detail };
   const prompt = String(draft.prompt == null ? '' : draft.prompt).trim();
-  if (!prompt) return { ok: false, reason: 'invalid_prompt' };
-  if (prompt.length > MAX_PROMPT_LEN) return { ok: false, reason: 'invalid_prompt', detail: 'too long' };
   if (draft.mode !== 'inject' && draft.mode !== 'spawn') return { ok: false, reason: 'invalid_mode' };
+  const ultra = _normalizeUltraplanFields(draft);
+  if (!ultra.ok) return { ok: false, reason: ultra.reason };
+  // An empty prompt is fine when attachments carry the task (they become the fire-time
+  // prompt prefix); "both empty" is rejected.
+  if (!prompt && (ultra.fields.attachments || []).length === 0) return { ok: false, reason: 'invalid_prompt' };
+  if (prompt.length > MAX_PROMPT_LEN) return { ok: false, reason: 'invalid_prompt', detail: 'too long' };
+  if (!_assembledWithinLimit(ultra.fields, { prompt })) return { ok: false, reason: 'invalid_prompt', detail: 'assembled too long' };
 
   return mutateScheduledTasks(root, (reg) => {
     const sameProject = reg.tasks.filter(t => t.project === draft.project);
@@ -229,6 +308,10 @@ export async function createTask(root, draft, now = Date.now()) {
       mode: draft.mode,
       schedule: norm.schedule,
       permissionMode: draft.mode === 'spawn' ? (draft.permissionMode === 'inherit' ? 'inherit' : 'default') : undefined,
+      // UltraPlan fields are omitted (not null) when absent so old tasks keep their shape.
+      ...(ultra.fields.template !== undefined ? { template: ultra.fields.template } : {}),
+      ...(ultra.fields.templateContent !== undefined ? { templateContent: ultra.fields.templateContent } : {}),
+      ...(ultra.fields.attachments !== undefined ? { attachments: ultra.fields.attachments } : {}),
       enabled: draft.enabled !== false,
       jitterMs: undefined,
       nextBaseAt: null,
@@ -249,12 +332,33 @@ export async function createTask(root, draft, now = Date.now()) {
 }
 
 /**
- * Update prompt / mode / schedule / enabled. Recomputes next ONLY when schedule or
- * enabled changed. Never clobbers an active claim. Resume does NOT catch up; it records
- * a skipped/paused run (flushed to the runs file after the prefs write).
+ * Update prompt / mode / schedule / enabled and the UltraPlan fields (template,
+ * templateContent, attachments — absent = no change). Recomputes next ONLY when
+ * schedule or enabled changed. Never clobbers an active claim. Resume does NOT catch
+ * up; it records a skipped/paused run (flushed to the runs file after the prefs write).
+ *
+ * Validation is fully staged BEFORE any mutation: mutateJson writes the file even when
+ * the mutator reports failure, so validating after mutating would persist a
+ * half-applied patch on a rejected update.
  */
 export async function updateTask(root, id, patch, now = Date.now()) {
   if (_isLegacy(root)) return { ok: false, reason: 'task_not_found' };
+  // Field-shape validation first (cheap, no lock).
+  const ultra = _normalizeUltraplanFields(patch);
+  if (!ultra.ok) return { ok: false, reason: ultra.reason };
+  if (patch.prompt !== undefined) {
+    const p = String(patch.prompt).trim();
+    if (p.length > MAX_PROMPT_LEN) return { ok: false, reason: 'invalid_prompt' };
+  }
+  if (patch.mode !== undefined && patch.mode !== 'inject' && patch.mode !== 'spawn') {
+    return { ok: false, reason: 'invalid_mode' };
+  }
+  // Schedule validation before the lock too (it only depends on the patch + now).
+  let stagedNorm;
+  if (patch.schedule !== undefined) {
+    const norm = normalizeSchedule(patch.schedule, now);
+    stagedNorm = norm; // once_in_past may still be forgiven inside the lock (at unchanged)
+  }
   const pendingRuns = [];
   const out = await mutateScheduledTasks(root, (reg) => {
     const task = reg.tasks.find(t => t.id === id);
@@ -262,15 +366,6 @@ export async function updateTask(root, id, patch, now = Date.now()) {
     let scheduleChanged = false;
     let enabledChanged = false;
 
-    if (patch.prompt !== undefined) {
-      const prompt = String(patch.prompt).trim();
-      if (!prompt || prompt.length > MAX_PROMPT_LEN) return { ok: false, reason: 'invalid_prompt' };
-      task.prompt = prompt;
-    }
-    if (patch.mode !== undefined) {
-      if (patch.mode !== 'inject' && patch.mode !== 'spawn') return { ok: false, reason: 'invalid_mode' };
-      task.mode = patch.mode;
-    }
     if (patch.schedule !== undefined) {
       // once.at>=now+60s is only enforced when `at` itself changes: the UI always sends the
       // full schedule back on save, so a prompt edit on an expired once task would otherwise
@@ -278,7 +373,7 @@ export async function updateTask(root, id, patch, now = Date.now()) {
       const atUnchanged = patch.schedule && patch.schedule.kind === 'once'
         && task.schedule && task.schedule.kind === 'once'
         && Number(patch.schedule.at) === Number(task.schedule.at);
-      const norm = normalizeSchedule(patch.schedule, now);
+      const norm = stagedNorm;
       if (!norm.ok) {
         if (!(atUnchanged && norm.error === 'once_in_past')) {
           return { ok: false, reason: norm.error, detail: norm.detail };
@@ -288,6 +383,22 @@ export async function updateTask(root, id, patch, now = Date.now()) {
       if (!atUnchanged) delete task.jitterMs;
       scheduleChanged = true;
     }
+    if (patch.mode !== undefined) task.mode = patch.mode;
+    // Cross-field invariant on the MERGED result, computed BEFORE any mutation:
+    // mutateJson persists even when the mutator reports failure, so a both-empty
+    // rejection must not leave attachments/prompt half-cleared on disk.
+    const mergedPrompt = patch.prompt !== undefined ? String(patch.prompt).trim() : task.prompt;
+    const mergedAttachments = ultra.fields.attachments !== undefined ? ultra.fields.attachments : (task.attachments || []);
+    if (!String(mergedPrompt || '').trim() && mergedAttachments.length === 0) {
+      return { ok: false, reason: 'invalid_prompt' };
+    }
+    if (!_assembledWithinLimit({ ...ultra.fields, prompt: mergedPrompt }, task)) {
+      return { ok: false, reason: 'invalid_prompt', detail: 'assembled too long' };
+    }
+    if (ultra.fields.template !== undefined) task.template = ultra.fields.template;
+    if (ultra.fields.templateContent !== undefined) task.templateContent = ultra.fields.templateContent;
+    if (ultra.fields.attachments !== undefined) task.attachments = ultra.fields.attachments;
+    if (patch.prompt !== undefined) task.prompt = mergedPrompt;
     if (patch.enabled !== undefined && patch.enabled !== task.enabled) {
       task.enabled = !!patch.enabled;
       enabledChanged = true;

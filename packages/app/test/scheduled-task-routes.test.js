@@ -196,4 +196,47 @@ describe('scheduled-tasks routes', () => {
     assert.equal('prompt' in data.tasks[0], false, 'unknown project → summary-only shape');
     assert.equal(typeof data.tasks[0].promptSummary, 'string');
   });
+
+  it('create/update pass UltraPlan fields through; summary shape strips attachments/template', async () => {
+    const attachments = [{ name: 'a.png', path: '/home/u/.claude/cc-viewer/proj/images/a.png' }];
+    const created = await callPost(route('POST', '/api/scheduled-tasks'), {
+      prompt: 'do it', mode: 'inject', schedule: { kind: 'daily', time: '09:00' },
+      template: 'custom:cue-1', templateContent: 'You are an auditor.', attachments,
+    });
+    assert.equal(created.status, 200);
+    assert.equal(created.data.task.template, 'custom:cue-1');
+    assert.deepEqual(created.data.task.attachments, attachments);
+
+    const id = created.data.task.id;
+    const updated = await callPost(route('POST', '/api/scheduled-tasks/update'), {
+      id, template: 'researchExpert', attachments: [],
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.data.task.template, 'researchExpert');
+    assert.deepEqual(updated.data.task.attachments, []);
+    // Absent fields are untouched.
+    assert.equal(updated.data.task.templateContent, 'You are an auditor.');
+
+    // Invalid attachments → 400 with the specific reason.
+    const bad = await callPost(route('POST', '/api/scheduled-tasks'), {
+      prompt: 'x', mode: 'inject', schedule: { kind: 'daily', time: '09:00' },
+      attachments: [{ name: 'a.png' }],
+    });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.data.error, 'invalid_attachments');
+
+    // Summary shape (unresolvable project): prompt secrecy extends to the new fields.
+    const { createTask } = await import('../server/lib/scheduled-task-store.js');
+    const r = await createTask(tmpDir, {
+      project: 'no-such-project', cwd: '/tmp/no-such-project', prompt: 'secret prompt text',
+      mode: 'inject', schedule: { kind: 'daily', time: '09:00' }, enabled: true,
+      template: 'custom:cue-9', templateContent: 'secret body', attachments,
+    }, Date.now());
+    assert.equal(r.ok, true);
+    const { data } = callGet(route('GET', '/api/scheduled-tasks'), { project: 'no-such-project' });
+    const row = data.tasks.find(x => x.id === r.task.id);
+    assert.equal('attachments' in row, false, 'summary shape must not leak absolute paths');
+    assert.equal('template' in row, false);
+    assert.equal('templateContent' in row, false);
+  });
 });
