@@ -1,0 +1,30 @@
+apps/web/src/components/common/ScheduleTaskModal.jsx
+  s_ca81843f2442bf::t_247306fa7239d6 723
+  s_ca81843f2442bf::t_7e342286aa2346 24-32
+  s_ca81843f2442bf::t_1790ec054cc500 716-722,724-729
+apps/web/src/components/common/ScheduleTaskModal.module.css
+  s_ca81843f2442bf::t_059c39cf56a944 178
+  s_ca81843f2442bf::t_34304bff47e51e 187,194-198
+  s_ca81843f2442bf::t_c9b97c734de8d7 165-177,179-186,188-193,199-200
+apps/web/src/i18n.js
+  s_ca81843f2442bf::t_88732b59327897 16203-16302
+apps/web/test/schedule-modal-anchor.test.js
+  s_ca81843f2442bf::t_0b5446983953d2 205-207,210,214,224-225,227-229
+  s_ca81843f2442bf::t_ef11d3c9ec3cae 208-209,211-213,215-223,226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1c6826a7f7b4bd963eaeb46da170588d66776c61",
+  "prompts": {},
+  "sessions": {
+    "s_ca81843f2442bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79e95a5a-e5d5-4cac-915c-af278a323945",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
