@@ -1,0 +1,19 @@
+.changeset/schedule-once-quick-buttons.md
+  s_ca81843f2442bf::t_036a600c29f95b 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2ea7e99115eee894e77651d8d025a635c2e34e05",
+  "prompts": {},
+  "sessions": {
+    "s_ca81843f2442bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79e95a5a-e5d5-4cac-915c-af278a323945",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
