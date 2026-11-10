@@ -21,6 +21,15 @@ import styles from './ScheduleTaskModal.module.css';
 
 const KINDS = ['hourly', 'daily', 'weekdays', 'weekly', 'cron', 'once'];
 
+// Quick-fill offsets for the one-time DatePicker, in minutes.
+const ONCE_QUICK_OFFSETS = [
+  { key: '5m', minutes: 5 },
+  { key: '10m', minutes: 10 },
+  { key: '30m', minutes: 30 },
+  { key: '1h', minutes: 60 },
+  { key: '3h', minutes: 180 },
+];
+
 // Mirrors the server-side cap (scheduled-task-store.js MAX_PROMPT_LEN); checked before
 // save so an over-long assembled prompt (template + attachment paths + text) fails fast.
 const MAX_PROMPT_LEN = 20000;
@@ -704,6 +713,20 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
                 />
               )}
             </div>
+            {draft.scheduleKind === 'once' && (
+              <div className={styles.onceQuickGroup}>
+                {ONCE_QUICK_OFFSETS.map(o => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    className={styles.onceQuickBtn}
+                    onClick={() => updateDraft({ onceAt: dayjs().add(o.minutes, 'minute').startOf('minute') })}
+                  >
+                    {t(`ui.schedule.quick.${o.key}`)}
+                  </button>
+                ))}
+              </div>
+            )}
             {schedule && preview.length > 0 && (
               <div className={styles.scheduleMeta}>
                 <span className={styles.nextRun}>{t('ui.schedule.nextRun')}: {formatNextRun(preview[0], tz)}</span>

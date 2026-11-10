@@ -162,6 +162,42 @@
   flex-wrap: wrap;
 }
 
+.onceQuickGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.onceQuickBtn {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.onceQuickBtn:hover {
+  background: var(--border-light);
+  color: var(--text-primary);
+  border-color: var(--text-disabled);
+}
+
+.onceQuickBtn:focus-visible {
+  outline: 2px solid var(--color-primary-pale);
+  outline-offset: 1px;
+}
+
 .kindSelect { min-width: 130px; }
 .weekdaySelect { min-width: 110px; }
 .cronInput { flex: 1; min-width: 180px; font-family: monospace; }

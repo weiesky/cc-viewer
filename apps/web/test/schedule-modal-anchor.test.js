@@ -202,4 +202,29 @@ describe('ScheduleTaskModal component', () => {
     assert.ok(!/\.listHeader\s*\{/.test(MODAL_CSS), 'listHeader style removed');
     assert.ok(!/\.muted\s*\{/.test(MODAL_CSS), 'muted style removed');
   });
+
+  it('once quick-fill buttons use offsets whose keys all have i18n entries', () => {
+    assert.ok(/const ONCE_QUICK_OFFSETS = \[/.test(MODAL), 'offsets constant present');
+    // Group is gated on the once kind and clicks write back to the DatePicker state.
+    assert.ok(/draft\.scheduleKind === 'once' && \([\s\S]{0,300}styles\.onceQuickGroup/.test(MODAL), 'group gated on once kind');
+    assert.ok(/styles\.onceQuickGroup/.test(MODAL) && /styles\.onceQuickBtn/.test(MODAL), 'quick group + button classes used');
+    assert.ok(/updateDraft\(\{ onceAt:/.test(MODAL), 'click writes onceAt');
+    assert.ok(/type="button"/.test(MODAL), 'buttons do not submit forms');
+    assert.ok(/t\(`ui\.schedule\.quick\.\$\{o\.key\}`\)/.test(MODAL), 'labels resolve through ui.schedule.quick.*');
+    assert.ok(/dayjs\(\)\.add\(o\.minutes, 'minute'\)/.test(MODAL), 'click fills DatePicker from current time');
+    // The CSS module must actually define the classes (a rename would silently unstyle).
+    assert.ok(/\.onceQuickGroup\s*\{/.test(MODAL_CSS), 'onceQuickGroup defined in CSS');
+    assert.ok(/\.onceQuickBtn\s*\{[\s\S]{0,400}font-size: 12px/.test(MODAL_CSS), 'onceQuickBtn defined with 12px font');
+    assert.ok(/\.onceQuickBtn:hover/.test(MODAL_CSS), 'hover rule defined');
+    // Key → minutes pairs must stay exactly the five documented offsets.
+    const offsetsBlock = MODAL.match(/const ONCE_QUICK_OFFSETS = \[([\s\S]*?)\];/);
+    assert.ok(offsetsBlock, 'offsets block located');
+    const pairs = [...offsetsBlock[1].matchAll(/key: '([^']+)', minutes: (\d+)/g)].map(m => [m[1], Number(m[2])]);
+    assert.deepEqual(pairs, [['5m', 5], ['10m', 10], ['30m', 30], ['1h', 60], ['3h', 180]], 'offset key/minutes unchanged');
+    // Every offset key must have a matching i18n block (t() silently falls back to the raw key).
+    const I18N = read('src/i18n.js');
+    for (const [k] of pairs) {
+      assert.ok(I18N.includes(`"ui.schedule.quick.${k}": {`), `i18n entry for quick.${k}`);
+    }
+  });
 });
