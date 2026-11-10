@@ -1,0 +1,22 @@
+apps/web/src/components/common/ScheduleTaskModal.jsx
+  s_082c6b5738000b::t_f8e86ba81dfde6 262
+  s_082c6b5738000b::t_34c60492326d7c 31-51
+  s_082c6b5738000b::t_407e9f9a584eb0 345-347,352
+  s_082c6b5738000b::t_6971bb0e2915f2 238-239,249,252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2cfa946890d5ab0140c9981e3158a780da3e6730",
+  "prompts": {},
+  "sessions": {
+    "s_082c6b5738000b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c737f31-3572-4afc-b7fa-ddcd46e7d59a",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
