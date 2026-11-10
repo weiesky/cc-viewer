@@ -1,0 +1,63 @@
+packages/app/test/interceptor-seq-teammate.test.js
+  s_dff81acefd1992::t_bc33f07f39b7a8 45-47
+packages/app/test/team-context-args.test.js
+  s_dff81acefd1992::t_31a31821e3ed1a 92-93
+  s_dff81acefd1992::t_a216b98b8fbbca 147-161,165-183
+  s_dff81acefd1992::t_7b4f1916b09d24 1-91,94-146,162-164,184-185
+packages/app/server/lib/sdk-manager.js
+  s_dff81acefd1992::t_d7e2d69c6b81d6 2091-2094
+  s_dff81acefd1992::t_771f174e927192 3183
+  s_dff81acefd1992::t_a67ae416368c91 998-1001
+  s_dff81acefd1992::t_c620b51e541dc7 589
+  s_dff81acefd1992::t_0dc4a14087306f 221
+  s_dff81acefd1992::t_64e7ecbc7ed7cf 30
+  s_dff81acefd1992::t_092c94d9346544 1558
+  s_dff81acefd1992::t_362a1b85cff030 2087-2090,2095-2098
+  s_dff81acefd1992::t_dcdfa7137270f5 1088-1095
+  s_dff81acefd1992::t_c0df3f8d554ce6 448
+  s_dff81acefd1992::t_8a73ca058feb23 66-71
+packages/app/server/lib/launch-config.js
+  s_dff81acefd1992::t_40c4f84bcca0b1 20
+  s_dff81acefd1992::t_bbfc958efc158e 407-444,455-468,481-483,486-487,492-494
+  s_dff81acefd1992::t_7043d1d4b0b6f5 445-454,469-480,484-485,488-491
+.changeset/team-name-headless.md
+  s_dff81acefd1992::t_31bf09e848d96f 5
+  s_dff81acefd1992::t_fce9d09f5fe76a 1-4
+scripts/probe-team-name.mjs
+  s_dff81acefd1992::t_bc8f80f7ad6ed3 282
+  s_dff81acefd1992::t_f4b8c446bf8be5 1-44,49-56,60-85,98-189,194-281,283-308,313-341
+  s_dff81acefd1992::t_18e3408edf6d14 86-97
+  s_dff81acefd1992::t_60b812dfded018 45-48
+  s_dff81acefd1992::t_991a77c35af694 190-193
+  s_dff81acefd1992::t_4add00a5e3c602 309-312
+  s_dff81acefd1992::t_9221c7a8da526c 57-59
+packages/app/server/interceptor.js
+  s_dff81acefd1992::t_4d3d9f19249248 588-596
+history.md
+  s_dff81acefd1992::t_fa91701e8a3861 5
+  s_dff81acefd1992::t_7b2a731afc7192 6
+packages/app/test/sdk-manager-query.test.js
+  s_dff81acefd1992::t_621d010796f6ce 691-726
+  s_dff81acefd1992::t_34eb43f61d5133 423-471
+packages/app/test/proxy-role-routing.test.js
+  s_dff81acefd1992::t_db05473a2b68ff 261
+packages/app/test/interceptor-teammate-init.test.js
+  s_dff81acefd1992::t_b30432002ccb61 4-5,41-45
+  s_dff81acefd1992::t_bc7ffb74fc48f7 70-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a9557e234b25871976fd4e97455421f0993c7257",
+  "prompts": {},
+  "sessions": {
+    "s_dff81acefd1992": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2569621f-97ea-42b4-9f5d-fead45562625",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
