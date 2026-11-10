@@ -1,0 +1,19 @@
+history.md
+  s_9c06370d4758b3::t_5aa70e104469d5 7-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1ae82a825b512a8d1fbe745e0a9a2e911f74e29f",
+  "prompts": {},
+  "sessions": {
+    "s_9c06370d4758b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7e90a88-3327-4af3-ad93-4fb981b36019",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
