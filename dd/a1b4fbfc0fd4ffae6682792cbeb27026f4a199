@@ -1,0 +1,77 @@
+packages/app/server/lib/ensure-hooks.js
+  s_0cc09405db838c::t_cbbd066de84158 6-7
+  s_0cc09405db838c::t_719e41650fe1d1 499-501,504,506-508
+  s_0cc09405db838c::t_75f794ad548789 455-465,479-480
+  s_0cc09405db838c::t_a45765596746cb 466-467,469,473-474,481,483,487,489
+  s_0cc09405db838c::t_91040ad45b5b2f 5
+  s_0cc09405db838c::t_4c13937557f4fe 389-454,468,470-472,475-478,482,484-486,488,490-498,502-503,505,509-519
+packages/app/findcc.js
+  s_0cc09405db838c::t_2d1e6c70f9296c 574
+  s_0cc09405db838c::t_c2b0aee4af7c66 204
+  s_0cc09405db838c::t_e04e6c4dbb999c 633,638
+packages/app/cli.js
+  s_0cc09405db838c::t_b9d67bcc54087d 722-744
+  s_0cc09405db838c::t_4ab5605e85b0d7 317
+history.md
+  s_0cc09405db838c::t_e9225f18289eb2 5-6
+packages/app/server/server.js
+  s_0cc09405db838c::t_78f1f1c58e45b7 1663
+packages/app/test/findcc-gap.test.js
+  s_0cc09405db838c::t_c75e0d33e49cfd 466-492
+packages/app/test/im-bridge-core.test.js
+  s_0cc09405db838c::t_bfe5b57b858467 424,435
+  s_0cc09405db838c::t_50fca559090991 392-407,412-417,419-423,425-434,436-462
+  s_0cc09405db838c::t_db5eb360a0b1e5 408-411
+  s_0cc09405db838c::t_3769dddbc80d7d 418
+packages/app/test/ensure-hooks.test.js
+  s_0cc09405db838c::t_09b8a7f5371994 606-613,617,637-639,652-654,665-670,672-681,683,703-731,733-784
+  s_0cc09405db838c::t_fca530602f6e72 655-664
+  s_0cc09405db838c::t_1ccd17e48b8c6c 614-616,618-636,671,682,684-702,732
+  s_0cc09405db838c::t_8c5038e3b9c395 640-651
+packages/app/server/pty-manager.js
+  s_0cc09405db838c::t_711b6e159fcf11 400-407
+  s_0cc09405db838c::t_a3758d4bf487cc 408
+  s_0cc09405db838c::t_19474dbe07f329 636-638
+  s_0cc09405db838c::t_a1c38b92c522f8 4,11
+  s_0cc09405db838c::t_d3998f0628dedc 1559-1567,1571-1578,1580-1581,1596,1612-1615,1618-1620
+  s_0cc09405db838c::t_162ea40db16001 5,22
+  s_0cc09405db838c::t_3cef3480e94fa0 619-620
+  s_0cc09405db838c::t_e5f0e00828e5f1 394-397
+  s_0cc09405db838c::t_4b82d65fc7166e 1555-1558,1582-1595,1599-1600,1605-1609,1616-1617,1621-1622,1628-1632
+  s_0cc09405db838c::t_ca45cfa17859f1 398-399
+  s_0cc09405db838c::t_bceab594c6d08d 642
+  s_0cc09405db838c::t_f5fb3c779806a7 1568-1570,1579,1597-1598,1601-1604,1610-1611,1623-1627
+packages/app/test/pty-manager-gap.test.js
+  s_0cc09405db838c::t_72a77446f60985 761-764
+  s_0cc09405db838c::t_737aecc9eaa838 30-32
+  s_0cc09405db838c::t_fe28465e60cb70 108-116
+  s_0cc09405db838c::t_6811288e719eaf 44-49
+  s_0cc09405db838c::t_7be6699833da03 738-741,745-760,765-789,798-816,833-835
+  s_0cc09405db838c::t_c79a6d22d9726a 742-744,790-797,817-832
+.changeset/im-trust-onboarding-fix.md
+  s_0cc09405db838c::t_b6b3cfa4977b05 1-5
+packages/app/server/i18n.js
+  s_0cc09405db838c::t_0f163e230d9a10 844
+  s_0cc09405db838c::t_cd55622964b1e1 859
+  s_0cc09405db838c::t_0026590acf39a7 889
+  s_0cc09405db838c::t_9316e892acbf50 874
+packages/app/server/lib/im/im-bridge-core.js
+  s_0cc09405db838c::t_48586bf1d9f4b2 610-615
+  s_0cc09405db838c::t_727fd2c961edd2 609,616-624
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dda1b4fbfc0fd4ffae6682792cbeb27026f4a199",
+  "prompts": {},
+  "sessions": {
+    "s_0cc09405db838c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc14e345-5dec-491a-b959-c068a052e17f",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
