@@ -43,11 +43,11 @@ describe('ui.schedule i18n coverage', () => {
   it('reason/error suffix keys exist for every server code', () => {
     // Server reason codes (snake/kebab) map to camelCase keys via REASON_KEY in
     // scheduleDescription.js — each target key must exist with all locales.
-    for (const suffix of ['noLiveSession', 'sdkUnavailable', 'spawnUnavailable', 'notInitialized', 'busy', 'paused', 'stale', 'interrupted', 'timeout', 'aborted', 'queueRejected', 'turnError', 'noResult', 'internal']) {
+    for (const suffix of ['noLiveSession', 'sdkUnavailable', 'spawnUnavailable', 'notInitialized', 'busy', 'paused', 'stale', 'interrupted', 'timeout', 'aborted', 'queueRejected', 'emptyPrompt', 'turnError', 'noResult', 'internal']) {
       const block = localeBlockOf(`ui.schedule.reason.${suffix}`);
       assert.ok(block.includes('"zh":'), `reason.${suffix} missing zh`);
     }
-    for (const code of ['invalid_json', 'invalid_prompt', 'invalid_mode', 'invalid_schedule', 'once_in_past', 'spawn_unavailable', 'project_unresolved', 'project_ambiguous', 'task_not_found', 'task_running', 'task_limit', 'store_corrupt', 'scheduler_unavailable', 'forbidden']) {
+    for (const code of ['invalid_json', 'invalid_prompt', 'invalid_mode', 'invalid_schedule', 'invalid_attachments', 'invalid_template', 'once_in_past', 'spawn_unavailable', 'project_unresolved', 'project_ambiguous', 'task_not_found', 'task_running', 'task_limit', 'store_corrupt', 'scheduler_unavailable', 'forbidden']) {
       const block = localeBlockOf(`ui.schedule.error.${code}`);
       assert.ok(block.includes('"en":'), `error.${code} missing en`);
     }

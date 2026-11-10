@@ -46,6 +46,94 @@ test('createTask: validates prompt/mode/schedule, computes nextRunAt, stores in 
   assert.equal((await createTask(root, draft({ schedule: { kind: 'once', at: now - 1 } }), now)).reason, 'once_in_past');
 });
 
+test('createTask/updateTask: UltraPlan fields (template/templateContent/attachments) persist round-trip', async () => {
+  const now = Date.now();
+  const attachments = [{ name: 'a.png', path: '/home/u/.claude/cc-viewer/proj/images/a.png' }];
+  const r = await createTask(root, draft({ template: 'custom:cue-1', templateContent: 'You are an auditor.', attachments }), now);
+  assert.equal(r.ok, true);
+  assert.equal(r.task.template, 'custom:cue-1');
+  assert.equal(r.task.templateContent, 'You are an auditor.');
+  assert.deepEqual(r.task.attachments, attachments);
+  // Persisted in prefs and read back identically.
+  const stored = readScheduledTasks(root).tasks.find(t => t.id === r.task.id);
+  assert.equal(stored.template, 'custom:cue-1');
+  assert.deepEqual(stored.attachments, attachments);
+
+  // Absent fields on update = no change.
+  const u1 = await updateTask(root, r.task.id, { prompt: 'edited' }, now + MIN);
+  assert.equal(u1.ok, true);
+  assert.equal(u1.task.template, 'custom:cue-1');
+  assert.deepEqual(u1.task.attachments, attachments);
+
+  // Present fields update.
+  const u2 = await updateTask(root, r.task.id, { template: 'none', attachments: [] }, now + MIN);
+  assert.equal(u2.task.template, 'none');
+  assert.deepEqual(u2.task.attachments, []);
+});
+
+test('createTask: invalid UltraPlan fields are rejected without writing', async () => {
+  const now = Date.now();
+  assert.equal((await createTask(root, draft({ template: '' }), now)).reason, 'invalid_template');
+  assert.equal((await createTask(root, draft({ templateContent: 'x'.repeat(20_001) }), now)).reason, 'invalid_template');
+  assert.equal((await createTask(root, draft({ attachments: 'nope' }), now)).reason, 'invalid_attachments');
+  assert.equal((await createTask(root, draft({ attachments: [{ name: 'a.png' }] }), now)).reason, 'invalid_attachments');
+  assert.equal((await createTask(root, draft({ attachments: [{ name: 'a.png', path: '' }] }), now)).reason, 'invalid_attachments');
+  assert.equal((await createTask(root, draft({ attachments: new Array(21).fill({ name: 'a', path: '/p/a' }) }), now)).reason, 'invalid_attachments');
+  assert.equal((await createTask(root, draft({ attachments: [{ name: 'a', path: '/p/' + 'x'.repeat(2000) }] }), now)).reason, 'invalid_attachments');
+  // No task file may exist after all those rejections.
+  assert.equal(existsSync(prefsFilePath(root)), false);
+
+  // Legacy tasks (no UltraPlan fields) keep their shape.
+  const r = await createTask(root, draft(), now);
+  assert.equal('template' in r.task, false);
+  assert.equal('attachments' in r.task, false);
+});
+
+test('attachments carry the task when the prompt is empty; both-empty is rejected', async () => {
+  const now = Date.now();
+  const attachments = [{ name: 'a.png', path: '/p/a.png' }];
+  const r = await createTask(root, draft({ prompt: '   ', attachments }), now);
+  assert.equal(r.ok, true, 'attachments-only create must succeed');
+  assert.equal(r.task.prompt, '');
+  assert.deepEqual(r.task.attachments, attachments);
+  // Clearing the text while attachments remain is a valid update.
+  const u1 = await updateTask(root, r.task.id, { prompt: '' }, now + MIN);
+  assert.equal(u1.ok, true);
+  // Clearing the text AND the attachments is not.
+  const u2 = await updateTask(root, r.task.id, { prompt: '', attachments: [] }, now + MIN);
+  assert.equal(u2.reason, 'invalid_prompt');
+  // Clearing ONLY the attachments of an attachments-only task is also rejected
+  // (cross-field invariant checked on the merged task).
+  const u3 = await updateTask(root, r.task.id, { attachments: [] }, now + MIN);
+  assert.equal(u3.reason, 'invalid_prompt');
+  const kept = readScheduledTasks(root).tasks.find(t => t.id === r.task.id);
+  assert.deepEqual(kept.attachments, attachments, 'rejected update leaves stored attachments intact');
+  // Empty prompt + no attachments anywhere → rejected.
+  assert.equal((await createTask(root, draft({ prompt: '', attachments: [] }), now)).reason, 'invalid_prompt');
+});
+
+test('updateTask: a rejected update never persists a partially-applied patch', async () => {
+  const now = Date.now();
+  const attachments = [{ name: 'a.png', path: '/p/a.png' }];
+  const r = await createTask(root, draft({ prompt: 'original', template: 'none', attachments }), now);
+  assert.equal(r.ok, true);
+  // Bad schedule + new fields: the whole update must fail WITHOUT writing the new fields.
+  const bad = await updateTask(root, r.task.id, {
+    prompt: 'mutated', template: 'codeExpert', attachments: [],
+    schedule: { kind: 'cron', expr: 'bad' },
+  }, now + MIN);
+  assert.equal(bad.reason, 'invalid_schedule');
+  const stored = readScheduledTasks(root).tasks.find(t => t.id === r.task.id);
+  assert.equal(stored.prompt, 'original', 'rejected update must not persist prompt');
+  assert.equal(stored.template, 'none', 'rejected update must not persist template');
+  assert.deepEqual(stored.attachments, attachments, 'rejected update must not persist attachments');
+  // Invalid UltraPlan fields on update are rejected the same way.
+  const bad2 = await updateTask(root, r.task.id, { attachments: [{ name: 'x' }] }, now + MIN);
+  assert.equal(bad2.reason, 'invalid_attachments');
+  const bad3 = await updateTask(root, 'st_missing', { attachments: 'nope' }, now + MIN);
+  assert.equal(bad3.reason, 'invalid_attachments', 'shape validation precedes the lookup');
+});
+
 test('createTask: enforces per-project limit of 50', async () => {
   const now = Date.now();
   for (let i = 0; i < 50; i++) {

@@ -129,6 +129,41 @@ describe('ScheduleTaskModal component', () => {
     assert.ok(/const expr = draft\.cronExpr\.trim\(\);\s*return expr \? \{ kind: 'cron', expr \} : null;/.test(MODAL), 'empty cron returns null');
   });
 
+  // ── UltraPlan template + attachments embedding (the shared panel) ──────────
+  it('embeds the shared UltraplanPanel with the empty template as the default tab', () => {
+    assert.ok(/import UltraplanPanel from '\.\.\/terminal\/UltraplanPanel'/.test(MODAL), 'shared panel imported');
+    assert.ok(/<UltraplanPanel/.test(MODAL) && /\bembedded\b/.test(MODAL) && /\bhideHeader\b/.test(MODAL) && /\bhideSend\b/.test(MODAL), 'panel embedded without popover chrome');
+    // The none tab leads the templates override; the draft defaults to it.
+    assert.ok(/\{ key: 'none', kind: 'none' \}/.test(MODAL), 'empty-template tab leads the list');
+    assert.ok(/template: 'none'/.test(MODAL), 'draft defaults to the empty template');
+    assert.ok(/attachments: \[\]/.test(MODAL), 'draft carries an attachments array');
+  });
+
+  it('saves the RAW prompt and passes template/attachments to the API (assembly happens server-side)', () => {
+    const save = MODAL.match(/const handleSave = useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
+    assert.ok(save, 'handleSave body located');
+    assert.ok(/assembleScheduledPrompt/.test(save[1]), 'save pre-checks the assembled length');
+    assert.ok(!/buildLocalUltraplan/.test(save[1]), 'save must NOT wrap the prompt itself');
+    assert.ok(/templateContent/.test(save[1]) && /attachments: draft\.attachments/.test(save[1]), 'template snapshot + attachments are sent');
+    // The snapshot actually comes from the selected expert's content.
+    assert.ok(/templateContent = item\.content/.test(save[1]), 'snapshot is taken from the expert body');
+    // A dangling custom expert on an EXISTING task keeps the stored snapshot (omitted field).
+    assert.ok(/isUpdateTask/.test(save[1]), 'update path preserves the stored snapshot for a dangling expert');
+    // Double-submit + summary-shape guards (Cmd/Ctrl+Enter path).
+    assert.ok(/if \(savingRef\.current\) return/.test(save[1]), 'in-flight guard present');
+    assert.ok(/selectedTask\.prompt === undefined/.test(save[1]), 'summary-shape save guard present');
+    // The assemble-and-send path lives server-side in the executor.
+    const executor = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'packages', 'app', 'server', 'lib', 'scheduled-task-executor.js'), 'utf8');
+    assert.ok(/assembleScheduledPrompt\(task\)/.test(executor), 'executor assembles at fire time');
+  });
+
+  it('attachments upload requires the persistent path (tmp files die before a task fires)', () => {
+    assert.ok(/if \(!data\.persistPath\) throw new Error/.test(MODAL), 'upload fails when the persist copy is missing');
+    assert.ok(!/data\.persistPath \|\| data\.path/.test(MODAL), 'no silent fallback to the /tmp path');
+    // No import from TerminalPanel — it already imports this modal (cycle).
+    assert.ok(!/from '\.\.\/terminal\/TerminalPanel'/.test(MODAL), 'must not import TerminalPanel');
+  });
+
   it('drops scheduled-task responses from a previous project', () => {
     assert.ok(/const loadProject = project;/.test(MODAL), 'loadTasks captures the requested project');
     assert.ok(/projectRef\.current/.test(MODAL), 'guard compares against the live project ref');

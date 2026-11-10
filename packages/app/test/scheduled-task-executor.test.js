@@ -123,3 +123,63 @@ test('spawn: executor throw → error/internal (contained)', async () => {
   assert.equal(r.status, 'error');
   assert.equal(r.reason, 'internal');
 });
+
+// ─── UltraPlan assembly (assembleScheduledPrompt at fire time) ───
+
+test('assembly: attachments are prefixed as quoted paths ahead of the raw prompt', async () => {
+  let seen;
+  const sdk = sdkFake({ sendUserMessage: async (text) => { seen = text; } });
+  const task = { ...TASK, attachments: [{ name: 'a.png', path: '/home/u/.claude/cc-viewer/proj/images/a.png' }, { name: 'b.txt', path: '/home/u/.claude/cc-viewer/proj/images/b.txt' }] };
+  const r = await executeScheduledTask(task, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.equal(r.status, 'dispatched');
+  assert.equal(seen, '"/home/u/.claude/cc-viewer/proj/images/a.png" "/home/u/.claude/cc-viewer/proj/images/b.txt" do it');
+});
+
+test('assembly: attachments-only task dispatches (no text required)', async () => {
+  let seen;
+  const sdk = sdkFake({ sendUserMessage: async (text) => { seen = text; } });
+  const r = await executeScheduledTask({ ...TASK, prompt: '', attachments: [{ name: 'a.png', path: '/p/a.png' }] }, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.equal(r.status, 'dispatched');
+  assert.equal(seen, '"/p/a.png"');
+});
+
+test('assembly: empty prompt and no attachments → failed/invalid_prompt (never dispatched)', async () => {
+  let called = false;
+  const sdk = sdkFake({ sendUserMessage: async () => { called = true; } });
+  const r = await executeScheduledTask({ ...TASK, prompt: '   ' }, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.deepEqual([r.status, r.reason], ['failed', 'invalid_prompt']);
+  assert.equal(called, false);
+});
+
+test('assembly: template=none (or absent) sends the raw text verbatim', async () => {
+  let seen;
+  const sdk = sdkFake({ sendUserMessage: async (text) => { seen = text; } });
+  await executeScheduledTask({ ...TASK, template: 'none' }, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.equal(seen, 'do it');
+});
+
+test('assembly: builtin template wraps with the <system-reminder> scoped instruction', async () => {
+  let seen;
+  const sdk = sdkFake({ sendUserMessage: async (text) => { seen = text; } });
+  await executeScheduledTask({ ...TASK, template: 'codeExpert' }, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.ok(seen.startsWith('<system-reminder>'), 'wrapper missing');
+  assert.ok(seen.includes('[SCOPED INSTRUCTION]'), 'preamble missing');
+  assert.ok(seen.endsWith('do it'), 'user text should come last');
+});
+
+test('assembly: custom template uses the stored snapshot (templateContent), not live prefs', async () => {
+  let seen;
+  const sdk = sdkFake({ sendUserMessage: async (text) => { seen = text; } });
+  const task = { ...TASK, template: 'custom:cue-1', templateContent: 'You are an auditor.' };
+  await executeScheduledTask(task, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.ok(seen.includes('You are an auditor.'), 'snapshot body missing');
+  assert.ok(seen.endsWith('do it'));
+});
+
+test('assembly: custom template with a missing/empty snapshot degrades to the raw input', async () => {
+  let seen;
+  const sdk = sdkFake({ sendUserMessage: async (text) => { seen = text; } });
+  const r = await executeScheduledTask({ ...TASK, template: 'custom:cue-gone' }, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.equal(r.status, 'dispatched', 'task must not be silently dropped');
+  assert.equal(seen, 'do it');
+});

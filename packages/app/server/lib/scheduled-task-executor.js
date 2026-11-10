@@ -11,6 +11,13 @@
 // Result contract:
 //   inject → { status:'dispatched' } | { status:'failed', reason }
 //   spawn  → { status:'completed', sessionId, durationMs } | { status:'error', reason, error? }
+//
+// The stored task.prompt is the RAW user text; the UltraPlan template wrapper and the
+// quoted attachment paths are assembled HERE at fire time (assembleScheduledPrompt,
+// shared with the web hosts via @ccv/core) so the stored prompt stays editable and
+// summaries/toasts stay human-readable.
+
+import { assembleScheduledPrompt } from '@ccv/core/ultraplanTemplates';
 
 /**
  * @param {object} task   the claimed task (has .mode/.prompt/.cwd/.project/.schedule)
@@ -25,8 +32,13 @@
  *   }
  */
 export async function executeScheduledTask(task, claim, io) {
-  if (task.mode === 'spawn') return _spawn(task, claim, io);
-  return io.isSdkMode ? _injectSdk(task, io) : _injectPty(task, io);
+  // Assemble once: template wrapper + quoted attachment paths + raw prompt text.
+  // An empty assembly (no text, no attachments) means there is nothing to dispatch.
+  const prompt = assembleScheduledPrompt(task);
+  if (!prompt) return { status: 'failed', reason: 'invalid_prompt' };
+  const resolved = { ...task, prompt };
+  if (task.mode === 'spawn') return _spawn(resolved, claim, io);
+  return io.isSdkMode ? _injectSdk(resolved, io) : _injectPty(resolved, io);
 }
 
 async function _injectSdk(task, io) {

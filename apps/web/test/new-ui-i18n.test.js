@@ -51,6 +51,9 @@ const KEYS = [
   'ui.proxyStats.tabStats',  // proxy retry-config & stats panel "stats" tab
   'ui.retryConfig.groupStrategy',  // proxy retry-config "strategy config" group heading
   'ui.retryConfig.groupExecution', // proxy retry-config "execution params" group heading
+  'ui.ultraplan.noneTemplate', // UltraPlan "empty template" tab (UltraplanPanel none tab / ScheduleTaskModal default)
+  'ui.ultraplan.uploadTooLarge', // attachment upload size-cap error (ScheduleTaskModal)
+  'ui.ultraplan.uploadFailed',   // attachment upload generic failure (ScheduleTaskModal)
   // retry-burden 5-bucket distribution labels (retryStatsHelpers.js burdenBucketLabel):
   'ui.proxyStats.retryBurdenBuckets.0',
   'ui.proxyStats.retryBurdenBuckets.1_5',
@@ -174,6 +177,7 @@ describe('new UI key i18n coverage', () => {
   const PLACEHOLDER_KEYS = [
     ['ui.fileExplorer.loadFailed', '{reason}'],
     ['ui.workspaces.showMore', '{count}'],
+    ['ui.ultraplan.uploadTooLarge', '{max}'],
     // SDK「Context 用量」面板的插值键。
     ['ui.contextUsage.updatedAt', '{time}'],
     ['ui.contextUsage.usedOf', '{used}'],

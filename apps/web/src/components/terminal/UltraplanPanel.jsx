@@ -3,6 +3,15 @@
 // 完全受控：内容三态与全部行为经 props 注入；lightbox / confirming 留 host
 // （host 的 Popover onOpenChange 守卫必须同步读这两个状态，经 onPreviewImage /
 // onConfirmingChange 上报）；resize 拖拽逻辑内置（两入口共享 localStorage 尺寸记忆）。
+//
+// Optional host extensions (all default to the Popover form — existing behavior unchanged):
+//   embedded   —— embed in a plain container (e.g. ScheduleTaskModal): no resize handle,
+//                no full-height flex dependency
+//   hideHeader —— skip the title bar (title/help/manage/close)
+//   hideSend   —— footer renders no send button (the host owns the save action)
+//   templates  —— override the tab list (e.g. prepend an empty-template kind:'none' tab);
+//                undefined = the expert list
+//   placeholder / maxFiles —— copy override / attachment count cap
 import React, { useRef, useState } from 'react';
 import { t } from '../../i18n';
 import { isMobile, isPad } from '../../env';
@@ -69,11 +78,20 @@ export default function UltraplanPanel({
   onSend, onUpload, onPaste, onRemoveFile,
   onClose, onOpenManager, onOpenCustomEditor,
   onPreviewImage, onConfirmingChange, onSizeChange,
+  templates, embedded, hideHeader, hideSend, placeholder, maxFiles,
 }) {
   const panelRef = useRef(null);
   const dragRef = useRef(null);
   // 输入框聚焦时才在 footer 显示浅色粘贴提示（仅 iPad/PC，见下方 footer 渲染）
   const [inputFocused, setInputFocused] = useState(false);
+  // Attachment count cap (a host like the schedule modal mirrors the server-side
+  // validation limit); undefined = uncapped
+  const filesFull = typeof maxFiles === 'number' && files.length >= maxFiles;
+  // Tab list: a host may override via templates (e.g. the schedule modal prepends the
+  // empty-template tab); default = the expert list
+  const tabList = Array.isArray(templates)
+    ? templates
+    : buildExpertList(customExperts, expertOrder, expertHidden).filter(d => !d.hidden);
 
   // popover resize:左上 handle → 拖拽改 popover overlay 的 width/height。
   // 拖拽期直接改 .ant-popover-inner 的 inline style 不走 setState(避免高频 re-render);
@@ -150,22 +168,25 @@ export default function UltraplanPanel({
   };
 
   return (
-    <div className={styles.ultraplanPanel} ref={panelRef}>
-      <div
-        className={styles.ultraplanResizeHandle}
-        onPointerDown={handleResizePointerDown}
-        aria-label={t('ui.ultraplan.resizeHandle')}
-        role="separator"
-        tabIndex={-1}
-      >
-        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path
-            d="M 4 0 L 16 0 L 0 16 L 0 4 A 4 4 0 0 1 4 0 Z"
-            fill="currentColor"
-          />
-        </svg>
-      </div>
+    <div className={`${styles.ultraplanPanel}${embedded ? ` ${styles.embedded}` : ''}`} ref={panelRef}>
+      {!embedded && (
+        <div
+          className={styles.ultraplanResizeHandle}
+          onPointerDown={handleResizePointerDown}
+          aria-label={t('ui.ultraplan.resizeHandle')}
+          role="separator"
+          tabIndex={-1}
+        >
+          <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path
+              d="M 4 0 L 16 0 L 0 16 L 0 4 A 4 4 0 0 1 4 0 Z"
+              fill="currentColor"
+            />
+          </svg>
+        </div>
+      )}
       <div className={styles.ultraplanContent}>
+      {!hideHeader && (
       <div className={styles.ultraplanHeader}>
         <span className={styles.ultraplanHeaderTitle}>
           {t('ui.ultraplan.title')}
@@ -190,17 +211,26 @@ export default function UltraplanPanel({
           </svg>
         </button>
       </div>
+      )}
       <div className={styles.ultraplanVariantRow}>
-        {buildExpertList(customExperts, expertOrder, expertHidden)
-          .filter(d => !d.hidden)
-          .map(d => {
+        {tabList.map(d => {
             const active = variant === d.key;
+            // Empty-template tab: plain text, no icon, no edit pencil, not part of expert management
+            if (d.kind === 'none') {
+              return (
+                <button
+                  key={d.key}
+                  className={`${styles.ultraplanRoleBtn} ${active ? styles.ultraplanRoleBtnActive : ''}`}
+                  onClick={() => { if (!active) onVariantChange(d.key); }}
+                >{t('ui.ultraplan.noneTemplate')}</button>
+              );
+            }
             if (d.kind === 'builtin') {
               return (
                 <button
                   key={d.key}
                   className={`${styles.ultraplanRoleBtn} ${active ? styles.ultraplanRoleBtnActive : ''}`}
-                  onClick={() => onVariantChange(d.key)}
+                  onClick={() => { if (!active) onVariantChange(d.key); }}
                 >{expertIcon(d)}{t(d.key === 'codeExpert' ? 'ui.ultraplan.roleCodeExpert' : 'ui.ultraplan.roleResearchExpert')}</button>
               );
             }
@@ -209,7 +239,7 @@ export default function UltraplanPanel({
               <span key={d.key} className={styles.ultraplanCustomWrap}>
                 <button
                   className={`${styles.ultraplanRoleBtn} ${active ? styles.ultraplanRoleBtnActive : ''}`}
-                  onClick={() => onVariantChange(d.key)}
+                  onClick={() => { if (!active) onVariantChange(d.key); }}
                   title={item.title}
                 >
                   {expertIcon(d)}
@@ -241,14 +271,16 @@ export default function UltraplanPanel({
           className={styles.ultraplanTextarea}
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && (prompt.trim() || files.length > 0)) { e.preventDefault(); onSend(); } }}
-          onPaste={onPaste}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing && (prompt.trim() || files.length > 0)) { e.preventDefault(); onSend?.(); } }}
+          onPaste={filesFull ? undefined : onPaste}
           onFocus={() => setInputFocused(true)}
           onBlur={() => setInputFocused(false)}
-          placeholder={t('ui.ultraplan.placeholder')}
-          /* rows={1} 让 CSS flex 完全控制高度,避免 rows*line-height 作 intrinsic baseline 干扰 grow */
+          placeholder={placeholder || t('ui.ultraplan.placeholder')}
+          /* rows={1} lets CSS flex fully control the height, keeping rows*line-height
+             out of the intrinsic baseline; embedded hosts (a modal you open to read a
+             task) skip autofocus so the soft keyboard doesn't pop on phones. */
           rows={1}
-          autoFocus
+          autoFocus={!embedded}
         />
         {files.length > 0 && (
           <div className={styles.ultraplanFileList}>
@@ -293,13 +325,15 @@ export default function UltraplanPanel({
         )}
       </div>
       <div className={styles.ultraplanFooter}>
-        <button className={styles.ultraplanSendBtn} disabled={!prompt.trim() && files.length === 0} onClick={onSend}>{t('ui.ultraplan.send')}</button>
+        {!hideSend && (
+          <button className={styles.ultraplanSendBtn} disabled={!prompt.trim() && files.length === 0} onClick={onSend}>{t('ui.ultraplan.send')}</button>
+        )}
         {!(isMobile && !isPad) && (
           <span className={`${styles.ultraplanPasteHint}${inputFocused ? ` ${styles.ultraplanPasteHintVisible}` : ''}`}>
             {t('ui.ultraplan.pasteImageHint')}
           </span>
         )}
-        <button className={styles.ultraplanUploadBtn} onClick={onUpload}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>{t('ui.ultraplan.upload')}</button>
+        <button className={styles.ultraplanUploadBtn} disabled={filesFull} onClick={onUpload}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>{t('ui.ultraplan.upload')}</button>
       </div>
       </div>
     </div>

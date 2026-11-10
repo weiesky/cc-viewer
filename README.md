@@ -156,7 +156,7 @@ Once configured, just use the `claude` command as usual. Visit `http://localhost
 
 ### Scheduled tasks
 
-Open **Scheduled tasks** from the (+) menu (chat input bar or terminal toolbar) to run a prompt on a schedule: a preset (hourly / daily / weekdays / weekly), a custom 5-field cron, or a one-off time. Each task either **injects the prompt into the current live session** (queued while busy, exactly as if you typed it) or **spawns a fresh isolated headless session** (SDK mode only) with a clean context.
+Open **Scheduled tasks** from the (+) menu (chat input bar or terminal toolbar) to run a prompt on a schedule: a preset (hourly / daily / weekdays / weekly), a custom 5-field cron, or a one-off time. Each task either **injects the prompt into the current live session** (queued while busy, exactly as if you typed it) or **spawns a fresh isolated headless session** (SDK mode only) with a clean context. The task prompt reuses the UltraPlan input panel: pick an expert template tab (empty template by default, no wrapper) and paste/upload attachments — the wrapper and quoted paths are assembled at fire time.
 
 Task definitions and scheduling state live in `preferences.json` (the `scheduledTasks` key) and run history (last 20 per task) in `scheduled-task-runs.json` under the cc-viewer data dir, scheduled in the server's local timezone with a small per-task jitter to avoid on-the-hour stampedes. The server ticks every 10s and claims each fire under a cross-process file lock, so parallel instances / Electron tabs never double-fire. After a restart or a sleep it catches up the single most recent missed run within 7 days (earlier misses are recorded as `missed`, never back-filled one by one).
 

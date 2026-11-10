@@ -381,6 +381,17 @@
   cursor: not-allowed;
 }
 
+.ultraplanUploadBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ultraplanUploadBtn:disabled:hover {
+  background: var(--bg-elevated);
+  color: var(--text-light);
+  border-color: var(--border-secondary);
+}
+
 .ultraplanUploadBtn {
   display: flex;
   align-items: center;
@@ -535,6 +546,36 @@
     opacity: 1;
     min-width: 22px;
     min-height: 22px;
+  }
+}
+
+/* ── embedded mode (embedding into a plain container, e.g. the schedule-task modal) ──
+   Add-only rules — nothing above changes for the Popover hosts: no resize absolute
+   anchor, no full-height flex (with an auto-height container, flex:1 1 0 would
+   collapse to content height), textarea pinned to 120px, and the footer right-aligns
+   the upload button when there is no send button. */
+.ultraplanPanel.embedded {
+  position: static;
+  flex: none;
+}
+
+.ultraplanPanel.embedded .ultraplanInputBox {
+  flex: none;
+}
+
+.ultraplanPanel.embedded .ultraplanTextarea {
+  flex: none;
+  height: 120px;
+}
+
+.ultraplanPanel.embedded .ultraplanFooter {
+  justify-content: flex-end;
+}
+
+/* iOS focus-zoom guard (the viewport already locks maximum-scale=1; this is belt-and-braces) */
+@media (max-width: 640px) {
+  .ultraplanPanel.embedded .ultraplanTextarea {
+    font-size: 16px;
   }
 }
 

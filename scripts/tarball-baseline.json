@@ -1343,6 +1343,7 @@
   "node_modules/@ccv/core/src/session-boundary.js",
   "node_modules/@ccv/core/src/teammateDetector.js",
   "node_modules/@ccv/core/src/tools-xml-formatter.js",
+  "node_modules/@ccv/core/src/ultraplanTemplates.js",
   "node_modules/@ccv/core/src/v2-transcript-normalizer.js",
   "node_modules/@ccv/core/src/voice-pack-events.js",
   "package.json",

@@ -103,6 +103,7 @@ const REASON_KEY = {
   timeout: 'timeout',
   aborted: 'aborted',
   queue_rejected: 'queueRejected',
+  invalid_prompt: 'emptyPrompt',
   'turn-error': 'turnError',
   'no result message': 'noResult',
   internal: 'internal',
