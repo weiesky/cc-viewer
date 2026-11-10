@@ -1,0 +1,163 @@
+docs/README.uk.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+packages/app/test/scheduled-task-routes.test.js
+  s_1be35f737f7647::t_172e723d55bb35 233
+  s_1be35f737f7647::t_c19267d203a200 199-232,234-241
+apps/web/test/schedule-modal-anchor.test.js
+  s_1be35f737f7647::t_d6a6febd7d0560 160-162
+  s_1be35f737f7647::t_a4c1fedca6d61f 156
+  s_1be35f737f7647::t_5e8a47587bb500 148-154
+  s_1be35f737f7647::t_fa3ececd588def 132-147,155,157-159,163-166
+docs/README.zh-TW.md
+  s_1be35f737f7647::t_89860705be9399 154
+apps/web/src/i18n.js
+  s_1be35f737f7647::t_ed99d06cfe9233 17524-17543
+  s_1be35f737f7647::t_bd801b72006b1c 17105-17124
+  s_1be35f737f7647::t_fa31bebea75df6 14576-14595
+  s_1be35f737f7647::t_969ff1655fbc8f 14676-14715
+  s_1be35f737f7647::t_4a46afe297f214 17505-17523,17544
+packages/app/server/routes/scheduled-tasks.js
+  s_1be35f737f7647::t_851281be178001 224-225
+  s_1be35f737f7647::t_bc80b1b954dbbe 172-176
+  s_1be35f737f7647::t_5e82ca3c7a648e 202-203
+  s_1be35f737f7647::t_7632f699936e91 168,178-180
+docs/README.tr.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+packages/app/test/scheduled-task-store.test.js
+  s_1be35f737f7647::t_e1cfcc527104d4 105-110,113-134
+  s_1be35f737f7647::t_dcb9088e1bfd0b 49-91
+  s_1be35f737f7647::t_eb6b566e60ec06 92-104,111-112,135-136
+apps/web/src/components/terminal/UltraplanPanel.jsx
+  s_1be35f737f7647::t_46c36d6bfc2f7c 87-88,90-91
+  s_1be35f737f7647::t_7f16ae59e2f9e0 218
+  s_1be35f737f7647::t_b94990ac1a7e83 81,89,92-94
+  s_1be35f737f7647::t_2f1554e32efc40 224,233,242
+  s_1be35f737f7647::t_f605ce5eb5d39a 214,216,219-223,225-227
+  s_1be35f737f7647::t_70ff28be6a019d 328-330,336
+  s_1be35f737f7647::t_05ad9e35e5b06e 7-14
+  s_1be35f737f7647::t_3ad3f782d3a301 275,278
+  s_1be35f737f7647::t_a2f7dd033539d0 274,279-281,283
+  s_1be35f737f7647::t_5539bb5d5dc979 6
+  s_1be35f737f7647::t_9e19c845dc40e0 171-187,189
+apps/web/src/components/common/ScheduleTaskModal.jsx
+  s_1be35f737f7647::t_d8d8d34a458bc6 486,489
+  s_1be35f737f7647::t_1abeb269269c28 37
+  s_1be35f737f7647::t_56739f8032e52e 150-159,166-182,190,192-213,222,240,243-252,256-259
+  s_1be35f737f7647::t_2d0c6c43a56d50 428
+  s_1be35f737f7647::t_c4ff8b09595a7f 223-227,231
+  s_1be35f737f7647::t_56be361de41e80 253-255
+  s_1be35f737f7647::t_864fa45c003c5a 604-614,616-624
+  s_1be35f737f7647::t_f86347517f669a 437-439,453
+  s_1be35f737f7647::t_67aa4237e71ee2 38
+  s_1be35f737f7647::t_082fdb99dad0e4 715
+  s_1be35f737f7647::t_2d7dba7165b932 750-760
+  s_1be35f737f7647::t_7dc00840134747 465
+  s_1be35f737f7647::t_184d6fb9a8426a 183-189,191
+  s_1be35f737f7647::t_ab7990fbc47aa3 160-165
+  s_1be35f737f7647::t_644118fd982784 430,432,436,440,447-452,454,459-460,463-464,466
+  s_1be35f737f7647::t_81822619068c03 433-435,441-446
+  s_1be35f737f7647::t_c40f9ae8443f42 472
+  s_1be35f737f7647::t_addbb24f638441 455
+  s_1be35f737f7647::t_ba42a182ce1e31 214-221,228-230,233-239,241-242
+  s_1be35f737f7647::t_6c6d80588827cf 114-115
+  s_1be35f737f7647::t_fa5cbc96f808f6 1,8-15,24-36,39-41,48-49,54-58,74-75,81
+  s_1be35f737f7647::t_61e522b9ebd29c 232
+  s_1be35f737f7647::t_eac7390c30037c 42-47
+  s_1be35f737f7647::t_3d04474b1632b9 417-421,423-427
+  s_1be35f737f7647::t_bf8eee0d3fcb26 568
+apps/web/test/schedule-i18n.test.js
+  s_1be35f737f7647::t_50b3ff84e4da66 46,50
+docs/README.no.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+apps/web/src/utils/scheduleDescription.js
+  s_1be35f737f7647::t_29557f30006090 106
+.changeset/schedule-task-ultraplan-attachments.md
+  s_1be35f737f7647::t_8c9f427f2b6092 1-5
+docs/README.ar.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+docs/README.ko.md
+  s_1be35f737f7647::t_b89ddd64cffbef 152
+history.md
+  s_1be35f737f7647::t_493619b9c0b0c6 5-6
+packages/app/server/lib/scheduled-task-store.js
+  s_1be35f737f7647::t_a71471c23afc94 34,42
+  s_1be35f737f7647::t_61a0a87c4c2a00 223-231,233
+  s_1be35f737f7647::t_5e6b7509e5f5f8 282-284,292-293,311-314
+  s_1be35f737f7647::t_3adac0947e87e5 294-297
+  s_1be35f737f7647::t_99c375bbb10f74 335-338,347-348
+  s_1be35f737f7647::t_287b40fdce1775 298
+  s_1be35f737f7647::t_037759810b20dc 339-342,346,349-361,376,386,398-400
+  s_1be35f737f7647::t_b877c6c926b637 387-394,401
+  s_1be35f737f7647::t_54ec781718cc58 395-397
+  s_1be35f737f7647::t_f75d552e53c913 50-54
+  s_1be35f737f7647::t_5b9241b3f38f46 161,173-195,197-202,216-217
+  s_1be35f737f7647::t_ec9ce3bfd3fce4 162-172,196,203-215
+docs/README.es.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+docs/README.de.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+apps/web/src/utils/ultraplanTemplates.js
+  s_1be35f737f7647::t_040030191f8e93 1-9
+apps/web/test/ultraplan-panel-embedded.test.js
+  s_1be35f737f7647::t_a29176451e03bd 1-78
+docs/README.fr.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+packages/app/server/lib/scheduled-task-executor.js
+  s_1be35f737f7647::t_b146e489be80fa 35-41
+  s_1be35f737f7647::t_11bf85a507bba1 14-20
+packages/core/src/ultraplanTemplates.js
+  s_1be35f737f7647::t_8c47d8a669229a 1-191,193-199
+  s_1be35f737f7647::t_ff6978d74fcf91 192
+docs/README.it.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+apps/web/test/ultraplan-templates.test.js
+  s_1be35f737f7647::t_b7328816c6ac92 3
+  s_1be35f737f7647::t_ac169ec771b520 112-169
+docs/README.da.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+docs/README.pt-BR.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+docs/README.ru.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+docs/README.zh.md
+  s_1be35f737f7647::t_8cd16d20f8a2c0 178
+packages/app/test/scheduled-task-executor.test.js
+  s_1be35f737f7647::t_7de4fabfbf474f 126-185
+apps/web/src/components/terminal/UltraplanPanel.module.css
+  s_1be35f737f7647::t_11b9e50e363fe8 384-394
+  s_1be35f737f7647::t_9940fd441daf7d 575
+  s_1be35f737f7647::t_6f48186faaba4d 552-556
+  s_1be35f737f7647::t_214bda29131069 557-574,576-581
+docs/README.ja.md
+  s_1be35f737f7647::t_b89ddd64cffbef 152
+apps/web/test/new-ui-i18n.test.js
+  s_1be35f737f7647::t_7d09230a0da95e 55-56
+  s_1be35f737f7647::t_460092c3d7dbf5 54
+  s_1be35f737f7647::t_6b3eeb5ed74ca2 180
+README.md
+  s_1be35f737f7647::t_93eb1ff40c61e6 159
+scripts/tarball-baseline.json
+  s_1be35f737f7647::t_b517bed0e92f27 1346
+docs/README.th.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+apps/web/src/utils/ultraplanController.js
+  s_1be35f737f7647::t_5835e5b58e2c23 89-91,94
+docs/README.pl.md
+  s_1be35f737f7647::t_b89ddd64cffbef 154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bd360d223b247484863b80a4a108a1626335a559",
+  "prompts": {},
+  "sessions": {
+    "s_1be35f737f7647": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "499ddfe3-36d5-49c5-adf6-72e863d85ca3",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
