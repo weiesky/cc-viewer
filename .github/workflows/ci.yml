@@ -24,7 +24,14 @@ jobs:
           node-version: 24
           cache: 'pnpm'
       # -logger shell hook tests need real zsh (not included in ubuntu runner by default)
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: Install zsh for shell integration tests
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          if command -v zsh >/dev/null 2>&1; then exit 0; fi
+          APT_OPTIONS=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          sudo apt-get "${APT_OPTIONS[@]}" update -qq
+          sudo apt-get "${APT_OPTIONS[@]}" install -y -qq zsh
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm run verify:mac-keychain
       # --ignore-scripts (supply-chain hardening; retained) skips native compilation and
