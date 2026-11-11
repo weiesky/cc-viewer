@@ -1,0 +1,51 @@
+apps/web/src/i18n.js
+  s_131ce5c6416cc8::t_34ec5a6d2f6abf 13744-13763
+apps/web/src/components/chat/UserPromptsModal.jsx
+  s_131ce5c6416cc8::t_904aeca496111c 1,3-216
+  s_131ce5c6416cc8::t_7587e636bc9025 2
+.changeset/system-prompt-no-autopin.md
+  s_131ce5c6416cc8::t_8ed598b6f4fe76 6-7
+apps/web/test/modal-mask.test.js
+  s_131ce5c6416cc8::t_564ccd61c486ac 30
+apps/web/src/utils/promptSegments.js
+  s_131ce5c6416cc8::t_9dca6695067d24 11-13
+  s_131ce5c6416cc8::t_451455b0e4baf4 1-10,14-36
+history.md
+  s_131ce5c6416cc8::t_cb7676d542ec25 7-8
+apps/web/src/components/chat/ChatView.jsx
+  s_131ce5c6416cc8::t_a54afd5e7d1453 40
+  s_131ce5c6416cc8::t_e16540dd96ff06 5356
+  s_131ce5c6416cc8::t_75a93d404798e9 4771-4781
+  s_131ce5c6416cc8::t_e565582b08e514 5858
+  s_131ce5c6416cc8::t_aea8cd0f00f124 2
+  s_131ce5c6416cc8::t_388feae5ab34ff 357-358
+apps/web/src/components/chat/ChatView.module.css
+  s_131ce5c6416cc8::t_9928b45c76958b 301-304,315-318
+  s_131ce5c6416cc8::t_d0ca0dda327f93 313-314,319-322
+  s_131ce5c6416cc8::t_3a2bbc677b6ce1 324-325
+  s_131ce5c6416cc8::t_0911944901062d 323
+apps/web/src/components/dashboard/DetailPanel.jsx
+  s_131ce5c6416cc8::t_5c05a26c69227b 14,605
+apps/web/src/components/chat/UserPromptsModal.module.css
+  s_131ce5c6416cc8::t_c0a4fb3cd8d100 1-80
+apps/web/src/components/dashboard/AppHeader.jsx
+  s_131ce5c6416cc8::t_c3b52244f76ddd 485
+  s_131ce5c6416cc8::t_a35cffd843ac64 11
+  s_131ce5c6416cc8::t_387534882307dc 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9ade41e3c0ae71435b3048d6d92873c292f2c0f6",
+  "prompts": {},
+  "sessions": {
+    "s_131ce5c6416cc8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "948deb77-d1e8-4798-a86c-ac690c19e55f",
+        "model": "k3"
+      },
+      "human_author": null
+    }
+  }
+}
