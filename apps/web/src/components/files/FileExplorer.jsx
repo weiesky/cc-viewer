@@ -13,6 +13,7 @@ import { createFileMenuHandler } from './fileContextMenuActions';
 import { importFiles, isExternalFileDrag, getTopLevelEntries } from './importFiles';
 import { moveFile, canDropMoveOn } from './fileMove';
 import { isOverModalPortal } from '../../utils/dragGuards';
+import SearchPanel from '../search/SearchPanel';
 import styles from './FileExplorer.module.css';
 
 // Extract the server-provided `error` field on non-OK responses (view-root
@@ -338,7 +339,7 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
   );
 }
 
-export default function FileExplorer({ style, onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger, onManualRefresh, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance }) {
+export default function FileExplorer({ style, onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger, onManualRefresh, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance, searchOpen, onToggleSearch, searchGetDirtyPath, onSearchReplaceApplied, onOpenSearchResult }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [htmlPreviewPath, setHtmlPreviewPath] = useState(null);
@@ -350,6 +351,12 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
   const { preferences } = useContext(SettingsContext);
   const isRemote = preferences?._isLocal === false;
   const [externalDragOver, setExternalDragOver] = useState(false);
+  // Search/tree split ratio (embedded search only). null = 50/50 default; the
+  // horizontal sash between tree and search drags this within [0.35, 0.8]
+  // (the floor keeps the search chrome + a usable results slice visible).
+  // Session-scoped (not persisted); resets to 50/50 when the explorer
+  // unmounts (panel close), matching its pre-drag behavior.
+  const [searchRatio, setSearchRatio] = useState(null);
   // 内部拖动（树内文件拖到容器空白处 = 移到项目根目录）的容器高亮状态。
   // 与 externalDragOver 同帧只可能有一个为 true（容器 dragOver handler 用 isInternal 二选一）。
   const [internalContainerDragOver, setInternalContainerDragOver] = useState(false);
@@ -480,6 +487,61 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     moveFile(fromPath, '', { onFileRenamed, project, instance });
   }, [handleImportFiles, resetDragState, onFileRenamed, project, instance]);
 
+  // Horizontal sash between the tree and the embedded search panel. Mirrors
+  // ChatView's splitDragController lifecycle (document move/up listeners, body
+  // cursor + userSelect, teardown on mouseup AND unmount) but stays local:
+  // the ratio is session state, no snap lines, no localStorage.
+  const searchDragRef = useRef(null);
+  const handleSearchSashDown = useCallback((e) => {
+    e.preventDefault();
+    const sashEl = e.currentTarget;
+    // Pointer events + capture cover mouse/touch/pen uniformly (plain mouse
+    // events give iPad no move stream), and capture guarantees the up/cancel
+    // even when the press is released outside the browser window.
+    const pid = e.pointerId;
+    const move = (ev) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect || rect.height <= 0) return;
+      // Ratio is the SEARCH area's share of the whole explorer (header incl.);
+      // clamped so neither tree nor search can be squashed to zero. The floor
+      // also keeps at least ~60px for results on realistic panel heights
+      // (the fixed search chrome alone is ~97-209px depending on persisted
+      // replace/details state).
+      const ratio = 1 - (ev.clientY - rect.top) / rect.height;
+      setSearchRatio(Math.min(0.8, Math.max(0.35, ratio)));
+    };
+    const up = () => {
+      if (sashEl.hasPointerCapture?.(pid)) sashEl.releasePointerCapture(pid);
+      sashEl.removeEventListener('pointermove', move);
+      sashEl.removeEventListener('pointerup', up);
+      sashEl.removeEventListener('pointercancel', up);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      searchDragRef.current = null;
+    };
+    searchDragRef.current = { move, up };
+    sashEl.setPointerCapture?.(pid);
+    sashEl.addEventListener('pointermove', move);
+    sashEl.addEventListener('pointerup', up);
+    sashEl.addEventListener('pointercancel', up);
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => () => {
+    // Unmount mid-drag: restore document listeners/cursor so the page never
+    // gets stuck in row-resize.
+    if (searchDragRef.current) searchDragRef.current.up();
+  }, []);
+
+  // The sash unmounts with the panel (it renders only while searchOpen). If the
+  // panel closes mid-drag (e.g. Escape in an empty query), pointer capture is
+  // released and pointerup never reaches the sash — run the teardown so body
+  // cursor/userSelect don't stay stuck in row-resize.
+  useEffect(() => {
+    if (!searchOpen && searchDragRef.current) searchDragRef.current.up();
+  }, [searchOpen]);
+
   return (
     <div ref={containerRef} className={`${styles.fileExplorer}${externalDragOver ? ' ' + styles.fileExplorerDragOver : ''}${internalContainerDragOver ? ' ' + styles.internalDragOverContainer : ''}`} style={style} data-file-explorer onDragOver={handleContainerDragOver} onDrop={handleContainerDrop}>
       <div className={styles.header}>
@@ -493,6 +555,25 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
                 cooldown 防狂点 + 360° 单次旋转反馈。 */}
             {onManualRefresh && (
               <RefreshIcon onClick={onManualRefresh} title={t('ui.fileExplorer.refresh')} />
+            )}
+            {/* Search toggle: replaces the old standalone rail 🔍 entry. Opens the
+                SearchPanel embedded below the tree inside this panel (active state
+                turns blue); click again to close. stopPropagation keeps the click
+                off the surrounding Dropdown's contextMenu area semantics. */}
+            {onToggleSearch && (
+              <button
+                type="button"
+                data-search-toggle
+                className={searchOpen ? styles.searchToggleActive : styles.searchToggle}
+                aria-pressed={!!searchOpen}
+                title={t('ui.search')}
+                onClick={(e) => { e.stopPropagation(); onToggleSearch(); }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              </button>
             )}
           </span>
         </Dropdown>
@@ -522,6 +603,49 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
           />
         </Dropdown>
       </div>
+      {searchOpen && onToggleSearch && (
+        // The embedded search area is not a drop target: stop container-level
+        // drags here so releasing a tree file (or an OS file) over the search
+        // results doesn't silently move/import it into the project root.
+        <>
+          <div
+            className={styles.searchSash}
+            onPointerDown={handleSearchSashDown}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('ui.fileExplorer.resizeSearch')}
+            // Not a drop target either (same guard as the search wrapper below):
+            // releasing a drag on the 5px divider must not move/import to root.
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'none'; }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          />
+          <div
+            className={`${styles.embeddedSearchWrap}${searchRatio != null ? ' ' + styles.dragged : ''}`}
+            style={searchRatio != null ? { height: `${Math.round(searchRatio * 1000) / 10}%` } : undefined}
+            onDragOver={(e) => {
+              // Reject must preventDefault too: a bare stopPropagation suppresses
+              // the container/AppBase handlers that cancel dragover, and an
+              // uncancelled dragover makes the browser perform its default drop
+              // action (navigating the tab to the dropped file) on release.
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = 'none';
+            }}
+            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          >
+            <SearchPanel
+              embedded
+              className={styles.embeddedSearchPanel}
+              onClose={onToggleSearch}
+              getDirtyPath={searchGetDirtyPath}
+              onReplaceApplied={onSearchReplaceApplied}
+              onOpenResult={onOpenSearchResult}
+              project={project}
+              instance={instance}
+            />
+          </div>
+        </>
+      )}
       {htmlPreviewPath && (
         <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} project={project} instance={instance} />
       )}

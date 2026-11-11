@@ -4930,16 +4930,22 @@ const i18nData = {
     "th": "ใช้นิพจน์ทั่วไป", "tr": "Düzenli ifade kullan", "uk": "Використовувати регулярний вираз"
   },
   "ui.search.filesToInclude": {
-    "zh": "包含的文件", "en": "files to include", "zh-TW": "包含的檔案", "ko": "포함할 파일", "ja": "含めるファイル",
-    "de": "Einzuschließende Dateien", "es": "archivos a incluir", "fr": "fichiers à inclure", "it": "file da includere", "da": "filer der skal medtages",
-    "pl": "pliki do uwzględnienia", "ru": "включаемые файлы", "ar": "الملفات المراد تضمينها", "no": "filer som skal inkluderes", "pt-BR": "arquivos a incluir",
-    "th": "ไฟล์ที่จะรวม", "tr": "dahil edilecek dosyalar", "uk": "файли для включення"
+    "zh": "包含:", "en": "include:", "zh-TW": "包含:", "ko": "포함:", "ja": "含める:",
+    "de": "einschließen:", "es": "incluir:", "fr": "inclure:", "it": "includi:", "da": "inkluder:",
+    "pl": "uwzględnij:", "ru": "включить:", "ar": "تضمين:", "no": "inkluder:", "pt-BR": "incluir:",
+    "th": "รวม:", "tr": "dahil et:", "uk": "включити:"
   },
   "ui.search.filesToExclude": {
-    "zh": "排除的文件", "en": "files to exclude", "zh-TW": "排除的檔案", "ko": "제외할 파일", "ja": "除外するファイル",
-    "de": "Auszuschließende Dateien", "es": "archivos a excluir", "fr": "fichiers à exclure", "it": "file da escludere", "da": "filer der skal udelades",
-    "pl": "pliki do wykluczenia", "ru": "исключаемые файлы", "ar": "الملفات المراد استبعادها", "no": "filer som skal utelates", "pt-BR": "arquivos a excluir",
-    "th": "ไฟล์ที่จะยกเว้น", "tr": "hariç tutulacak dosyalar", "uk": "файли для виключення"
+    "zh": "排除:", "en": "exclude:", "zh-TW": "排除:", "ko": "제외:", "ja": "除外:",
+    "de": "ausschließen:", "es": "excluir:", "fr": "exclure:", "it": "escludi:", "da": "ekskluder:",
+    "pl": "wyklucz:", "ru": "исключить:", "ar": "استبعاد:", "no": "ekskluder:", "pt-BR": "excluir:",
+    "th": "ยกเว้น:", "tr": "hariç tut:", "uk": "виключити:"
+  },
+  "ui.search.filesGlobHint": {
+    "zh": "例如 *.ts, src/**/include", "en": "e.g. *.ts, src/**/include", "zh-TW": "例如 *.ts, src/**/include", "ko": "예: *.ts, src/**/include", "ja": "例: *.ts, src/**/include",
+    "de": "z. B. *.ts, src/**/include", "es": "p. ej. *.ts, src/**/include", "fr": "ex. *.ts, src/**/include", "it": "es. *.ts, src/**/include", "da": "f.eks. *.ts, src/**/include",
+    "pl": "np. *.ts, src/**/include", "ru": "напр. *.ts, src/**/include", "ar": "مثال: *.ts, src/**/include", "no": "f.eks. *.ts, src/**/include", "pt-BR": "ex.: *.ts, src/**/include",
+    "th": "เช่น *.ts, src/**/include", "tr": "örn. *.ts, src/**/include", "uk": "напр. *.ts, src/**/include"
   },
   "ui.search.toggleDetails": {
     "zh": "切换搜索详情", "en": "Toggle Search Details", "zh-TW": "切換搜尋詳情", "ko": "검색 세부정보 전환", "ja": "検索の詳細を切り替え",
@@ -5184,6 +5190,26 @@ const i18nData = {
     "th": "รีเฟรช",
     "tr": "Yenile",
     "uk": "Оновити"
+  },
+  "ui.fileExplorer.resizeSearch": {
+    "zh": "拖拽调整搜索区域高度",
+    "en": "Drag to resize the search area",
+    "zh-TW": "拖曳調整搜尋區域高度",
+    "ko": "드래그하여 검색 영역 높이 조절",
+    "ja": "ドラッグで検索エリアの高さを調整",
+    "de": "Ziehen, um die Höhe des Suchbereichs anzupassen",
+    "es": "Arrastra para ajustar la altura del área de búsqueda",
+    "fr": "Faites glisser pour redimensionner la zone de recherche",
+    "it": "Trascina per ridimensionare l'area di ricerca",
+    "da": "Træk for at justere søgeområdets højde",
+    "pl": "Przeciągnij, aby zmienić wysokość obszaru wyszukiwania",
+    "ru": "Перетащите, чтобы изменить высоту области поиска",
+    "ar": "اسحب لتغيير ارتفاع منطقة البحث",
+    "no": "Dra for å endre høyden på søkeområdet",
+    "pt-BR": "Arraste para redimensionar a área de pesquisa",
+    "th": "ลากเพื่อปรับความสูงของพื้นที่ค้นหา",
+    "tr": "Arama alanının yüksekliğini ayarlamak için sürükleyin",
+    "uk": "Перетягніть, щоб змінити висоту області пошуку"
   },
   "ui.fileExplorer.loadFailed": {
     "zh": "加载失败：{reason}",
