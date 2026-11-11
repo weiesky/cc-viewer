@@ -1,0 +1,136 @@
+apps/web/src/components/chat/ChatView.jsx
+  s_3c90d36e298481::t_37690c5b57225a 31
+  s_3c90d36e298481::t_4ba9ad9585e6f5 5448-5451
+packages/app/server/lib/binary-sniff.js
+  s_3c90d36e298481::t_1814ef899a8625 1-2,29,31,33,35
+  s_3c90d36e298481::t_231a87fde7399a 23,27,30,32,34
+  s_3c90d36e298481::t_ec1df436527c42 24
+  s_3c90d36e298481::t_d01476eed794e7 3-22,25-26,28
+apps/web/test/file-types.test.js
+  s_3c90d36e298481::t_cb78f8dc84f6d4 108-113
+packages/app/server/routes/files-content.js
+  s_3c90d36e298481::t_2a59cfb568b777 171
+  s_3c90d36e298481::t_4e9f706af0a6f5 162-167
+  s_3c90d36e298481::t_99f4cfc0e12508 750-757
+  s_3c90d36e298481::t_eb377769f2f6e3 12
+  s_3c90d36e298481::t_3df84cdf40a087 168-170,172,174
+apps/web/test/archive-preview-wiring.test.js
+  s_3c90d36e298481::t_dab7a3e1b70d8d 21-22
+.changeset/preview-placeholders.md
+  s_3c90d36e298481::t_fde3815a2b7118 1-4
+  s_3c90d36e298481::t_265c051a0f45d3 5
+apps/web/test/file-browser-modal.test.js
+  s_3c90d36e298481::t_d0df07c51b50b2 155
+apps/web/test/preview-kind.test.js
+  s_3c90d36e298481::t_4d46569d725617 1-22,24-49
+  s_3c90d36e298481::t_8b83b6e057933b 23
+apps/web/src/utils/commandValidator.js
+  s_3c90d36e298481::t_b7087c38857698 5,8
+apps/web/src/utils/fileOpen.js
+  s_3c90d36e298481::t_b6d865137ff761 9
+  s_3c90d36e298481::t_d09a70fff54715 14
+  s_3c90d36e298481::t_fad8a9a4c2e76d 29
+apps/web/src/components/files/FileContentView.jsx
+  s_3c90d36e298481::t_a86d596e6d0d05 355
+  s_3c90d36e298481::t_9c3053d284efb9 539
+  s_3c90d36e298481::t_2ab8a4cbe46073 700
+  s_3c90d36e298481::t_bc1d047933f2b0 1083,1085-1086,1093
+  s_3c90d36e298481::t_ccc5b6089e11f9 356
+  s_3c90d36e298481::t_dd55513aadd00f 353
+  s_3c90d36e298481::t_93dd767d0462d3 589
+  s_3c90d36e298481::t_d38fe91329d9dc 655
+  s_3c90d36e298481::t_469681b75f2f8d 668
+  s_3c90d36e298481::t_2d8f79936ebf85 923-925
+  s_3c90d36e298481::t_c8eed0d6bff8bc 941
+  s_3c90d36e298481::t_dab481c0854136 354
+  s_3c90d36e298481::t_94a93c6a16937c 679
+  s_3c90d36e298481::t_59234eb00bcdbb 7-9
+  s_3c90d36e298481::t_8ceb724f7dcd34 357
+  s_3c90d36e298481::t_ac270a9313d6bb 719
+  s_3c90d36e298481::t_b3edd67b066690 649,654,662,667,669-671,674-678,680-682,686,724,728,730
+  s_3c90d36e298481::t_99108eeaa8b52e 673
+  s_3c90d36e298481::t_e5957cd04622ea 922
+  s_3c90d36e298481::t_24f789e44747d2 339
+  s_3c90d36e298481::t_3b085ff00d5bb0 695-696
+apps/web/test/file-open.test.js
+  s_3c90d36e298481::t_a901e63f0264ed 44-45
+  s_3c90d36e298481::t_9ee81e19bc0957 86,88
+  s_3c90d36e298481::t_003ed79f65b3c8 55
+  s_3c90d36e298481::t_dd15f2f42b1b27 100
+  s_3c90d36e298481::t_d39ebe0a364446 156,158-164
+  s_3c90d36e298481::t_ee5b206a502ffc 71,73,75
+packages/app/test/api-files-content.test.js
+  s_3c90d36e298481::t_5f4f69b2cabb3b 295,297-311
+  s_3c90d36e298481::t_25159b159816fd 289-294,296,312-314
+  s_3c90d36e298481::t_b3a350759e127b 278-287,315-334,338,340-343
+  s_3c90d36e298481::t_141de7228d763a 339
+  s_3c90d36e298481::t_08e9414c420c27 335-337
+  s_3c90d36e298481::t_1772e38074072a 781-794
+  s_3c90d36e298481::t_7da5a20920e072 288
+apps/web/src/i18n.js
+  s_3c90d36e298481::t_c6372d67684513 6041-6043
+  s_3c90d36e298481::t_adc912ece8a249 6014-6040
+apps/web/src/utils/previewKind.js
+  s_3c90d36e298481::t_869b89bb429c64 1-23
+apps/web/src/components/files/FileExplorer.jsx
+  s_3c90d36e298481::t_0d7049bf2b549e 86-87
+  s_3c90d36e298481::t_9e11aac05f16ff 6
+apps/web/test/preview-wiring.test.js
+  s_3c90d36e298481::t_52c2a34409b0a0 36
+  s_3c90d36e298481::t_26534a761da743 1-23,25-27,31-35,37-46,48-52,54-59
+  s_3c90d36e298481::t_8cd89448c7344a 28
+  s_3c90d36e298481::t_6f259591dac8f7 53
+  s_3c90d36e298481::t_cec111830daaee 24,29-30
+  s_3c90d36e298481::t_b0566e62069a76 47
+apps/web/src/utils/archivePreview.js
+  s_3c90d36e298481::t_18a7ffe6786e5f 1
+  s_3c90d36e298481::t_d47aa868b0b3e6 10
+apps/web/src/components/viewers/UnsupportedFilePreview.jsx
+  s_3c90d36e298481::t_bf984d0722b451 19,27
+  s_3c90d36e298481::t_26b11d031f47ba 1-10,13-18,20-26,28-31
+  s_3c90d36e298481::t_1247e71db37457 12
+  s_3c90d36e298481::t_4ecef4e80ed958 11
+packages/app/test/binary-sniff.test.js
+  s_3c90d36e298481::t_28bd7f7a5a41de 19,25-28,31-32
+  s_3c90d36e298481::t_79174984ee22d0 42-48
+  s_3c90d36e298481::t_52b70680ea9a6a 12-17
+  s_3c90d36e298481::t_3d75640aa86055 36
+  s_3c90d36e298481::t_98694eea5ecb3b 38-41
+  s_3c90d36e298481::t_656fa7d97cddb6 1-2,4-11,18,20-24,29-30,33-35,49-50
+  s_3c90d36e298481::t_2098fcac2cc4c3 3
+  s_3c90d36e298481::t_81602827d2830a 37
+apps/web/src/utils/fileTypes.js
+  s_3c90d36e298481::t_398c6b94e2b318 12-14,18
+  s_3c90d36e298481::t_d9bfe575db9537 15
+  s_3c90d36e298481::t_0b38b6a2f05264 74-75,92-93
+apps/web/src/components/files/FileBrowserModal.jsx
+  s_3c90d36e298481::t_52d171e7371da6 271-272
+  s_3c90d36e298481::t_778acb417b8dd9 6
+  s_3c90d36e298481::t_3734e2673e483b 622
+  s_3c90d36e298481::t_9867d218652bfc 852
+history.md
+  s_3c90d36e298481::t_49178633c99992 5
+  s_3c90d36e298481::t_e03660e673d9f3 6
+apps/web/src/components/viewers/UnsupportedFilePreview.module.css
+  s_3c90d36e298481::t_3d91210d1dcc9e 1-37,39-48
+  s_3c90d36e298481::t_0db96e74657dc2 38
+apps/web/test/external-folder-targets.test.js
+  s_3c90d36e298481::t_639b13a091a658 123
+  s_3c90d36e298481::t_97ff6d50abf963 127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f96811cddb3f1f5516ef7823bcc2a36d142a95e3",
+  "prompts": {},
+  "sessions": {
+    "s_3c90d36e298481": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "feb13429-4400-4a65-8f1a-f3d37d90826d",
+        "model": "k3.1-pro"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
