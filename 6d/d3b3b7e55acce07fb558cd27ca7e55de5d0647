@@ -1,0 +1,24 @@
+packages/app/package.json
+  s_3c90d36e298481::t_a8cae071b41c6b 3
+packages/app/CHANGELOG.md
+  s_3c90d36e298481::t_6f8f58438a88d0 15
+  s_3c90d36e298481::t_a8cae071b41c6b 3-14,16-17
+history.md
+  s_3c90d36e298481::t_bbe1d89323f444 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6dd3b3b7e55acce07fb558cd27ca7e55de5d0647",
+  "prompts": {},
+  "sessions": {
+    "s_3c90d36e298481": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "feb13429-4400-4a65-8f1a-f3d37d90826d",
+        "model": "k3.1-pro"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
