@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_3c90d36e298481::t_36d3470c6e83ff 27-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "62012025cb91ac3d18c54dcddd623c2cdd06a9f1",
+  "prompts": {},
+  "sessions": {
+    "s_3c90d36e298481": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "feb13429-4400-4a65-8f1a-f3d37d90826d",
+        "model": "k3.1-pro"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
