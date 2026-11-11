@@ -1,5 +1,20 @@
 # cc-viewer
 
+## 1.9.24
+
+### Patch Changes
+
+- 91a523d: feat: add read-only ZIP/TAR/GZIP/TGZ archive preview across file viewers.
+- 6081b5d: feat(ask): 新增「问答题自动托管」— 快捷设置(权限/Plan 自动审批同级)支持 0/10/20/30 分钟或不托管;服务端到点自动回答 AskUserQuestion(优先选带「推荐」标记项,否则第一项,18 语言词表),无浏览器连接也生效;弹窗倒计时可取消托管(仅本题),截止前手动回答优先。
+- ea995f3: feat(web): 支持将侧栏文件拖入终端追加路径，或拖入对话输入框作为路径附件。
+- beaa2e8: feat(web): 支持将侧栏文件夹拖入终端输入路径，或在对话中显示文件夹路径附件。
+- 839f0f8: fix(kimi-k3): Kimi K3 system prompt 新增「工具错误处理(熔断)」段 — 报错先诊断再行动、参数非法不重发、同工具同参数最多重试 1 次、连续失败 2 次立即停手向用户报告，修复 TaskUpdate 空调用死循环。
+- f96811c: Unify file preview classification across platforms and add read-only download fallbacks for binary files and pending media, font, and PDF viewers. Preview BOM-marked UTF-16 text read-only; legacy encodings fall back to download.
+- a6b82f1: feat(web): 文件搜索并入文件浏览器面板 — 左侧栏放大镜入口移除，改为文件浏览器标题栏刷新旁的放大镜开关；点击后搜索在文件树下方同面板展开（按钮变蓝），再次点击关闭；树与搜索之间的分界线可上下拖拽调整比例（35%–80%）；点击搜索结果联动展开文件树定位；浏览器刷新后保持搜索面板开启状态与已输入内容。
+- d6ec38b: feat(header): 系统提示词生效后不再自动固定到顶部导航栏 — 移除「系统提示词修改」入口的自动露出机制(含 Electron 原生 tab bar)，入口统一走汉堡菜单或手动钉住。
+
+  feat(chat): 「查看用户 Prompt」入口从汉堡菜单移除，迁移到左侧头像导航的「用户 Prompt 导航」气泡标题栏「more」按钮，弹窗内容与原汇总弹窗一致。
+
 ## 1.9.23
 
 ### Patch Changes

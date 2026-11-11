@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.24
 
 - feat(web+server): **统一文件预览分类与二进制保护** — 跨平台识别归档、图片、HTML、Markdown、音频、视频、字体、PDF、文本和二进制；不支持预览的文件提供只读说明与下载，文本读取增加二进制内容检测，UTF-16 BOM 文本支持只读预览；旧编码文本保持下载回退。Coverage: `preview-kind.test.js`, `preview-wiring.test.js`, `binary-sniff.test.js`, `api-files-content.test.js`.
 
