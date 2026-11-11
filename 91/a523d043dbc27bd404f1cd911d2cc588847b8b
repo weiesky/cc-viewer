@@ -1,0 +1,150 @@
+packages/app/test/branch-routes-files-content.test.js
+  s_d415071fbbbc20::t_8ba80074579fda 64
+LICENSE.md
+  s_d415071fbbbc20::t_219615793e6a3e 27
+  s_d415071fbbbc20::t_c60bdda6e8970c 22-26,28-32
+  s_d415071fbbbc20::t_398c60fa392d8c 19-21
+packages/app/test/api-target-files.test.js
+  s_d415071fbbbc20::t_0b56adb0e99903 212,215
+apps/web/src/utils/fileTypes.js
+  s_d415071fbbbc20::t_ff12aa56aa0ee7 39
+apps/web/src/utils/archivePreview.js
+  s_d415071fbbbc20::t_c77d2f5d3ff4e9 44-45
+  s_d415071fbbbc20::t_39596d5af06f83 19
+  s_d415071fbbbc20::t_2bc1b17e443ed7 18
+  s_d415071fbbbc20::t_08c89fd04f2f75 32-39,42-43,46-47
+  s_d415071fbbbc20::t_bb94e9402add91 49,51-53
+  s_d415071fbbbc20::t_4fcb50e6e930c8 40-41
+  s_d415071fbbbc20::t_64059520e37aa4 1-15,20-31,48,50,54-67
+  s_d415071fbbbc20::t_4ef62621692135 16-17
+history.md
+  s_d415071fbbbc20::t_eaf56d0819209a 5-6
+.changeset/archive-preview.md
+  s_d415071fbbbc20::t_35d7c457105149 1-5
+apps/web/test/archive-preview.test.js
+  s_d415071fbbbc20::t_c2456e9b3a1527 3-6,13-43,79-85,89-100,103-106,108-126,183-184,186-253,256-258,268
+  s_d415071fbbbc20::t_82549e007aca47 101
+  s_d415071fbbbc20::t_e06dce4b572270 67-68
+  s_d415071fbbbc20::t_378bbf1b5e3aa8 127-138,170-182
+  s_d415071fbbbc20::t_bdcf81501c28aa 2
+  s_d415071fbbbc20::t_a4ae61638187e1 159-161
+  s_d415071fbbbc20::t_bcac12f5f17367 185
+  s_d415071fbbbc20::t_62c79a3383891a 8
+  s_d415071fbbbc20::t_99b2baf338d02b 260
+  s_d415071fbbbc20::t_9adef2d4f9af46 158
+  s_d415071fbbbc20::t_ad39d57be9ed09 60-66
+  s_d415071fbbbc20::t_08a75efd257d7a 78
+  s_d415071fbbbc20::t_a4eea919ae5337 59
+  s_d415071fbbbc20::t_09b828b1a3f2e8 44-58,69-77
+  s_d415071fbbbc20::t_2b01268b3227fc 102
+  s_d415071fbbbc20::t_6e130514b9198c 139-151,153-157,162-165,168-169
+  s_d415071fbbbc20::t_7ac280cc82639c 12
+  s_d415071fbbbc20::t_ef6b39f5249a38 167
+  s_d415071fbbbc20::t_0d6b9087650105 259,263-264,266-267
+  s_d415071fbbbc20::t_910027b5c493ee 166
+  s_d415071fbbbc20::t_e740a938c25c71 152
+  s_d415071fbbbc20::t_60332da1b37b20 254-255
+  s_d415071fbbbc20::t_d63390b2f33d88 1
+  s_d415071fbbbc20::t_d9558480bdb647 107
+  s_d415071fbbbc20::t_fffd6956d9b2c9 7,10-11
+  s_d415071fbbbc20::t_9ea7c5ddae8bf1 261-262
+  s_d415071fbbbc20::t_3f11b34d75f1cd 9
+  s_d415071fbbbc20::t_3e41078db96d31 86-88
+  s_d415071fbbbc20::t_1cbcdf1e1b10b2 265
+apps/web/test/archive-preview-wiring.test.js
+  s_d415071fbbbc20::t_66d95e5ea97b51 49
+  s_d415071fbbbc20::t_37e33c78545918 41
+  s_d415071fbbbc20::t_a94bc89efdc3bb 78-96
+  s_d415071fbbbc20::t_374023f289526f 11
+  s_d415071fbbbc20::t_b6aba2da5cb060 1-7,12-40,43-48,50-77,97-104
+  s_d415071fbbbc20::t_9ce3dc3dfa35c0 8-10
+  s_d415071fbbbc20::t_9d17c496fc79ba 42
+apps/web/src/components/viewers/ArchivePreview.module.css
+  s_d415071fbbbc20::t_0e1e8dc6664d17 1-62,66-73
+  s_d415071fbbbc20::t_4f26f10f4f97c9 63-65
+apps/web/test/file-types.test.js
+  s_d415071fbbbc20::t_6260a45c999067 59
+packages/app/test/route-dispatch.test.js
+  s_d415071fbbbc20::t_792b0d232d6bc2 78
+apps/web/src/components/files/FileContentView.jsx
+  s_d415071fbbbc20::t_0dba4ebe230052 7
+  s_d415071fbbbc20::t_72b1bdea630e8a 317-325
+  s_d415071fbbbc20::t_e92cca3af62a59 1054-1065
+apps/electron/electron-builder.yml
+  s_d415071fbbbc20::t_2347b52b411d78 26
+packages/app/test/api-files-content.test.js
+  s_d415071fbbbc20::t_6496b434150ed1 124-126
+  s_d415071fbbbc20::t_f6e74320f9a0e2 674-679
+  s_d415071fbbbc20::t_5da2dfa5d9bbd1 709
+  s_d415071fbbbc20::t_23c1aa8b4ee021 691
+  s_d415071fbbbc20::t_b8b31c26344a1c 109
+  s_d415071fbbbc20::t_69e4d55e094712 114
+  s_d415071fbbbc20::t_ba3afe5bac41e2 702-704
+  s_d415071fbbbc20::t_281e77a4a9c76a 705-708
+  s_d415071fbbbc20::t_82c54ca5b8756e 699
+  s_d415071fbbbc20::t_3a12a70520dfb4 30
+  s_d415071fbbbc20::t_7ee0e345bdd32f 662-673,680-690,692-698,700-701,710-712
+apps/electron/scripts/assemble-app.mjs
+  s_d415071fbbbc20::t_db88de0676211a 39
+packages/app/server/routes/files-content.js
+  s_d415071fbbbc20::t_35f319f449a664 408
+  s_d415071fbbbc20::t_f6d8b7e7a052f2 448-449,451,455
+  s_d415071fbbbc20::t_c5ace702624383 862
+  s_d415071fbbbc20::t_b9e6809c75c092 420
+  s_d415071fbbbc20::t_9cdd0c8b6704d4 478-495
+apps/web/src/components/viewers/ArchivePreview.jsx
+  s_d415071fbbbc20::t_620691964ce4ec 199
+  s_d415071fbbbc20::t_132722b72be648 86-89
+  s_d415071fbbbc20::t_394f764b466ec1 6
+  s_d415071fbbbc20::t_31eebc80a8e1e4 53
+  s_d415071fbbbc20::t_a0cbe12445918e 201
+  s_d415071fbbbc20::t_cee0db50b883ae 41
+  s_d415071fbbbc20::t_9187c585bc770b 103-104
+  s_d415071fbbbc20::t_e5856259de3638 1-4,8-15,17-26,28,30-34,37-40,42-47,49-52,54-70,72-83,85,90-93,98-99,101-102,105-109,111-116,122-149,152-154,158,160,162-165,170-176,186-187,189-198,200,202-209,211,214,216-222,224,226-231
+  s_d415071fbbbc20::t_6fe3e5445004db 29
+  s_d415071fbbbc20::t_50be2218f7d4e9 180
+  s_d415071fbbbc20::t_2080f64912f2c4 150-151,155-157,159,161
+  s_d415071fbbbc20::t_9f516ff34b738f 225
+  s_d415071fbbbc20::t_377f325b7da6ff 27
+  s_d415071fbbbc20::t_604746de0fea76 94-97
+  s_d415071fbbbc20::t_d7ece643adb5a7 223
+  s_d415071fbbbc20::t_d25e36918a4f4a 48
+  s_d415071fbbbc20::t_4d3a6e9f31ecac 84
+  s_d415071fbbbc20::t_94a4f5bde1e234 5,7
+  s_d415071fbbbc20::t_af2bc97e8100e2 71
+  s_d415071fbbbc20::t_837987ea5b5901 117-121
+  s_d415071fbbbc20::t_994287004ead02 177-179,181-185
+  s_d415071fbbbc20::t_5f6c7aebfdaca8 215
+  s_d415071fbbbc20::t_e374951d82f670 213
+  s_d415071fbbbc20::t_d5677d0c1b09ef 35-36
+  s_d415071fbbbc20::t_d8fe0467d1fdaa 188
+  s_d415071fbbbc20::t_a42c7059d532f3 212
+  s_d415071fbbbc20::t_4f71a45d9dd3a7 16
+  s_d415071fbbbc20::t_55ebd7192f1a9d 110
+  s_d415071fbbbc20::t_bd64771d4aa8e1 100
+  s_d415071fbbbc20::t_a59fbaed87e8ab 166-169
+  s_d415071fbbbc20::t_be11a34e96f31e 210
+apps/web/src/i18n.js
+  s_d415071fbbbc20::t_473fbd954995da 6014-6038,6040-6041,6043-6044,6046-6047,6049-6065
+  s_d415071fbbbc20::t_7351a7a633f424 6121-6150
+  s_d415071fbbbc20::t_6fc480ba04b3fe 6072-6077
+  s_d415071fbbbc20::t_0b4a7aa23a8f41 6066-6068
+  s_d415071fbbbc20::t_74c393afaecd55 6069-6071,6078-6120
+  s_d415071fbbbc20::t_e674cf04791222 6039,6042,6045,6048
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "91a523d043dbc27bd404f1cd911d2cc588847b8b",
+  "prompts": {},
+  "sessions": {
+    "s_d415071fbbbc20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f31ef398-80ea-42d1-a719-8adc13171aaa",
+        "model": "k3.1-pro"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
