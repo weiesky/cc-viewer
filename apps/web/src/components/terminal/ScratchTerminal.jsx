@@ -19,6 +19,7 @@ import { attachMobileTouchScroll } from '../../utils/mobileTouchScroll';
 import { diagCount } from '../../utils/termDiag';
 import { sanitizeBracketPasteText } from '../../utils/ptyChunkBuilder';
 import { clipboardKeyAction, copyTextToClipboard, planPasteSend } from '../../utils/terminalClipboard';
+import { isFileDrag, getDraggedFilePath, planFileDropInput } from '../../utils/fileDragDrop';
 import { appendToken, getBasePath, withViewParams } from '../../utils/apiUrl';
 
 class ScratchTerminal extends React.Component {
@@ -46,6 +47,7 @@ class ScratchTerminal extends React.Component {
     );
     this._closing = false;
     this._fatal = false;
+    this.state = { fileDragOver: false, shellBasename: '' };
   }
 
   // A connection is allowed only once the view has resolved to a real workspace scope
@@ -69,6 +71,8 @@ class ScratchTerminal extends React.Component {
   }
 
   componentDidMount() {
+    document.addEventListener('dragend', this._resetFileDragOver);
+    document.addEventListener('drop', this._resetFileDragOver);
     this.initTerminal();
     // Defer the connection until a real scope exists (see _hasScope): a boot-pending
     // tab must not spawn a bound-root shell that the merge would orphan.
@@ -122,6 +126,8 @@ class ScratchTerminal extends React.Component {
 
   componentWillUnmount() {
     this._closing = true;
+    document.removeEventListener('dragend', this._resetFileDragOver);
+    document.removeEventListener('drop', this._resetFileDragOver);
     if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
     if (this._initRafId) { cancelAnimationFrame(this._initRafId); this._initRafId = 0; }
     if (this._vvTimer) { clearTimeout(this._vvTimer); this._vvTimer = null; }
@@ -309,6 +315,38 @@ class ScratchTerminal extends React.Component {
     }
   }
 
+  _resetFileDragOver = () => {
+    if (this.state.fileDragOver) this.setState({ fileDragOver: false });
+  };
+
+  _handleFileDragOver = (e) => {
+    if (!isFileDrag(e) || this.ws?.readyState !== WebSocket.OPEN
+      || (this.terminal?.buffer?.active?.type === 'alternate' && !this.terminal?.modes?.bracketedPasteMode)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!this.state.fileDragOver) this.setState({ fileDragOver: true });
+  };
+
+  _handleFileDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) this._resetFileDragOver();
+  };
+
+  _handleFileDrop = (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._resetFileDragOver();
+    if (this.ws?.readyState !== WebSocket.OPEN
+      || (this.terminal?.buffer?.active?.type === 'alternate' && !this.terminal?.modes?.bracketedPasteMode)) return;
+    const data = planFileDropInput(getDraggedFilePath(e), {
+      bracketedPasteMode: this.terminal?.modes?.bracketedPasteMode,
+      shell: this.state.shellBasename,
+    });
+    if (data != null) this.ws.send(JSON.stringify({ type: 'input', data }));
+    if (this.terminal && (!isMobile || isPad)) this.terminal.focus();
+  };
+
   // Phone fixed 60-column layout: sizing math lives in utils/mobileTermLayout.js
   // (shared with TerminalPanel) and measures the xterm parent (.scratchHost),
   // which excludes tab rail / keybar / borders by construction.
@@ -397,6 +435,7 @@ class ScratchTerminal extends React.Component {
         } else if (msg.type === 'state') {
           // 后端首条 state 消息携带 shellBasename，给父组件渲染 tab 标签
           if (msg.shellBasename) {
+            this.setState({ shellBasename: msg.shellBasename });
             try { this.props.onShellInfo?.(msg.shellBasename); } catch {}
           }
         } else if (msg.type === 'exit') {
@@ -524,7 +563,12 @@ class ScratchTerminal extends React.Component {
     // 外层 .scratchInner：focus 出血带；内层 .scratchHost：xterm 实际父容器，
     // margin-bottom 4px 让 fitAddon 拿到的高度始终 -4px，xterm-screen 接触不到下方分隔线
     return (
-      <div className={styles.scratchInner}>
+      <div
+        className={`${styles.scratchInner}${this.state.fileDragOver ? ` ${styles.scratchInnerDragOver}` : ''}`}
+        onDragOver={this._handleFileDragOver}
+        onDragLeave={this._handleFileDragLeave}
+        onDrop={this._handleFileDrop}
+      >
         <div ref={this.containerRef} className={styles.scratchHost} />
       </div>
     );

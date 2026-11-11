@@ -74,6 +74,12 @@
   color: var(--text-disabled);
 }
 
+/* File drag feedback stays on the whole composer, including its preview strip. */
+.chatInputWrapper.chatInputWrapperDragOver {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-composer), inset 0 0 0 1px var(--color-primary);
+}
+
 .chatInputBottom {
   display: flex;
   align-items: center;

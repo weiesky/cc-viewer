@@ -34,6 +34,7 @@ import { refreshCachedItemProp } from '../../utils/refreshCachedItemProp';
 import { refreshResolvedModelInfo, healUnresolvedTeammateEntries, needsFullReqRescan } from '../../utils/identityHeal';
 import { resolveBubbleProducerTs, getSessionStableId } from '../../utils/sessionManager';
 import { terminalAnchor } from '../../utils/terminalAnchor';
+import { isSafeAttachmentPath } from '../../utils/fileDragDrop';
 import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
 import UserPromptsModal from './UserPromptsModal';
@@ -1711,7 +1712,7 @@ class ChatView extends React.Component {
   };
 
   _addPendingImage = (path, source) => {
-    if (!path) return;
+    if (!isSafeAttachmentPath(path)) return;
     this.setState(prev => {
       if (prev.pendingImages.length >= 20) return null; // cap
       if (prev.pendingImages.some(img => img.path === path)) return null; // dedup
@@ -5656,6 +5657,7 @@ class ChatView extends React.Component {
               onStop={this.handleInputStop}
               onSuggestionClick={this.handleSuggestionToTerminal}
               onUploadPath={this.handleUploadPath}
+              onAttachPath={(path) => this._addPendingImage(path, 'explorer')}
               presetItems={this.state.presetItems}
               onPresetSend={this.handlePresetSend}
               onOpenPresetModal={() => this.setState({ mobilePresetModalVisible: true })}

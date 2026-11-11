@@ -4985,9 +4985,9 @@ class AppBase extends React.Component {
   };
 
   _onDragOver = (e) => {
-    e.preventDefault();
     if (this._isInternalDrag(e)) return;
-    // 树内文件移动(text/x-internal-move)由 FileExplorer 自己高亮,不点亮任何全局遮罩
+    // Keep internal moves out of external-upload feedback. This does not accept
+    // a drop; the terminal/composer cancel their own dragover when eligible.
     if (e.dataTransfer.types.includes('text/x-internal-move')) {
       this._setDragZone(null);
       if (this.state.isDragging) this.setState({ isDragging: false });
@@ -4995,12 +4995,12 @@ class AppBase extends React.Component {
     }
     // 指针位于 antd 弹层(Modal/Drawer,React 冒泡穿透 portal)上方:全局拖拽整体静默,
     // 由弹层自己(如 FileBrowserModal 的分区拖放)处理
+    e.preventDefault();
     if (isOverModalPortal(e)) {
       this._setDragZone(null);
       if (this.state.isDragging) this.setState({ isDragging: false });
       return;
     }
-    // FileExplorer 区域不显示全屏 overlay，由 FileExplorer 自己处理外部拖入反馈
     const overFileExplorer = e.target.closest && e.target.closest('[data-file-explorer]');
     if (overFileExplorer) {
       this._setDragZone(null);
@@ -5028,8 +5028,11 @@ class AppBase extends React.Component {
   _onDrop = (e) => {
     e.preventDefault();
     if (this._isInternalDrag(e)) return;
-    const dragZone = this.state.dragZone;
     this.setState({ isDragging: false, dragZone: null });
+    // Internal file drops are consumed only by terminal/composer targets.
+    if (e.dataTransfer.types.includes('text/x-internal-move')) return;
+    const dragZone = this.state.dragZone;
+
     // 弹层上方的 drop 由弹层自己消费(或忽略),全局不参与
     if (isOverModalPortal(e)) return;
     // 桌面分区门禁:只有落在响应区(对话+终端)才接受;页眉/请求列表等区域静默拒收

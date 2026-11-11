@@ -13,6 +13,7 @@ import { createFileMenuHandler } from './fileContextMenuActions';
 import { importFiles, isExternalFileDrag, getTopLevelEntries } from './importFiles';
 import { moveFile, canDropMoveOn } from './fileMove';
 import { isOverModalPortal } from '../../utils/dragGuards';
+import { FILE_DRAG_TYPE } from '../../utils/fileDragDrop';
 import SearchPanel from '../search/SearchPanel';
 import styles from './FileExplorer.module.css';
 
@@ -210,9 +211,10 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     if (editing) { e.preventDefault(); return; }
     e.dataTransfer.setData('text/plain', childPath);
     e.dataTransfer.setData('text/x-internal-move', '1');
-    e.dataTransfer.effectAllowed = 'move';
+    if (!isDir) e.dataTransfer.setData(FILE_DRAG_TYPE, '1');
+    e.dataTransfer.effectAllowed = isDir ? 'move' : 'copyMove';
     setDragging(true);
-  }, [childPath, editing]);
+  }, [childPath, editing, isDir]);
 
   const handleDragEnd = useCallback(() => {
     setDragging(false);
@@ -265,7 +267,7 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     }
     // Internal move — 守卫与请求走共享模块 ./fileMove(与弹窗 FileBrowserModal 一致)
     const fromPath = e.dataTransfer.getData('text/plain');
-    if (!isDir || !canDropMoveOn(fromPath, childPath)) return;
+    if (!isDir || e.dataTransfer.dropEffect !== 'move' || !canDropMoveOn(fromPath, childPath)) return;
     moveFile(fromPath, childPath, { onFileRenamed, project, instance });
   }, [childPath, isDir, onFileRenamed, onImportFiles, project, instance]);
 
@@ -484,6 +486,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     }
     const fromDir = fromPath.includes('/') ? fromPath.substring(0, fromPath.lastIndexOf('/')) : '';
     if (fromDir === '') return; // 已在根，no-op（拖回原位无效果，符合直觉）
+    if (e.dataTransfer.dropEffect !== 'move') return;
     moveFile(fromPath, '', { onFileRenamed, project, instance });
   }, [handleImportFiles, resetDragState, onFileRenamed, project, instance]);
 
