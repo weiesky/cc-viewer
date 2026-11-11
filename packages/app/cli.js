@@ -612,6 +612,12 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setWorkspaceClaudeArgs(extraClaudeArgs);
   serverMod.setWorkspaceClaudePath(claudePath, isNpmVersion);
 
+  serverMod.setRestartHandler(async (version) => {
+    const { launchRestart } = await import('./server/lib/restart.js');
+    launchRestart({ ...ccvLaunch, version });
+    cleanup();
+  });
+
   // 4. 自动打开浏览器
   const protocol = serverMod.getProtocol();
   const _cfg = resolveBaseConfig();
@@ -1033,6 +1039,12 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
   await printMigrationBanner();
 
+  serverMod.setRestartHandler(async (version) => {
+    const { launchRestart } = await import('./server/lib/restart.js');
+    launchRestart({ ...ccvLaunch, version });
+    cleanup();
+  });
+
   // 注册退出处理（hardened，与 PTY 模式同款三层防御）
   const cleanup = createHardenedCleanup({
     doCleanup: () => {
@@ -1054,6 +1066,8 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
 // === 主逻辑 ===
 
 const args = process.argv.slice(2);
+// Immutable launch description for the user-confirmed updater's restart helper.
+const ccvLaunch = { args: [...args], cwd: process.cwd(), cliPath: fileURLToPath(import.meta.url) };
 
 // --- CCV 专属参数提取（必须在动态 import 之前） ---
 let noOpen = false;

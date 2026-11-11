@@ -5,7 +5,7 @@ import { getInstallMethod, projectMetaRoutes } from '../server/routes/project-me
 describe('getInstallMethod', () => {
   it('returns electron when running under Electron (regardless of brew detection)', () => {
     assert.equal(getInstallMethod({ electron: '38.0.0', detect: () => '/opt/homebrew' }), 'electron');
-    assert.equal(getInstallMethod({ electron: '38.0.0', detect: () => null }), 'electron');
+    assert.equal(getInstallMethod({ electron: '38.0.0', detect: () => null, detectPnpm: () => null }), 'electron');
   });
 
   it('returns brew when Homebrew install is detected and not electron', () => {
@@ -14,10 +14,13 @@ describe('getInstallMethod', () => {
   });
 
   it('falls back to npm when no brew prefix and not electron', () => {
-    assert.equal(getInstallMethod({ electron: undefined, detect: () => null }), 'npm');
-    assert.equal(getInstallMethod({ electron: '', detect: () => null }), 'npm');
+    assert.equal(getInstallMethod({ electron: undefined, detect: () => null, detectPnpm: () => null }), 'npm');
+    assert.equal(getInstallMethod({ electron: '', detect: () => null, detectPnpm: () => null }), 'npm');
   });
 
+  it('returns pnpm when the virtual store layout is detected', () => {
+    assert.equal(getInstallMethod({ detect: () => null, detectPnpm: () => null, detectPnpm: () => '/tmp/pnpm' }), 'pnpm');
+  });
   it('is failure-safe: brew detection throwing falls back to npm', () => {
     assert.equal(getInstallMethod({ electron: undefined, detect: () => { throw new Error('realpath boom'); } }), 'npm');
   });

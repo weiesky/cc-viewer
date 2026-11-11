@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from '
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { checkAndUpdate, isAnyCcvBusy, detectHomebrewInstall } from '../server/lib/updater.js';
+import { checkAndUpdate, isAnyCcvBusy, detectHomebrewInstall, isNewer } from '../server/lib/updater.js';
 import { getClaudeConfigDir } from '../findcc.js';
 
 const CACHE_DIR = join(getClaudeConfigDir(), 'cc-viewer');
@@ -207,7 +207,7 @@ describe('checkAndUpdate — fetch', () => {
       busy: false,
       lsofImpl: () => '',
     });
-    assert.equal(result.status, 'upgrading_in_background');
+    assert.equal(result.status, 'available');
     assert.equal(result.remoteVersion, remote);
     assert.equal(result.currentVersion, pkg.version);
   });
@@ -288,7 +288,7 @@ describe('checkAndUpdate — fetch', () => {
     assert.ok(result.error.includes('503'));
   });
 
-  it('returns error when spawn throws during install', async () => {
+  it('does not spawn npm from a version check, even when spawn would fail', async () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
@@ -303,8 +303,8 @@ describe('checkAndUpdate — fetch', () => {
       lsofImpl: () => '',
       spawnImpl: () => { throw new Error('permission denied'); },
     });
-    assert.equal(result.status, 'error');
-    assert.ok(result.error.includes('permission denied'));
+    assert.equal(result.status, 'available');
+    assert.equal(result.remoteVersion, remote);
   });
 
   it('returns deferred_busy when caller passes busy=true', async () => {
@@ -371,13 +371,9 @@ describe('checkAndUpdate — fetch', () => {
         return { unref() { unrefCalled = true; } };
       },
     });
-    assert.equal(result.status, 'upgrading_in_background');
-    assert.equal(spawnCalls, 1);
-    assert.equal(spawnArgs.cmd, 'npm');
-    assert.deepStrictEqual(spawnArgs.args, ['install', '-g', `cc-viewer@${remote}`, '--no-audit', '--no-fund']);
-    assert.equal(spawnArgs.opts.detached, true);
-    assert.equal(spawnArgs.opts.stdio, 'ignore');
-    assert.equal(unrefCalled, true, 'unref must be called on detached child');
+    assert.equal(result.status, 'available');
+    assert.equal(spawnCalls, 0);
+    assert.equal(spawnArgs, null);
   });
 });
 
@@ -500,7 +496,7 @@ describe('checkAndUpdate spawn return defense', () => {
     else process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = origEnv;
   });
 
-  it('tolerates spawnImpl returning null (no crash on missing unref)', async () => {
+  it('does not require a child process or unref from a version check', async () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
@@ -516,11 +512,11 @@ describe('checkAndUpdate spawn return defense', () => {
       spawnImpl: () => null, // 极端情况，spawn 返回 null
     });
     // 不抛异常 + 状态正确
-    assert.equal(result.status, 'upgrading_in_background');
+    assert.equal(result.status, 'available');
     assert.equal(result.remoteVersion, remote);
   });
 
-  it('sets shell=true only on win32 (sanity check of platform branch)', async () => {
+  it('uses no platform-dependent shell for version checks', async () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
@@ -536,80 +532,22 @@ describe('checkAndUpdate spawn return defense', () => {
       lsofImpl: () => '',
       spawnImpl: (_cmd, _args, opts) => { capturedOpts = opts; return { unref() {} }; },
     });
-    // 当前测试宿主非 win32 → shell 应为 false；如果在 Windows CI 跑会是 true
-    assert.equal(capturedOpts.shell, process.platform === 'win32');
-    assert.equal(capturedOpts.detached, true);
-    assert.equal(capturedOpts.stdio, 'ignore');
-    // Windows：npm.cmd 是 console-subsystem，缺 windowsHide 会在后台更新期间常驻可见控制台窗口
-    assert.equal(capturedOpts.windowsHide, true);
+    assert.equal(capturedOpts, null);
   });
 });
 
 // ─── parseVersion / isNewer (tested indirectly via subprocess) ───
 
-describe('version comparison logic (indirect)', () => {
-  // We test parseVersion/isNewer indirectly by evaluating them in a subprocess
-  // since they are not exported
-
-  function evalInModule(code) {
-    // Run a small inline script that imports nothing but replicates the logic
-    const script = `
-      function parseVersion(ver) {
-        const [major, minor, patch] = ver.split('.').map(Number);
-        return { major, minor, patch };
-      }
-      function isNewer(remote, current) {
-        const r = parseVersion(remote);
-        const c = parseVersion(current);
-        if (r.major !== c.major) return r.major > c.major;
-        if (r.minor !== c.minor) return r.minor > c.minor;
-        return r.patch > c.patch;
-      }
-      ${code}
-    `;
-    return execFileSync(process.execPath, ['-e', script], {
-      encoding: 'utf-8',
-      timeout: 5000,
-      env: { ...process.env, NO_COLOR: '1' },
-    }).trim().replace(/\x1b\[[0-9;]*m/g, '');
-  }
-
-  it('parseVersion splits correctly', () => {
-    const out = evalInModule(`
-      const v = parseVersion('1.4.19');
-      console.log(JSON.stringify(v));
-    `);
-    assert.deepStrictEqual(JSON.parse(out), { major: 1, minor: 4, patch: 19 });
-  });
-
-  it('isNewer returns true for higher patch', () => {
-    const out = evalInModule(`console.log(String(isNewer('1.4.20', '1.4.19')));`);
-    assert.equal(out, 'true');
-  });
-
-  it('isNewer returns false for same version', () => {
-    const out = evalInModule(`console.log(String(isNewer('1.4.19', '1.4.19')));`);
-    assert.equal(out, 'false');
-  });
-
-  it('isNewer returns false for older version', () => {
-    const out = evalInModule(`console.log(String(isNewer('1.4.18', '1.4.19')));`);
-    assert.equal(out, 'false');
-  });
-
-  it('isNewer handles major version bump', () => {
-    const out = evalInModule(`console.log(String(isNewer('2.0.0', '1.9.99')));`);
-    assert.equal(out, 'true');
-  });
-
-  it('isNewer handles minor version bump', () => {
-    const out = evalInModule(`console.log(String(isNewer('1.5.0', '1.4.99')));`);
-    assert.equal(out, 'true');
-  });
-
-  it('isNewer: lower major is not newer', () => {
-    const out = evalInModule(`console.log(String(isNewer('0.9.99', '1.0.0')));`);
-    assert.equal(out, 'false');
+describe('version comparison logic', () => {
+  it('compares stable semantic versions directly', () => {
+    assert.equal(isNewer('1.4.20', '1.4.19'), true);
+    assert.equal(isNewer('1.4.19', '1.4.19'), false);
+    assert.equal(isNewer('1.4.18', '1.4.19'), false);
+    assert.equal(isNewer('2.0.0', '1.9.99'), true);
+    assert.equal(isNewer('1.5.0', '1.4.99'), true);
+    assert.equal(isNewer('0.9.99', '1.0.0'), false);
+    assert.equal(isNewer('2.0.0-beta.1', '1.9.99'), false);
+    assert.equal(isNewer('1.4.20', '1.4.19-beta'), false);
   });
 });
 
@@ -825,7 +763,7 @@ describe('checkAndUpdate — brew_managed', () => {
       spawnImpl: () => { spawnCalled = true; return { unref() {} }; },
       brewPrefix: null, // 显式声明非 brew，绕过真探测
     });
-    assert.equal(result.status, 'upgrading_in_background');
-    assert.equal(spawnCalled, true);
+    assert.equal(result.status, 'available');
+    assert.equal(spawnCalled, false);
   });
 });

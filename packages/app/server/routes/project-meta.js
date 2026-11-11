@@ -8,7 +8,7 @@ import { sanitizePathComponent } from '../lib/v2/layout.js';
 import { resolveViewRoot } from '../lib/view-root.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
-import { detectHomebrewInstall } from '../lib/updater.js';
+import { detectHomebrewInstall, detectPnpmGlobalInstall } from '../lib/updater.js';
 
 // Multi-project (2026-10, review P2-6): stats reads for a VIEWED project must
 // not become a presence oracle over LOG_DIR — `?project=` is accepted ONLY
@@ -44,11 +44,11 @@ function _resolveStatsName(projectParam, instanceParam, res) {
 export function getInstallMethod({
   electron = process.versions && process.versions.electron,
   detect = detectHomebrewInstall,
+  detectPnpm = detectPnpmGlobalInstall,
 } = {}) {
   if (electron) return 'electron';
-  try {
-    if (detect()) return 'brew';
-  } catch { /* 探测失败 → 回落 npm */ }
+  try { if (detect()) return 'brew'; } catch { }
+  try { if (detectPnpm()) return 'pnpm'; } catch { }
   return 'npm';
 }
 
@@ -63,11 +63,14 @@ function projectDir(req, res) {
   res.end(JSON.stringify({ dir }));
 }
 
-function versionInfo(req, res) {
+const PROCESS_STARTED_AT = Date.now();
+const PROCESS_ID = `${process.pid}-${PROCESS_STARTED_AT}`;
+
+function versionInfo(req, res, parsedUrl, isLocal, deps) {
   try {
     const pkg = JSON.parse(readFileSync(PACKAGE_JSON, 'utf-8'));
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ version: pkg.version, installMethod: getInstallMethod() }));
+    res.end(JSON.stringify({ version: pkg.version, installMethod: getInstallMethod(), processId: PROCESS_ID, canRestart: deps?.canRestartProcess === true }));
   } catch {
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Failed to read version' }));

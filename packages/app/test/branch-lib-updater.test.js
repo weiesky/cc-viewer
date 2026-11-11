@@ -294,9 +294,9 @@ describe('updater 分支 — isNewer minor 差异臂', () => {
       spawnImpl: () => { spawnCalled = true; return { unref() {} }; },
     });
     // minor 更高被判 newer，且同大版本 → 进入空闲后台升级分支
-    assert.equal(result.status, 'upgrading_in_background');
+    assert.equal(result.status, 'available');
     assert.equal(result.remoteVersion, remote);
-    assert.equal(spawnCalled, true);
+    assert.equal(spawnCalled, false);
   });
 });
 

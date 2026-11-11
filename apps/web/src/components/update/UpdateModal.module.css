@@ -1,0 +1,3 @@
+.content { line-height: 1.8; }
+.muted { color: var(--text-tertiary); font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
