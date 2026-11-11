@@ -23,15 +23,8 @@ jobs:
           # 24: test infrastructure uses node:module registerHooks (sync hooks, Node 22.15+)
           node-version: 24
           cache: 'pnpm'
-      # -logger shell hook tests need real zsh (not included in ubuntu runner by default)
-      - name: Install zsh for shell integration tests
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          if command -v zsh >/dev/null 2>&1; then exit 0; fi
-          APT_OPTIONS=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
-          sudo apt-get "${APT_OPTIONS[@]}" update -qq
-          sudo apt-get "${APT_OPTIONS[@]}" install -y -qq zsh
+      # Shell hook tests mock the environment or edit fixture files; the single
+      # real-zsh smoke test self-skips when the runner does not provide zsh.
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm run verify:mac-keychain
       # --ignore-scripts (supply-chain hardening; retained) skips native compilation and
