@@ -105,6 +105,12 @@ describe('getFileType', () => {
     assert.equal(getFileType('src/components/App.tsx', 'file'), 'code');
     assert.equal(getFileType('docs/guide/README.md', 'file'), 'document');
   });
+  it('handles POSIX and Windows paths without reading dotted directories as extensions', () => {
+    assert.equal(getFileType('C:\\src\\components\\App.tsx', 'file'), 'code');
+    assert.equal(getFileType('C:\\dir.with.dot\\README', 'file'), 'data');
+    assert.equal(getFileType('//server/share/a.PNG', 'file'), 'image');
+    assert.equal(getFileType('C:\\dir\\.env', 'file'), 'plain');
+  });
 });
 
 describe('getExt', () => {

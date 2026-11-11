@@ -9,6 +9,7 @@ import { projectKeyForCwd } from '../lib/system-prompt-snapshots.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
 import { reportSwallowed } from '../lib/error-report.js';
+import { isBinaryBuffer, getUtf16Encoding } from '../lib/binary-sniff.js';
 import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
@@ -158,10 +159,19 @@ function fileContentGetWithRoot(req, res, parsedUrl, reqPath, cwd) {
       res.end(JSON.stringify({ error: 'File too large' }));
       return;
     }
-    const content = readFileSync(real, 'utf-8');
-    // path 字段回返原始入参,前端用它做路径展示与后续 POST 引用
+    const raw = readFileSync(real);
+    if (isBinaryBuffer(raw)) {
+      res.writeHead(415, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Binary file', reason: 'binary', size: st.size }));
+      return;
+    }
+    const encoding = getUtf16Encoding(raw);
+    const content = encoding === 'utf16le' ? raw.subarray(2).toString('utf16le')
+      : encoding === 'utf16be' ? raw.subarray(2).swap16().toString('utf16le')
+      : raw.toString('utf-8');
+    // Decoded UTF-16 remains read-only: the existing write endpoint emits UTF-8.
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ path: reqPath, content, size: st.size }));
+    res.end(JSON.stringify({ path: reqPath, content, size: st.size, ...(encoding ? { encoding, readOnly: true } : {}) }));
   } catch (err) {
     const status = ERROR_STATUS_MAP[err.code] || 500;
     const message = status === 500 ? `Cannot read file: ${err.message}` : err.message;
@@ -736,6 +746,14 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
         return;
+      }
+      if (existsSync(targetReal)) {
+        const raw = readFileSync(targetReal);
+        if (getUtf16Encoding(raw) || isBinaryBuffer(raw)) {
+          res.writeHead(415, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File requires read-only preview', reason: 'encoding' }));
+          return;
+        }
       }
       writeFileSync(targetReal, content, 'utf-8');
       const stat = statSync(targetReal);

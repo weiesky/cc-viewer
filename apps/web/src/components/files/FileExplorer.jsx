@@ -3,6 +3,7 @@ import { Dropdown } from 'antd';
 import { t } from '../../i18n';
 import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
+import { getPreviewKind } from '../../utils/previewKind.js';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import OpenFolderIcon from '../common/OpenFolderIcon';
 import HtmlPreviewModal from '../common/HtmlPreviewModal';
@@ -82,9 +83,8 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
 
   const toggle = useCallback(async () => {
     if (item.type !== 'directory') {
-      const ext = (childPath || '').split('.').pop().toLowerCase();
-      // .html/.htm 文件在弹窗 iframe 中预览
-      if (ext === 'html' || ext === 'htm') {
+      // HTML files retain the existing sandboxed iframe preview.
+      if (getPreviewKind(childPath) === 'html') {
         if (onHtmlPreview) onHtmlPreview(childPath);
         return;
       }

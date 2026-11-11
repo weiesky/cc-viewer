@@ -1,4 +1,4 @@
-import { getFileType } from './fileTypes';
+import { getPreviewKind } from './previewKind.js';
 
 export const ARCHIVE_RAW_MAX_BYTES = 32 * 1024 * 1024;
 export const ARCHIVE_TEXT_MAX_BYTES = 200 * 1024;
@@ -7,7 +7,7 @@ export const ARCHIVE_MAX_TEXT_LINES = 8000;
 export const ARCHIVE_MAX_ROWS = 2000;
 
 export function getArchivePreviewKind(filePath) {
-  if (getFileType(filePath) !== 'archive') return null;
+  if (getPreviewKind(filePath) !== 'archive') return null;
   const name = String(filePath || '').split(/[\\/]/).pop().toLowerCase();
   if (name.endsWith('.tar.gz') || name.endsWith('.tgz')) return { supported: true, format: 'tar.gz' };
   if (name.endsWith('.zip')) return { supported: true, format: 'zip' };

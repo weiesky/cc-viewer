@@ -3,6 +3,7 @@ import { Modal, Dropdown } from 'antd';
 import { t } from '../../i18n';
 import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
+import { getPreviewKind } from '../../utils/previewKind.js';
 import { isImageFile } from '../../utils/commandValidator';
 import { tryOpenWithSystem, isSystemOpenFile } from '../../utils/fileOpen';
 import { reportSwallowed } from '../../utils/errorReport';
@@ -267,10 +268,8 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
   );
 }
 
-// Grid thumbnails: all image types the app knows (commandValidator IMAGE_EXTS)
-// that /api/file-raw also serves inline with an image MIME (files-content.js
-// FILE_RAW_MIME). icns is excluded — browsers can't decode it. svg is fine
-// inside <img> (scripts don't execute in image context).
+// Grid thumbnails: previewable images supported by /api/file-raw. icns is
+// excluded because browsers cannot decode it; SVG stays in passive <img> context.
 const THUMBNAIL_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'ico', 'webp', 'avif']);
 
 function isThumbnailFile(name) {
@@ -620,8 +619,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       return;
     }
     const itemPath = item.absPath || childPath;
-    const ext = (item.name || '').split('.').pop().toLowerCase();
-    if (ext === 'html' || ext === 'htm') {
+    if (getPreviewKind(item.name) === 'html') {
       setHtmlPreviewPath(itemPath);
       return;
     }
@@ -851,7 +849,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                 // Preview is editable in target mode (product decision): the modal
                 // passes the target identity so /api/file-content resolves the
                 // navigation root (not the project view root) for the write.
-                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} target={target} readOnly={false} displayPath={readOnly ? (currentPath ? `${currentPath}/${previewFile.split('/').pop()}` : previewFile.split('/').pop()) : previewFile} />
+                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} target={target} readOnly={false} displayPath={readOnly ? (currentPath ? `${currentPath}/${previewFile.split(/[\\/]/).pop()}` : previewFile.split(/[\\/]/).pop()) : previewFile} />
               )}
             </div>
           ) : (

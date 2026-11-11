@@ -275,6 +275,72 @@ describe('GET /api/file-content', { concurrency: false }, () => {
     assert.equal(r.status, 413);
     assert.equal(r.json().error, 'File too large');
   });
+  it('空文件与多语言 UTF-8 → 200，保持原文', () => {
+    writeFileSync(join(PROJECT, 'empty.txt'), '');
+    const empty = callGet(fileContentGet, '/api/file-content', 'path=empty.txt');
+    assert.equal(empty.status, 200);
+    assert.equal(empty.json().content, '');
+    writeFileSync(join(PROJECT, 'utf8.txt'), Buffer.from('﻿中文\nhello'));
+    const utf8 = callGet(fileContentGet, '/api/file-content', 'path=utf8.txt');
+    assert.equal(utf8.status, 200);
+    assert.equal(utf8.json().content, '﻿中文\nhello');
+  });
+
+  it('带 BOM 的 UTF-16 LE/BE → 可靠解码为文本', () => {
+    const le = Buffer.from('﻿中文\ntext', 'utf16le');
+    const be = Buffer.from('﻿中文\ntext', 'utf16le').swap16();
+    writeFileSync(join(PROJECT, 'utf16le.txt'), le);
+    writeFileSync(join(PROJECT, 'utf16be.txt'), be);
+    assert.equal(callGet(fileContentGet, '/api/file-content', 'path=utf16le.txt').json().content, '中文\ntext');
+    assert.equal(callGet(fileContentGet, '/api/file-content', 'path=utf16le.txt').json().readOnly, true);
+    assert.equal(callGet(fileContentGet, '/api/file-content', 'path=utf16be.txt').json().content, '中文\ntext');
+    assert.equal(callGet(fileContentGet, '/api/file-content', 'path=utf16be.txt').json().encoding, 'utf16be');
+  });
+
+  it('损坏、截断或 UTF-32 BOM 不进入 UTF-16 文本编辑', () => {
+    for (const [name, bytes] of [
+      ['utf32.txt', Buffer.from([0xff, 0xfe, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00])],
+      ['odd-be.txt', Buffer.from([0xfe, 0xff, 0x00])],
+      ['odd-le.txt', Buffer.from([0xff, 0xfe, 0x41])],
+      ['surrogate.txt', Buffer.from([0xff, 0xfe, 0x00, 0xd8])],
+    ]) {
+      writeFileSync(join(PROJECT, name), bytes);
+      const r = callGet(fileContentGet, '/api/file-content', `path=${name}`);
+      assert.equal(r.status, 415, name);
+      assert.equal(r.json().reason, 'binary', name);
+    }
+  });
+
+  it('NUL、无效 UTF-8 即使使用文本或未知扩展名也只读回退', () => {
+    for (const [name, bytes] of [
+      ['nul.txt', Buffer.from([0x41, 0x00, 0x42])],
+      ['invalid.dat', Buffer.from([0xc3, 0x28])],
+      ['controls.log', Buffer.from([0x41, 0x01, 0x01, 0x01])],
+    ]) {
+      writeFileSync(join(PROJECT, name), bytes);
+      const r = callGet(fileContentGet, '/api/file-content', `path=${name}`);
+      assert.equal(r.status, 415, name);
+      assert.equal(r.json().reason, 'binary', name);
+      assert.equal(r.json().size, bytes.length, name);
+      assert.equal('content' in r.json(), false, name);
+    }
+  });
+
+  it('权限与大小错误优先于二进制检测', () => {
+    const outside = join(TMP, 'outside-binary.txt');
+    writeFileSync(outside, Buffer.from([0x00]));
+    const denied = callGet(fileContentGet, '/api/file-content', 'path=' + encodeURIComponent(outside));
+    assert.equal(denied.status, 403);
+    assert.equal(denied.json().reason, 'outside-allowlist');
+  });
+
+  it('二进制文件超过 5 MiB 仍先返回大小限制', () => {
+    const big = join(PROJECT, 'big-binary.txt');
+    writeFileSync(big, '');
+    truncateSync(big, 5 * 1024 * 1024 + 1);
+    const large = callGet(fileContentGet, '/api/file-content', 'path=big-binary.txt');
+    assert.equal(large.status, 413);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -712,6 +778,20 @@ describe('GET|HEAD /api/archive-raw', { concurrency: false }, () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('POST /api/file-content', { concurrency: false }, () => {
+  it('UTF-16 和二进制目标禁止通过文本接口改写', async () => {
+    const utf16 = join(PROJECT, 'protected-utf16.txt');
+    const original = Buffer.from('﻿中文', 'utf16le');
+    writeFileSync(utf16, original);
+    const binary = join(PROJECT, 'protected-binary.txt');
+    writeFileSync(binary, Buffer.from([0x41, 0x00, 0x42]));
+    for (const path of [utf16, binary]) {
+      const r = await callPost(fileContentPost, { path, content: 'replacement' });
+      assert.equal(r.status, 415);
+      assert.equal(r.json.reason, 'encoding');
+    }
+    assert.deepEqual(readFileSync(utf16), original);
+    assert.deepEqual(readFileSync(binary), Buffer.from([0x41, 0x00, 0x42]));
+  });
   it('覆盖现有文件 → 200 ok + size', async () => {
     const p = join(PROJECT, 'write-target.txt');
     writeFileSync(p, 'old');

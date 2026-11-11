@@ -18,7 +18,8 @@ const LOCALES = ['zh', 'en', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da', 
 describe('archive preview wiring and accessibility', () => {
   it('routes through a hook-free lazy wrapper shared by all existing file viewers', () => {
     const wrapperSource = wrapper.slice(wrapper.lastIndexOf('export default function FileContentView'));
-    assert.ok(wrapperSource.includes('getArchivePreviewKind(props.filePath)'));
+    assert.ok(wrapperSource.includes("const kind = getPreviewKind(props.filePath)"));
+    assert.ok(wrapperSource.includes("if (kind === 'archive')"));
     assert.ok(!wrapperSource.includes('useState'));
     assert.ok(wrapper.includes("import('../viewers/ArchivePreview')"));
     assert.ok(wrapper.includes('function FileContentViewImpl({'));

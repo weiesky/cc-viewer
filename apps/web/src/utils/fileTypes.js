@@ -9,8 +9,13 @@
  * audio | archive | pdf | office | font | binary | plain
  */
 
+function basename(name) {
+  return String(name || '').split(/[\\/]/).pop();
+}
+
 // Extension → category. Languages all map to the shared 'code' glyph and are
 // differentiated by color in fileIcons.jsx (EXT_COLORS), not by shape.
+
 const EXT_CATEGORY = {
   // code
   js: 'code', jsx: 'code', ts: 'code', tsx: 'code', py: 'code', go: 'code',
@@ -66,7 +71,8 @@ export function getFileType(name, type) {
   // Directory branch first: GitChanges calls getFileIcon('', 'directory'), so
   // this must return before any string handling on an empty name.
   if (type === 'directory') return 'directory';
-  const base = String(name || '').split('/').pop();
+  // Windows absolute target paths contain a drive colon, not a file extension.
+  const base = basename(name).replace(/^[a-zA-Z]:$/, '');
   // dot > 0 (not >= 0): a leading dot with no other dot (".gitignore", ".env")
   // yields no extension, so dotfiles are not misread as "<name>" extensions.
   const dot = base.lastIndexOf('.');
@@ -83,7 +89,8 @@ export function getFileType(name, type) {
  * fileIcons.jsx colors the exact same token it classified (no double logic).
  */
 export function getExt(name) {
-  const base = String(name || '').split('/').pop();
+  // Windows absolute target paths contain a drive colon, not a file extension.
+  const base = basename(name).replace(/^[a-zA-Z]:$/, '');
   const dot = base.lastIndexOf('.');
   return dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
 }

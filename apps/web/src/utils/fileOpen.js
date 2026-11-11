@@ -6,11 +6,12 @@
  */
 
 import { apiUrl, withViewParams } from './apiUrl';
+import { getExt } from './fileTypes.js';
 
 /** 需要系统默认应用打开的扩展名 */
 const SYSTEM_OPEN_EXTS = new Set([
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-  'odt', 'ods', 'odp', 'pdf',
+  'odt', 'ods', 'odp',
 ]);
 
 /**
@@ -25,8 +26,7 @@ const SYSTEM_OPEN_EXTS = new Set([
  * @returns {boolean} 是否已处理
  */
 export function isSystemOpenFile(path) {
-  const ext = (path || '').split('.').pop().toLowerCase();
-  return SYSTEM_OPEN_EXTS.has(ext);
+  return SYSTEM_OPEN_EXTS.has(getExt(path));
 }
 
 export function tryOpenWithSystem(path, source, { project, instance } = {}) {

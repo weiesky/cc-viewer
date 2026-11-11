@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web+server): **统一文件预览分类与二进制保护** — 跨平台识别归档、图片、HTML、Markdown、音频、视频、字体、PDF、文本和二进制；不支持预览的文件提供只读说明与下载，文本读取增加二进制内容检测，UTF-16 BOM 文本支持只读预览；旧编码文本保持下载回退。Coverage: `preview-kind.test.js`, `preview-wiring.test.js`, `binary-sniff.test.js`, `api-files-content.test.js`.
+
 - feat(web+server): **压缩包支持在线预览** — 全部文件入口支持 ZIP/TAR/GZIP/TGZ 目录树、文本与图片条目预览；7z/RAR/XZ/BZ2 提供说明与下载。Coverage: `archive-preview.test.js`, `archive-preview-wiring.test.js`, `api-files-content.test.js`.
 
 - feat(web): **文件夹支持拖拽到终端或对话** — 终端追加目录路径；对话显示文件夹图标及省略中间层级的路径，发送时保留完整路径。Coverage: `file-drag-drop.test.js`.

@@ -1411,6 +1411,7 @@
   "server/lib/auto-approve.js",
   "server/lib/base-path.js",
   "server/lib/base-url.js",
+  "server/lib/binary-sniff.js",
   "server/lib/builtin-model-prompts.js",
   "server/lib/ccswitch-import.js",
   "server/lib/ccv-editor.js",
