@@ -520,12 +520,6 @@ class AppHeader extends React.Component {
       // until the authoritative hydrate (_hydratePinnedKeys) lands; afterwards componentDidUpdate
       // re-syncs it on external prefs changes (project-scoped toggle / refreshPreferences).
       pinnedKeys: initialPinnedKeys(context),
-      // 「系统提示词修改」是否有会在下次启动注入的提示词(命中当前模型的用户条目/内置 preset，
-      // 或工作区默认 sentinel)。为 true 时入口自动露出在头部工具栏(无需手动钉住)；
-      // 由 /api/expert/system-prompt-status 供给。
-      systemPromptActive: false,
-      // 当前模型命中的内置 preset 被墓碑禁用：入口以「已禁用」态保活（可点入重启用）。
-      systemPromptBuiltinDisabled: false,
     };
     this._countdownTimer = null;
     this._expiredTimer = null;
@@ -536,8 +530,6 @@ class AppHeader extends React.Component {
     // 切换/快速重开 popover 时旧回包不会污染新状态（参考 _memorySeq 模式）
     this._claudeMdSeq = 0;
     this._claudeMdDetailSeq = 0;
-    // 与 _fsSkillsSeq 同语义：status 拉取在途期间发生新一轮触发时，旧回包不得覆盖新状态。
-    this._systemPromptSeq = 0;
     this.updateCountdown = this.updateCountdown.bind(this);
     // Pinned-menu persistence guards: _pinnedTouched latches once the user toggles (the hydrate
     // must never overwrite an in-flight user action); _prefsHydrated marks that the user's value
@@ -778,10 +770,6 @@ class AppHeader extends React.Component {
       .map(k => descByKey.get(k))
       .filter(Boolean)
       .map(d => ({ key: d.key, name: d.label }));
-    // 「系统提示词修改」激活且未手动钉住时自动露出(与 Web 端 pins 块同规则，见 _autoSystemPromptDesc)；
-    // tab bar 侧经 MENU_ICON['edit-system-prompt'] 取图标、menuShortcut 回传触发同一描述符 onClick。
-    const autoPin = this._autoSystemPromptDesc(descByKey);
-    if (autoPin) pins.push({ key: autoPin.key, name: autoPin.label });
     const cd = this.state.countdownText;
     const countdown = (viewMode === 'raw' && cd)
       ? { text: `${t('ui.cacheCountdown', { type: this.props.cacheType ? `(${this.props.cacheType})` : '' })} ${cd}` }
@@ -887,42 +875,8 @@ class AppHeader extends React.Component {
     if (e && e.key === 'Escape' && this.state.electronQrOpen) this.setState({ electronQrOpen: false });
   };
 
-  // 「系统提示词修改」自动露出规则(Web pins 块与 Electron header model 共用)：
-  // 激活（含内置 preset 生效）或内置被墓碑禁用（保活——否则禁用后入口消失、无法找回
-  // 重启用路径）且未被手动钉住时返回其描述符；禁用态在 label 上标注「已禁用」。
-  _autoSystemPromptDesc(descByKey) {
-    if (this.state.pinnedKeys.includes('edit-system-prompt')) return null;
-    if (!this.state.systemPromptActive && !this.state.systemPromptBuiltinDisabled) return null;
-    const desc = descByKey.get('edit-system-prompt') || null;
-    if (!desc || this.state.systemPromptActive) return desc;
-    return { ...desc, label: `${desc.label} (${t('ui.expert.systemText.builtinDisabledBadge')})` };
-  }
-
-  // 拉取「系统提示词修改」激活态：激活时入口自动露出在头部工具栏(无需手动钉住)。
-  // 触发点：挂载 / 代理配置或工作区切换(componentDidUpdate) / 系统提示词弹窗关闭(保存即改变激活态)。
-  reloadSystemPromptStatus = () => {
-    const seq = ++this._systemPromptSeq;
-    // Multi-project (2026-10)：系统提示词入口可见性跟随 viewed 项目（server GET 已支持
-    // ?project=；POST 写操作仍保持绑定项目）。
-    fetch(apiUrl(withViewParams('/api/expert/system-prompt-status', { project: this.props.viewProject, instance: this.props.viewedInstance })))
-      .then((r) => r.json())
-      .then((d) => {
-        if (seq === this._systemPromptSeq) {
-          this.setState({
-            systemPromptActive: !!(d && d.active),
-            systemPromptBuiltinDisabled: !!(d && d.builtinDisabled),
-          });
-        }
-      })
-      .catch((err) => {
-        // 瞬时失败(服务重启/远程登录窗口 401)不翻状态 —— 只认成功回包，避免入口闪烁。
-        reportSwallowed('systemPromptStatus.fetch', err);
-      });
-  };
-
   componentDidMount() {
     this.startCountdown();
-    this.reloadSystemPromptStatus();
     this._refreshPluginPanels();
     fetch(apiUrl('/api/local-url')).then(r => r.json()).then(data => {
       if (data.url) this.setState({ localUrl: data.url });
@@ -974,14 +928,6 @@ class AppHeader extends React.Component {
     }
     if (prevProps.cacheExpireAt !== this.props.cacheExpireAt) {
       this.startCountdown();
-    }
-    // 激活态依赖「当前模型 + 当前工作区」：代理配置/工作区任一变化都可能翻转命中结果。
-    // proxyProfiles 引用在两次真实拉取之间保持稳定(AppBase state)，本组件的 setState 不会
-    // 改动 props → 该 guard 不会自触发循环。
-    if (prevProps.activeProxyId !== this.props.activeProxyId
-      || prevProps.proxyProfiles !== this.props.proxyProfiles
-      || prevProps.projectName !== this.props.projectName) {
-      this.reloadSystemPromptStatus();
     }
     // Workspace 切换 OR viewed-project 切换：viewProject 变了 → 旧的 _fsSkills/_memory/_claudeMd
     // 属于旧 viewed 项目，直接作废（multi-project 2026-10；viewProject = viewedProject || projectName）。
@@ -2321,10 +2267,6 @@ class AppHeader extends React.Component {
             // 但保留在 pinnedMenuKeys，切回对应模式自动恢复)。Electron 下走原生 tab bar(见 _buildHeaderModel.pins)。
             const descByKey = new Map(this._getMenuDescriptors().map(d => [d.key, d]));
             const pins = this.state.pinnedKeys.map(k => descByKey.get(k)).filter(Boolean);
-            // 「系统提示词修改」激活(下次启动会注入提示词)且未被手动钉住时，入口自动露出；
-            // 合入 pins 后再判空 —— 否则零钉住用户永远看不到这个自动入口。
-            const autoDesc = this._autoSystemPromptDesc(descByKey);
-            if (autoDesc) pins.push(autoDesc);
             if (pins.length === 0) return null;
             return pins.map((d) => (
               <Tooltip key={d.key} title={d.label}>
@@ -2969,11 +2911,7 @@ class AppHeader extends React.Component {
           open={this.state.systemTextModalVisible}
           project={this.props.viewProject}
           instance={this.props.viewedInstance}
-          onClose={() => {
-            this.setState({ systemTextModalVisible: false });
-            // 弹窗内保存/删除/清空都会改变激活态 → 关闭时重拉，头部自动入口随即翻转。
-            this.reloadSystemPromptStatus();
-          }}
+          onClose={() => this.setState({ systemTextModalVisible: false })}
         />
         <MessagingModal
           open={this.state.messagingModalVisible}
