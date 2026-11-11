@@ -1,0 +1,57 @@
+history.md
+  s_4c3db50dd057ea::t_3abb5e778cead9 5
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_4c3db50dd057ea::t_3e6743a6728a62 1791-1793
+  s_4c3db50dd057ea::t_0f8c855c32efa4 44
+  s_4c3db50dd057ea::t_892d0fa39f5fd1 1770
+  s_4c3db50dd057ea::t_520f1cfd8c565c 45
+apps/web/src/utils/fileDragDrop.js
+  s_4c3db50dd057ea::t_6f3c92eceeed15 5
+  s_4c3db50dd057ea::t_cd17dbe9bb314c 35-37,39
+  s_4c3db50dd057ea::t_2d3c6b02cfa4fb 14-15
+  s_4c3db50dd057ea::t_5f72e551dc6159 22,26-34
+  s_4c3db50dd057ea::t_86dea024e0177b 38
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_4c3db50dd057ea::t_ae20c3213c0a25 442-443
+  s_4c3db50dd057ea::t_404aa693d1f11e 421
+  s_4c3db50dd057ea::t_1641318584f85b 444-449
+  s_4c3db50dd057ea::t_c35c451d7bd08d 16
+  s_4c3db50dd057ea::t_2b52f5cd1f5c20 340-341
+  s_4c3db50dd057ea::t_b13f763ec480f3 17
+apps/web/src/components/files/FileExplorer.jsx
+  s_4c3db50dd057ea::t_1631517199a54f 214-215
+  s_4c3db50dd057ea::t_37c94019dc9e9a 16
+apps/web/src/components/chat/ChatView.jsx
+  s_4c3db50dd057ea::t_932bfcb2d521c9 5660
+  s_4c3db50dd057ea::t_cf7739b7ddffe9 378
+  s_4c3db50dd057ea::t_84fbbf4c21d7bd 1714,1719
+apps/web/test/file-drag-drop.test.js
+  s_4c3db50dd057ea::t_e3e5564b9fd741 5
+  s_4c3db50dd057ea::t_fe403bcb84292a 26-28,30-36,38,42-47
+  s_4c3db50dd057ea::t_94d0ed69a1e00b 107-110
+  s_4c3db50dd057ea::t_4e7b1fbe9f5d9a 99-100
+  s_4c3db50dd057ea::t_eab0fc4f8aaee0 96,98
+  s_4c3db50dd057ea::t_dde9b0eb83d534 82
+  s_4c3db50dd057ea::t_ec3c8c910d364a 29
+  s_4c3db50dd057ea::t_3ff2cf77655625 84-85
+  s_4c3db50dd057ea::t_958583f5a71643 37,39-41
+  s_4c3db50dd057ea::t_3ba9385f0fbcbb 104-106,111-117
+.changeset/folder-drag-drop.md
+  s_4c3db50dd057ea::t_6dfacdae9e7893 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "beaa2e86f2dfa451a2044348c6c14fa874419e6f",
+  "prompts": {},
+  "sessions": {
+    "s_4c3db50dd057ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0f560f51-5783-4b23-b016-0faece7151f1",
+        "model": "k3.1-pro"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
