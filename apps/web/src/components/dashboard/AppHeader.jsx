@@ -12,7 +12,7 @@ import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined,
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from '../../utils/helpers';
 import { contextSeverityColor } from '../../utils/formatters';
-import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions } from '../../utils/autoApproveOptions';
+import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions, askAutoAnswerSelectOptions, askAutoAnswerUiValue, askAutoAnswerPrefValue } from '../../utils/autoApproveOptions';
 import { classifyUserContent, isMainAgent, extractDisplayText } from '@ccv/core/contentFilter';
 import { parseImOrigin } from '../../utils/imOrigin';
 import { BLUR_MASK_STYLE } from '../../utils/modalMask';
@@ -2646,6 +2646,21 @@ class AppHeader extends React.Component {
                     value={this.props.approvalPrefs.planAutoApproveSeconds || 0}
                     onChange={(value) => this.props.onApprovalPrefsChange({ planAutoApproveSeconds: value })}
                     options={autoApproveSelectOptions(PLAN_AUTO_APPROVE_OPTIONS, t)}
+                    style={{ width: 100 }}
+                  />
+                </div>
+                <div className={styles.settingsItem}>
+                  <span className={styles.settingsLabel}>
+                    {t('ui.askAutoAnswer.setting')}
+                    <Tooltip title={t('ui.askAutoAnswer.help')} overlayInnerStyle={{ whiteSpace: 'pre-line' }}>
+                      <QuestionCircleOutlined className={styles.settingsHelpIcon} />
+                    </Tooltip>
+                  </span>
+                  <Select
+                    size="small"
+                    value={askAutoAnswerUiValue(this.props.approvalPrefs.askAutoAnswerMinutes)}
+                    onChange={(value) => this.props.onApprovalPrefsChange({ askAutoAnswerMinutes: askAutoAnswerPrefValue(value) })}
+                    options={askAutoAnswerSelectOptions(t)}
                     style={{ width: 100 }}
                   />
                 </div>

@@ -434,4 +434,89 @@ describeCli('server.js terminal WS long-poll resolution branches (CLI mode)', { 
     assert.ok(got2, 'string-form broadcastWsMessage should also reach the client');
     await conn.close();
   });
+
+  // ─────────── 问答题自动托管 (ask hosting) — WS 分支 ───────────
+  const HOST_Q = [{ question: 'Which plan?', header: 'P', multiSelect: false, options: [{ label: 'Plan A', description: '' }, { label: 'Plan B (Recommended)', description: '' }] }];
+  function writeHostingPrefs(minutes) {
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({
+      autoApproveSeconds: 0,
+      approvalModal: { planAutoApproveSeconds: 0, askAutoAnswerMinutes: minutes },
+    }));
+  }
+
+  it('hosting arms server-side: pending frame stamps autoAnswerAt; server auto-answers at deadline+buffer', async () => {
+    writeHostingPrefs(0); // 0 分钟 = instant
+    try {
+      const conn = await connectWs(base);
+      const poll = postAskHookLongPoll(port, 'askHostInstant1', HOST_Q);
+      const pending = await conn.waitFor((m) => m.type === 'ask-hook-pending' && m.id === 'askHostInstant1', 2500);
+      assert.equal(pending.autoAnswerSeconds, 0);
+      assert.ok(typeof pending.autoAnswerAt === 'number');
+      assert.equal(pending.autoCancelled, false);
+      // Instant: the server answers immediately — the long-poll resolves with the
+      // Recommended-marked option, and clients observe pending → resolved (in order).
+      const res = await poll.done;
+      assert.equal(res.status, 200);
+      assert.deepEqual(JSON.parse(res.body).answers, { 'Which plan?': 'Plan B (Recommended)' });
+      const resolved = await conn.waitFor((m) => m.type === 'ask-hook-resolved' && m.id === 'askHostInstant1' && m.reason === 'auto-answered', 2500);
+      assert.ok(resolved, 'auto-answered resolution must broadcast with reason=auto-answered');
+      await conn.close();
+    } finally {
+      writeHostingPrefs(null);
+    }
+  });
+
+  it('hosting 10min: ws replay carries autoAnswerAt; ask-auto-cancel keeps the ask pending and broadcasts; manual answer still resolves', async () => {
+    writeHostingPrefs(10);
+    try {
+      const poll = postAskHookLongPoll(port, 'askHostCancel1', HOST_Q);
+      const connA = await connectWs(base);
+      const pendingA = await connA.waitFor((m) => m.type === 'ask-hook-pending' && m.id === 'askHostCancel1', 2500);
+      assert.equal(pendingA.autoAnswerSeconds, 600);
+      assert.ok(typeof pendingA.autoAnswerAt === 'number');
+      // Reconnect replay carries the same absolute deadline.
+      const connB = await connectWs(base);
+      const replayed = await connB.waitFor((m) => m.type === 'ask-hook-pending' && m.id === 'askHostCancel1' && m.autoAnswerAt === pendingA.autoAnswerAt, 2500);
+      assert.ok(replayed, 'replay must carry the original absolute autoAnswerAt (not rebased)');
+      // Cancel hosting (not the ask): both clients get ask-auto-cancel, ask stays pending.
+      connA.send({ type: 'ask-auto-cancel', id: 'askHostCancel1' });
+      const cancelB = await connB.waitFor((m) => m.type === 'ask-auto-cancel' && m.id === 'askHostCancel1', 2500);
+      assert.ok(cancelB, 'all clients should receive ask-auto-cancel');
+      // A second replay reports the cancelled hosting (no deadline, durable flag).
+      const connC = await connectWs(base);
+      const replayedC = await connC.waitFor((m) => m.type === 'ask-hook-pending' && m.id === 'askHostCancel1', 2500);
+      assert.equal(replayedC.autoCancelled, true, 'cancelled hosting must survive replay');
+      assert.equal(replayedC.autoAnswerAt, null, 'cancelled replay must not carry a deadline');
+      // Manual answer still resolves the long-poll.
+      connA.send({ type: 'ask-hook-answer', id: 'askHostCancel1', answers: { 'Which plan?': 'Plan A' } });
+      const res = await poll.done;
+      assert.equal(res.status, 200);
+      assert.deepEqual(JSON.parse(res.body).answers, { 'Which plan?': 'Plan A' });
+      await connA.close();
+      await connB.close();
+      await connC.close();
+    } finally {
+      writeHostingPrefs(null);
+    }
+  });
+
+  it('ask-auto-cancel with an invalid id format is rejected silently', async () => {
+    const conn = await connectWs(base);
+    const seen = conn.msgs.length;
+    conn.send({ type: 'ask-auto-cancel', id: 'bad id!!' });
+    await wait(200);
+    const got = conn.msgs.slice(seen).filter((m) => m.type === 'ask-auto-cancel');
+    assert.equal(got.length, 0, 'invalid-format id must be dropped');
+    await conn.close();
+  });
+
+  it('ask-auto-cancel for an unknown id still broadcasts (sibling tabs stop their countdown)', async () => {
+    const connA = await connectWs(base);
+    const connB = await connectWs(base);
+    connA.send({ type: 'ask-auto-cancel', id: 'askGhost1' });
+    const got = await connB.waitFor((m) => m.type === 'ask-auto-cancel' && m.id === 'askGhost1', 2500);
+    assert.ok(got, 'valid id always broadcasts even with no server-side entry');
+    await connA.close();
+    await connB.close();
+  });
 });

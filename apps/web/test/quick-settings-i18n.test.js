@@ -39,6 +39,14 @@ const KEYS = [
   'ui.chatInput.clearContextConfirm',   // 复用:清空上下文 Popconfirm 文案
   'ui.chatInput.more',                  // 复用:聊天输入栏 [+] 按钮 tooltip
   'ui.common.confirmCancel',            // 复用:Popconfirm 取消按钮
+  // 问答题自动托管(快捷菜单行 + 倒计时条 + 设置面板)
+  'ui.askAutoAnswer.setting',
+  'ui.askAutoAnswer.off',
+  'ui.askAutoAnswer.instant',
+  'ui.askAutoAnswer.minutes',
+  'ui.askAutoAnswer.countdown',
+  'ui.askAutoAnswer.cancelHosting',
+  'ui.askAutoAnswer.help',
   // 项目独立配置（偏好抽屉 + 移动端设置 + 本机管理弹窗）新增 key
   'ui.projectScopedPrefs.group',
   'ui.projectScopedPrefs',

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(ask): **新增「问答题自动托管」** — 快捷设置(权限/Plan 自动审批同级)新增 0/10/20/30 分钟或不托管(默认);服务端在到点时自动回答 AskUserQuestion,不依赖浏览器在线:优先选标签带「推荐」标记(内置 18 语言词表)的第一项,否则第一项;0 分钟到达即答(适合无人值守/定时任务)。弹窗显示倒计时,可点「取消托管」仅让本题转回手动(设置对后续题仍生效);截止前手动回答以手动为准(first-write-wins)。Coverage: `ask-auto-answer.test.js`(core + app 两份), `sdk-manager-auto-approve.test.js`, `branch-routes-ask-perm.test.js`, `server-ws-branches.test.js`, `api-ask-perm-extra.test.js`, `ask-flow-controller.test.js`, `auto-approve-options.test.js`, `deadline-countdown.test.js`, `ask-auto-answer-menu.test.js`, `quick-settings-i18n.test.js`.
+
 - fix(kimi-k3): **Kimi K3 system prompt 新增工具错误熔断段** — 报错先诊断再行动、区分参数非法与瞬时故障、同工具同参数最多重试 1 次、连续失败 2 次立即停手向用户报告，修复 TaskUpdate 空调用死循环。
 
 ## 1.9.23

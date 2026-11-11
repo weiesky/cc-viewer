@@ -1795,8 +1795,10 @@ class TerminalPanel extends React.Component {
                   <QuickAutoApproveRows
                     autoApproveSeconds={this.props.autoApproveSeconds}
                     planAutoApproveSeconds={this.props.planAutoApproveSeconds}
+                    askAutoAnswerMinutes={this.props.askAutoAnswerMinutes}
                     onAutoApproveChange={this.props.onAutoApproveChange}
                     onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
+                    onAskAutoAnswerChange={this.props.onAskAutoAnswerChange}
                     expandedKey={this.state.quickSettingsExpanded}
                     onToggle={(k) => this.setState({ quickSettingsExpanded: k })}
                     onHoverEnter={this._qmHover.enter}

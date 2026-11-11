@@ -3,6 +3,7 @@ import { Checkbox, Input } from 'antd';
 import { t } from '../../i18n';
 import { optionAriaLabel, hasOptionDescription } from '../../utils/askOptionDesc';
 import AskTimeoutCountdown from './AskTimeoutCountdown';
+import AskAutoHostCountdown from './AskAutoHostCountdown';
 import styles from './ChatMessage.module.css';
 
 /**
@@ -252,6 +253,11 @@ export default class AskQuestionForm extends React.Component {
           );
         })}
         <AskTimeoutCountdown startedAt={this.props.startedAt} timeoutMs={this.props.timeoutMs} />
+        <AskAutoHostCountdown
+          autoAnswerAt={this.props.autoAnswerAt}
+          autoCancelled={this.props.autoCancelled}
+          onCancelHosting={this.props.onCancelAutoHosting}
+        />
         <div className={styles.askSubmitRow}>
           {this.props.onCancel && (
             <button

@@ -778,6 +778,8 @@ class ChatView extends React.Component {
       // 审批档位值要直达终端工具栏快捷菜单：不能只依赖 preferences 引用同批变化放行
       nextProps.autoApproveSeconds !== this.props.autoApproveSeconds ||
       nextProps.planAutoApproveSeconds !== this.props.planAutoApproveSeconds ||
+      // 「问答题自动托管」档位同样直达快捷菜单（分钟语义,null=不托管）
+      nextProps.askAutoAnswerMinutes !== this.props.askAutoAnswerMinutes ||
       // Session-history star-menu row (2026-10-06): the viewed project + attached session +
       // the resume handler feed the row's list scope / blue dot / confirm, so they must
       // re-render ChatView (and re-thread into ChatInputBar/TerminalPanel) on change.
@@ -1077,12 +1079,22 @@ class ChatView extends React.Component {
         }
       } catch { /* never throw from componentDidUpdate */ }
     }
-    if (prevState.pendingAsk !== this.state.pendingAsk) {
+    // Hosting: the fallback modal snapshots askAutoAnswerAt/askAutoCancelled at bubble time;
+    // a meta-only change (ask-auto-cancel local/sibling, replay re-stamp) keeps pendingAsk's
+    // identity, so re-bubble on an askMetaMap reference change too — same id, so the modal's
+    // dismissed state is preserved (shouldWipeApprovalDismissal).
+    const askMetaChanged = prevState.askMetaMap !== this.state.askMetaMap;
+    if (prevState.pendingAsk !== this.state.pendingAsk || (askMetaChanged && this.state.pendingAsk)) {
       if (this.props.onPendingAsk) {
         if (this.state.pendingAsk) {
+          // Hosting fields ride the bubble so the ApprovalModal FALLBACK form (no
+          // transcript portal yet) renders the same countdown strip + cancel button.
+          const askMeta = this.state.pendingAsk?.id ? this.state.askMetaMap?.[this.state.pendingAsk.id] : null;
           this.props.onPendingAsk({
             ask: this.state.pendingAsk,
-            handlers: { submit: this.handleAskQuestionSubmit, cancel: this.handleAskCancel },
+            askAutoAnswerAt: askMeta?.autoAnswerAt ?? null,
+            askAutoCancelled: askMeta?.autoCancelled === true,
+            handlers: { submit: this.handleAskQuestionSubmit, cancel: this.handleAskCancel, cancelAutoHosting: this.handleAskAutoCancel },
           });
         } else {
           // The view-switch clear above wipes pendingAsk but is NOT a real dismissal —
@@ -2090,7 +2102,7 @@ class ChatView extends React.Component {
         }
         if (asstContent) {
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
+            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} onAskQuestionAutoCancel={this.handleAskAutoCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
           );
         }
       } else if (msg.role === 'system') {
@@ -2365,7 +2377,13 @@ class ChatView extends React.Component {
     // 与 sdkMode 纳入签名，让 session item cache 在 plan 到达/决议时失效以重建 lastPendingPlanId。
     const { showThinkingSummaries } = this.props;
     const activePromptIds = (this.state.ptyPromptHistory || []).filter(p => p.status === 'active').map(p => p.id).join(',');
-    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.pendingPlanApproval?.id || ''}|${!!this.props.sdkMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}|${queuedPromptsSignature(mainAgentSessions.map((session) => session._ccvQueuedPrompts || []).flat())}`;
+    // ask hosting (问答题自动托管): pendingAsk identity + askMetaMap reference must invalidate
+    // the session-item cache, else a cached ChatMessage element keeps a frozen askMetaMap
+    // (autoAnswerAt/autoCancelled) and the hosting countdown never appears / never clears.
+    // askMetaMap is rebuilt by _stampAskMeta / the ask-auto-cancel branch with a fresh object
+    // identity on every change, so a reference compare is the version signal.
+    const pendingAskId = this.state.pendingAsk?.id || '';
+    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.pendingPlanApproval?.id || ''}|${!!this.props.sdkMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}|${pendingAskId}|${queuedPromptsSignature(mainAgentSessions.map((session) => session._ccvQueuedPrompts || []).flat())}`;
     if (toggleSig !== this._itemCacheToggleSig) {
       this._sessionItemCache = [];
       this._itemCacheToggleSig = toggleSig;
@@ -2485,6 +2503,12 @@ class ChatView extends React.Component {
         // 刷新持有相应 tool_use 的旧 element 的 prop，避免 React 因 element 引用未变跳过 SCU 让卡片永远停在 pending 视图。
         msgs = refreshCachedItemProp(sc.items, sc.planApprovalMap, mergedPlanApprovalMap, 'ExitPlanMode', 'planApprovalMap');
         msgs = refreshCachedItemProp(msgs, sc.askAnswerMap, mergedAskAnswerMap, 'AskUserQuestion', 'askAnswerMap');
+        // Hosting (问答题自动托管): refresh the frozen askMetaMap + pendingAsk on cached
+        // AskUserQuestion cards when those references change — a stamped autoAnswerAt must
+        // reach the countdown, and an ask-auto-cancel must clear it. Reference compare is
+        // the signal (askMetaMap is rebuilt per change; pendingAsk identity flips on promote).
+        msgs = refreshCachedItemProp(msgs, sc.askMetaMap, this.state.askMetaMap, 'AskUserQuestion', 'askMetaMap');
+        msgs = refreshCachedItemProp(msgs, sc.pendingAsk, this.state.pendingAsk, 'AskUserQuestion', 'pendingAsk');
         // Heal rows whose modelInfo was baked null before the request scan
         // could resolve the producer (post-refresh race). The resolver closes
         // over caches rebuilt earlier in THIS call; the write-back below
@@ -2500,6 +2524,9 @@ class ChatView extends React.Component {
         // 旧段同样要刷新 planApprovalMap / askAnswerMap prop（同 FULL HIT 理由）
         msgs = refreshCachedItemProp(sc.items, sc.planApprovalMap, mergedPlanApprovalMap, 'ExitPlanMode', 'planApprovalMap').slice();
         msgs = refreshCachedItemProp(msgs, sc.askAnswerMap, mergedAskAnswerMap, 'AskUserQuestion', 'askAnswerMap');
+        // Hosting: keep the reused old segment's askMetaMap / pendingAsk current (same reason).
+        msgs = refreshCachedItemProp(msgs, sc.askMetaMap, this.state.askMetaMap, 'AskUserQuestion', 'askMetaMap');
+        msgs = refreshCachedItemProp(msgs, sc.pendingAsk, this.state.pendingAsk, 'AskUserQuestion', 'pendingAsk');
         // Same modelInfo healing for the reused old segment (see FULL HIT above).
         // MUST stay the PRECISE resolver — never sessionResolveModelInfo.
         msgs = refreshResolvedModelInfo(msgs, resolveModelInfo);
@@ -2568,6 +2595,11 @@ class ChatView extends React.Component {
         // 记下本轮 planApprovalMap / askAnswerMap 引用，下轮 FULL HIT / INCREMENTAL 据此判断是否要刷新旧 element 的 prop。
         planApprovalMap: mergedPlanApprovalMap,
         askAnswerMap: mergedAskAnswerMap,
+        // Hosting: remember this round's askMetaMap / pendingAsk references so a later
+        // FULL HIT / INCREMENTAL can detect a stamped deadline or a cancel and refresh
+        // the frozen props on cached AskUserQuestion cards.
+        askMetaMap: this.state.askMetaMap,
+        pendingAsk: this.state.pendingAsk,
       };
       // LR 持有交互权 → 派生新的 msgs 数组（不污染 cache.items），让 messages-side 同 toolId 卡降级成静态展示，
       // 保证唯一交互点是 LR <ChatMessage key="resp-asst">。
@@ -2691,7 +2723,7 @@ class ChatView extends React.Component {
                 <Divider className={styles.lastResponseDivider}>
                   <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
                 </Divider>
-                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
+                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} onAskQuestionAutoCancel={this.handleAskAutoCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
               </React.Fragment>
             );
           }
@@ -3800,6 +3832,9 @@ class ChatView extends React.Component {
 
   // 委托 → AskFlowController（handleAskCancel 是 public 入口：bubble handlers + ChatMessage props 引用）
   handleAskCancel = (askId, reason) => this._askFlow.handleAskCancel(askId, reason);
+
+  // 「取消托管」入口:销毁服务端本题托管定时器,题保持 pending 等手动回答;全局设置不变。
+  handleAskAutoCancel = (askId) => this._askFlow.handleAskAutoCancel(askId);
 
   /**
    * Send queued user message after ack received (or 500ms timeout best effort).
@@ -5663,6 +5698,8 @@ class ChatView extends React.Component {
               onAutoApproveChange={this.props.onAutoApproveChange}
               planAutoApproveSeconds={this.props.planAutoApproveSeconds}
               onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
+              askAutoAnswerMinutes={this.props.askAutoAnswerMinutes}
+              onAskAutoAnswerChange={this.props.onAskAutoAnswerChange}
               agentTeamEnabled={this.state.agentTeamEnabled}
               onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
               viewProject={this.props.viewProject}
@@ -5787,6 +5824,8 @@ class ChatView extends React.Component {
                 onAutoApproveChange={this.props.onAutoApproveChange}
                 planAutoApproveSeconds={this.props.planAutoApproveSeconds}
                 onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
+                askAutoAnswerMinutes={this.props.askAutoAnswerMinutes}
+                onAskAutoAnswerChange={this.props.onAskAutoAnswerChange}
                 isStreaming={uiStreaming}
                 onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
                 viewProject={this.props.viewProject}

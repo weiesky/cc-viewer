@@ -279,8 +279,171 @@ describe('sdk-manager 服务端自动审批 — 安全底线', () => {
   });
 });
 
+describe('sdk-manager 问答题自动托管 — ask hosting', () => {
+  const ASK_INPUT = {
+    questions: [{
+      question: 'Which plan?',
+      header: 'Plan',
+      multiSelect: false,
+      options: [
+        { label: 'Plan A', description: '' },
+        { label: 'Plan B (Recommended)', description: '' },
+      ],
+    }],
+  };
+
+  it('0 分钟（即时）：无需手动应答即 allow，answers 选 Recommended 项，广播 auto-answered', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'ask-instant' }, deps, broadcasts };
+    await drivePending({
+      toolName: 'AskUserQuestion', input: ASK_INPUT, ctrl,
+      broadcastType: 'sdk-ask-resolved',
+      prefs: { approvalModal: { askAutoAnswerMinutes: 0 } },
+    });
+    // Instant hosting fires synchronously at arm time — the canUseTool promise
+    // resolves without any manual answer.
+    await waitMicro(() => ctrl.result !== undefined);
+    assert.equal(ctrl.result.behavior, 'allow');
+    assert.deepEqual(ctrl.result.updatedInput.answers, { 'Which plan?': 'Plan B (Recommended)' });
+    const resolved = broadcasts.find((b) => b.type === 'sdk-ask-resolved' && b.id === 'ask-instant');
+    assert.equal(resolved?.reason, 'auto-answered');
+  });
+
+  it('10 分钟：pending 帧带 autoAnswerAt≈now+600000；tick 601000 自动 allow + 广播 auto-answered', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const { deps, broadcasts } = makeDeps();
+      const ctrl = { cutOpts: { toolUseID: 'ask-10min' }, deps, broadcasts };
+      await drivePending({
+        toolName: 'AskUserQuestion', input: ASK_INPUT, ctrl,
+        broadcastType: 'sdk-ask-pending',
+        prefs: { approvalModal: { askAutoAnswerMinutes: 10 } },
+      });
+      const frame = broadcasts.find((b) => b.type === 'sdk-ask-pending' && b.id === 'ask-10min');
+      assert.equal(frame.autoAnswerSeconds, 600);
+      assert.ok(Math.abs(frame.autoAnswerAt - (Date.now() + 600_000)) < 2000, 'deadline ≈ now + 10min');
+      assert.equal(frame.autoCancelled, false);
+      mock.timers.tick(601_000); // 10min + 1s buffer
+      await tick();
+      assert.equal(ctrl.result?.behavior, 'allow');
+      assert.deepEqual(ctrl.result.updatedInput.answers, { 'Which plan?': 'Plan B (Recommended)' });
+      const resolved = broadcasts.find((b) => b.type === 'sdk-ask-resolved' && b.id === 'ask-10min');
+      assert.equal(resolved?.reason, 'auto-answered');
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it('无可选项（仅 Other）的题不托管：无 autoAnswerAt，到期不点火', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const { deps, broadcasts } = makeDeps();
+      const ctrl = { cutOpts: { toolUseID: 'ask-other' }, deps, broadcasts };
+      await drivePending({
+        toolName: 'AskUserQuestion',
+        input: { questions: [{ question: 'Q?', header: 'h', multiSelect: false, options: [{ label: 'Other', description: '' }] }] },
+        ctrl,
+        broadcastType: 'sdk-ask-pending',
+        prefs: { approvalModal: { askAutoAnswerMinutes: 10 } },
+      });
+      const frame = broadcasts.find((b) => b.type === 'sdk-ask-pending' && b.id === 'ask-other');
+      assert.equal(frame.autoAnswerAt, null);
+      mock.timers.tick(601_000);
+      await tick();
+      assert.equal(ctrl.result, undefined, 'no selectable option → never auto-fires');
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it('autoCancelApproval(ask)：广播 ask-auto-cancel，到期不点火、仍 pending、快照 autoCancelled=true、手动 resolve 仍可用、幂等', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const { deps, broadcasts } = makeDeps();
+      const ctrl = { cutOpts: { toolUseID: 'ask-cancel' }, deps, broadcasts };
+      await drivePending({
+        toolName: 'AskUserQuestion', input: ASK_INPUT, ctrl,
+        broadcastType: 'sdk-ask-pending',
+        prefs: { approvalModal: { askAutoAnswerMinutes: 10 } },
+      });
+      assert.equal(sdk.autoCancelApproval('ask-cancel', 'ask'), true);
+      assert.ok(broadcasts.some((b) => b.type === 'ask-auto-cancel' && b.id === 'ask-cancel'));
+      const snap = sdk.getPendingApprovals().find((p) => p.id === 'ask-cancel');
+      assert.equal(snap.autoCancelled, true);
+      assert.equal(snap.autoAnswerAt, null, 'cancelled hosting replays a null deadline');
+      mock.timers.tick(601_000);
+      await tick();
+      assert.equal(ctrl.result, undefined, 'cancelled hosting never fires');
+      assert.equal(sdk.autoCancelApproval('ask-cancel', 'ask'), true, 'repeat cancel stays durable');
+      assert.equal(broadcasts.filter((b) => b.type === 'ask-auto-cancel').length, 1, 'no re-broadcast on repeat');
+      // Manual answer still works after the hosting cancel.
+      assert.equal(sdk.resolveApproval('ask-cancel', { 'Which plan?': 'Plan A' }), true);
+      await tick();
+      assert.equal(ctrl.result?.behavior, 'allow');
+      assert.deepEqual(ctrl.result.updatedInput.answers, { 'Which plan?': 'Plan A' });
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it('scheduled-task（ephemeral, ctx 非空）也托管 — 0 分钟档专为无人值守流程', async () => {
+    writePrefs({ approvalModal: { askAutoAnswerMinutes: 0 } });
+    sdk.setSdkLaunchConfig({
+      permissionMode: 'default',
+      env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:9' },
+      settings: null, model: null, userArgs: [], claudeExecutable: null,
+    });
+    const fakeQuery = () => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'eph-ask-sid' };
+        await new Promise(() => {}); // turn never completes; canUseTool resolves via hosting
+      },
+      close() {},
+    });
+    let capturedOpts = null;
+    sdk.__setQueryForTests(({ options } = {}) => {
+      capturedOpts = options;
+      return fakeQuery();
+    });
+    const runP = sdk.spawnEphemeralSession('do it', { cwd: tmpDir, project: 'proj' });
+    runP.catch(() => {});
+    await waitMicro(() => !!capturedOpts);
+    const p = capturedOpts.canUseTool('AskUserQuestion', ASK_INPUT, { toolUseID: 'eph-ask' });
+    p.catch(() => {});
+    // Instant hosting resolves without any client connected.
+    const r = await p;
+    assert.equal(r.behavior, 'allow');
+    assert.deepEqual(r.updatedInput.answers, { 'Which plan?': 'Plan B (Recommended)' });
+    sdk.cancelEphemeralSession?.(runP).catch?.(() => {});
+  });
+
+  it('手动答案在 deadline 前到达 → 以手动为准,托管 timer 不再二次点火/广播', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const { deps, broadcasts } = makeDeps();
+      const ctrl = { cutOpts: { toolUseID: 'ask-manual-win' }, deps, broadcasts };
+      await drivePending({
+        toolName: 'AskUserQuestion', input: ASK_INPUT, ctrl,
+        broadcastType: 'sdk-ask-pending',
+        prefs: { approvalModal: { askAutoAnswerMinutes: 10 } },
+      });
+      // Human answers before the deadline.
+      assert.equal(sdk.resolveApproval('ask-manual-win', { 'Which plan?': 'Plan A' }), true);
+      await tick();
+      assert.equal(ctrl.result?.behavior, 'allow');
+      assert.deepEqual(ctrl.result.updatedInput.answers, { 'Which plan?': 'Plan A' }, 'manual answer wins');
+      // Tick past the hosting deadline: the armed timer must not re-resolve or re-broadcast.
+      mock.timers.tick(601_000);
+      await tick();
+      assert.equal(broadcasts.some((b) => b.type === 'sdk-ask-resolved' && b.id === 'ask-manual-win' && b.reason === 'auto-answered'), false, 'no auto-answered broadcast after a manual answer');
+    } finally {
+      mock.timers.reset();
+    }
+  });
+});
+
 describe('sdk-manager 服务端自动审批 — autoCancelApproval', () => {
-  it('ask（AskUserQuestion）永不自动审批（autoApproveSeconds 设置不影响 ask 分支）', async () => {
+  it('ask（AskUserQuestion）默认不托管（autoApproveSeconds/planAutoApprove 设置不影响 ask 分支）', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
     try {
       const { deps, broadcasts } = makeDeps();
@@ -293,11 +456,22 @@ describe('sdk-manager 服务端自动审批 — autoCancelApproval', () => {
       const frame = broadcasts.find((b) => b.type === 'sdk-ask-pending' && b.id === 'ask-never');
       assert.ok(frame.instanceKey, 'ask frame must carry instanceKey (multi-instance replay)');
       const snap = sdk.getPendingApprovals().find((p) => p.id === 'ask-never');
-      assert.equal(snap.autoApproveAt, null, 'ask must never carry an auto-approve deadline');
+      assert.equal(snap.autoApproveAt, undefined, 'ask must never carry an auto-approve deadline');
+      // Hosting fields are always stamped (null = server says OFF) so a reconnecting
+      // client never falls back to its local pref.
+      assert.deepEqual(
+        { autoAnswerAt: snap.autoAnswerAt, autoAnswerSeconds: snap.autoAnswerSeconds, autoCancelled: snap.autoCancelled },
+        { autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false },
+      );
+      assert.deepEqual(
+        { autoAnswerAt: frame.autoAnswerAt, autoAnswerSeconds: frame.autoAnswerSeconds, autoCancelled: frame.autoCancelled },
+        { autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false },
+        'pending frame must stamp hosting-off explicitly',
+      );
       mock.timers.tick(10_000);
       await tick();
-      assert.equal(ctrl.result, undefined, 'ask must not auto-fire even in instant mode');
-      assert.equal(sdk.autoCancelApproval('ask-never', 'ask'), false, 'autoCancel is plan/perm only');
+      assert.equal(ctrl.result, undefined, 'ask must not auto-fire when hosting is off');
+      assert.equal(sdk.autoCancelApproval('ask-never', 'ask'), false, 'autoCancel on an unhosted ask is a no-op');
     } finally {
       mock.timers.reset();
     }

@@ -53,6 +53,7 @@ import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { cancelAutoApproveState } from './lib/auto-approve.js';
+import { cancelAskAutoAnswerState, replayAskAutoAnswerFields } from './lib/ask-auto-answer.js';
 import { initScheduledTaskScheduler, startScheduledTaskScheduler, stopScheduledTaskScheduler } from './lib/scheduled-task-scheduler.js';
 import { executeScheduledTask } from './lib/scheduled-task-executor.js';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
@@ -760,6 +761,7 @@ const deps = {
   shortPollListeners,
   askWaiterLastPoll,
   notifyShortPollCancel: _notifyShortPollCancel,
+  notifyShortPollAnswer: _notifyShortPollAnswer,
   editorSessions,
   gitRestoreLocks,
   liveStreamLastSeq: _liveStreamLastSeq,
@@ -1742,6 +1744,7 @@ function _buildPluginInteractions() {
       if (!entry) return false;
       const { res: hookRes, timer } = entry;
       clearTimeout(timer);
+      if (entry.auto?.timer) clearTimeout(entry.auto.timer); // hosting timer must not fire post-resolve
       pendingAskHooks.delete(id);
       _persistAskDelete(id);
       try {
@@ -2264,6 +2267,10 @@ async function setupTerminalWebSocket(httpServer) {
             questions: entry.questions,
             startedAt: now,        // 让前端按"还剩 remaining"起算（不是原 createdAt）
             timeoutMs: remaining,  // 剩余可用时间
+            // Hosting fields: keep the original absolute autoAnswerAt (do not rebase)
+            // so a reconnected client's countdown stays on the server deadline, and a
+            // cancelled hosting never re-arms.
+            ...replayAskAutoAnswerFields(entry.auto, entry.autoCancelled),
           }));
         } catch {}
       }
@@ -2326,6 +2333,13 @@ async function setupTerminalWebSocket(httpServer) {
           if (p.kind === 'ask') {
             payload.startedAt = Date.now();
             payload.timeoutMs = p.remainingMs;
+            // Hosting fields (autoAnswerAt / autoAnswerSeconds / autoCancelled) come
+            // from the sdk-manager snapshot (_getPendingApprovals) — stamp them so a
+            // reconnected client restores the server deadline countdown and a
+            // cancelled hosting never re-arms.
+            payload.autoAnswerAt = p.autoAnswerAt ?? null;
+            payload.autoAnswerSeconds = p.autoAnswerSeconds ?? null;
+            payload.autoCancelled = p.autoCancelled === true;
           } else {
             // plan/perm: carry the server-side auto-approve deadline so a reconnected
             // client renders the REMAINING time (and a cancelled one never re-arms)
@@ -2765,6 +2779,9 @@ async function setupTerminalWebSocket(httpServer) {
             if (askEntry) {
               const { res: hookRes, timer } = askEntry;
               clearTimeout(timer);
+              // Client answer wins: destroy the hosting timer so it cannot fire a
+              // second, stale auto-answer after the manual one (perm parity :2856).
+              if (askEntry.auto?.timer) clearTimeout(askEntry.auto.timer);
               pendingAskHooks.delete(askId);
               // Phase 3: short-poll 模式不立即删 disk —— 落 answered 让 GET listener / disk consume 拿
               if (askEntry.shortPoll) {
@@ -2910,6 +2927,7 @@ async function setupTerminalWebSocket(httpServer) {
               if (askEntry) {
                 const { res: hookRes, timer } = askEntry;
                 if (timer) clearTimeout(timer);
+                if (askEntry.auto?.timer) clearTimeout(askEntry.auto.timer);
                 pendingAskHooks.delete(cancelId);
                 // Phase 3: short-poll 同样要让 disk + listener 知道，否则 ask-bridge 永远收不到 cancelled
                 if (askEntry.shortPoll) {
@@ -3013,6 +3031,40 @@ async function setupTerminalWebSocket(httpServer) {
                   });
                 }
               }
+            }
+          } else if (msg.type === 'ask-auto-cancel') {
+            // Client cancelled the AskUserQuestion hosting ("取消托管") for ONE ask:
+            // destroys the server-side hosting timer (SDK pending or PTY-hook entry),
+            // the ask REMAINS pending for a manual answer, and the cancelled state is
+            // replayed to fresh clients so they never re-arm the countdown. The global
+            // setting is untouched — later asks are still hosted. Never a
+            // pending-remove: the ask itself stays open.
+            const rawAskAutoCancelId = msg.id != null ? String(msg.id) : null;
+            const askAutoCancelId = validateApprovalId(msg.id);
+            if (rawAskAutoCancelId && !askAutoCancelId) {
+              console.warn('[server] ask-auto-cancel rejected: invalid id format');
+              return;
+            }
+            let askAutoCancelHandled = false;
+            let sdkBroadcast = false;
+            if (askAutoCancelId && _sdkAutoCancelApproval) {
+              try { askAutoCancelHandled = _sdkAutoCancelApproval(askAutoCancelId, 'ask') === true; } catch (err) { reportSwallowed('server.ask-auto-cancel', err); }
+              sdkBroadcast = askAutoCancelHandled; // SDK's _autoCancelApproval already broadcast
+            }
+            if (!askAutoCancelHandled && askAutoCancelId) {
+              const hookEntry = pendingAskHooks.get(askAutoCancelId);
+              if (hookEntry) {
+                askAutoCancelHandled = cancelAskAutoAnswerState(hookEntry);
+              }
+            }
+            // Broadcast a valid id unless the SDK branch already emitted the same frame.
+            // The PTY/unknown path always relays: sibling tabs may still be counting down
+            // even if this server's entry is already gone (restart / answered elsewhere).
+            if (askAutoCancelId && !sdkBroadcast && terminalWss) {
+              const cmsg = JSON.stringify({ type: 'ask-auto-cancel', id: askAutoCancelId });
+              terminalWss.clients.forEach((c) => {
+                if (c.readyState === 1) try { c.send(cmsg); } catch {}
+              });
             }
           } else if (msg.type === 'sdk-plan-answer') {
             // Plan approval in SDK mode

@@ -10449,6 +10449,74 @@ const i18nData = {
     "ar": "إلغاء", "no": "Avbryt", "pt-BR": "Cancelar",
     "th": "ยกเลิก", "tr": "İptal", "uk": "Скасувати"
   },
+  "ui.askAutoAnswer.setting": {
+    "zh": "问答题自动托管", "en": "Question auto-answer", "zh-TW": "問答題自動託管",
+    "ko": "질문 자동 응답", "ja": "質問の自動応答", "de": "Fragen auto-beantworten",
+    "es": "Respuesta automática", "fr": "Réponse auto aux questions", "it": "Risposta automatica",
+    "da": "Auto-svar på spørgsmål", "pl": "Auto-odpowiedź na pytania", "ru": "Автоответ на вопросы",
+    "ar": "الرد التلقائي على الأسئلة", "no": "Auto-svar på spørsmål", "pt-BR": "Resposta automática",
+    "th": "ตอบคำถามอัตโนมัติ", "tr": "Soruları otomatik yanıtla", "uk": "Автовідповідь на питання"
+  },
+  "ui.askAutoAnswer.off": {
+    "zh": "不托管", "en": "Off", "zh-TW": "不託管",
+    "ko": "끄기", "ja": "オフ", "de": "Aus",
+    "es": "Desactivado", "fr": "Désactivé", "it": "Disattivato",
+    "da": "Fra", "pl": "Wył.", "ru": "Выкл",
+    "ar": "إيقاف", "no": "Av", "pt-BR": "Desativado",
+    "th": "ปิด", "tr": "Kapalı", "uk": "Вимк"
+  },
+  "ui.askAutoAnswer.instant": {
+    "zh": "0 分钟(立即)", "en": "0 min (instant)", "zh-TW": "0 分鐘(立即)",
+    "ko": "0분 (즉시)", "ja": "0 分(即時)", "de": "0 Min. (sofort)",
+    "es": "0 min (inmediato)", "fr": "0 min (immédiat)", "it": "0 min (immediato)",
+    "da": "0 min (straks)", "pl": "0 min (natychmiast)", "ru": "0 мин (сразу)",
+    "ar": "0 دقيقة (فوري)", "no": "0 min (umiddelbart)", "pt-BR": "0 min (imediato)",
+    "th": "0 นาที (ทันที)", "tr": "0 dk (anında)", "uk": "0 хв (одразу)"
+  },
+  "ui.askAutoAnswer.minutes": {
+    "zh": "{n} 分钟", "en": "{n} min", "zh-TW": "{n} 分鐘",
+    "ko": "{n}분", "ja": "{n} 分", "de": "{n} Min.",
+    "es": "{n} min", "fr": "{n} min", "it": "{n} min",
+    "da": "{n} min", "pl": "{n} min", "ru": "{n} мин",
+    "ar": "{n} دقيقة", "no": "{n} min", "pt-BR": "{n} min",
+    "th": "{n} นาที", "tr": "{n} dk", "uk": "{n} хв"
+  },
+  "ui.askAutoAnswer.countdown": {
+    "zh": "{time} 后自动回答", "en": "Auto-answering in {time}", "zh-TW": "{time} 後自動回答",
+    "ko": "{time} 후 자동 응답", "ja": "{time} 後に自動応答", "de": "Auto-Antwort in {time}",
+    "es": "Respuesta automática en {time}", "fr": "Réponse auto dans {time}", "it": "Risposta automatica tra {time}",
+    "da": "Auto-svar om {time}", "pl": "Auto-odpowiedź za {time}", "ru": "Автоответ через {time}",
+    "ar": "رد تلقائي خلال {time}", "no": "Auto-svar om {time}", "pt-BR": "Resposta automática em {time}",
+    "th": "ตอบอัตโนมัติใน {time}", "tr": "{time} sonra otomatik yanıt", "uk": "Автовідповідь через {time}"
+  },
+  "ui.askAutoAnswer.cancelHosting": {
+    "zh": "取消托管", "en": "Cancel auto-answer", "zh-TW": "取消託管",
+    "ko": "자동 응답 취소", "ja": "自動応答をキャンセル", "de": "Auto-Antwort abbrechen",
+    "es": "Cancelar respuesta auto", "fr": "Annuler la réponse auto", "it": "Annulla risposta auto",
+    "da": "Annuller auto-svar", "pl": "Anuluj auto-odpowiedź", "ru": "Отменить автоответ",
+    "ar": "إلغاء الرد التلقائي", "no": "Avbryt auto-svar", "pt-BR": "Cancelar resposta auto",
+    "th": "ยกเลิกการตอบอัตโนมัติ", "tr": "Otomatik yanıtı iptal et", "uk": "Скасувати автовідповідь"
+  },
+  "ui.askAutoAnswer.help": {
+    "zh": "开启后,AskUserQuestion 弹出时由服务端在设定时间后自动回答,不依赖浏览器在线:「0 分钟」到达即答(适合无人值守)。\n\n自动选题规则:优先选择标签带「推荐」二字(多语言识别)的第一项,没有推荐项则选第一项。\n\n倒计时期间你可以手动回答(以你的回答为准),也可以点「取消托管」仅让本题转回手动,设置对后续题目仍生效。",
+    "en": "When enabled, the server answers AskUserQuestion prompts itself after the chosen delay — no browser connection needed. \"0 min\" answers immediately (for unattended runs). \n\nPick rule: the first option whose label carries a \"Recommended\" marker (matched across languages) wins; with no marker, the first option wins. \n\nDuring the countdown you can answer manually (your answer wins), or click \"Cancel auto-answer\" to keep only this question manual — the setting stays on for later questions.",
+    "zh-TW": "開啟後,AskUserQuestion 彈出時由服務端在設定時間後自動回答,不依賴瀏覽器在線:「0 分鐘」到達即答(適合無人值守)。\n\n自動選題規則:優先選擇標籤帶「推薦」二字(多語言識別)的第一項,沒有推薦項則選第一項。\n\n倒計時期間你可以手動回答(以你的回答為準),也可以點「取消託管」僅讓本題轉回手動,設置對後續題目仍生效。",
+    "ko": "켜면 AskUserQuestion이 뜰 때 서버가 설정한 시간 후 자동으로 응답하며 브라우저 연결이 필요 없습니다. 「0분」은 도착 즉시 응답합니다(무인 실행에 적합). \n\n자동 선택 규칙: 레이블에 「추천」 표시(다국어 인식)가 있는 첫 번째 항목을 우선 선택하고, 없으면 첫 번째 항목을 선택합니다. \n\n카운트다운 중 직접 응답하면 그 응답이 우선이며, 「자동 응답 취소」를 누르면 이 질문만 수동으로 전환되고 설정은 다음 질문에도 유지됩니다.",
+    "ja": "オンにすると、AskUserQuestion が表示されたときサーバーが設定時間後に自動応答します(ブラウザ接続不要)。「0 分」は到着即応答(無人実行向け)。\n\n自動選択ルール:ラベルに「推奨」マーカー(多言語対応)を含む最初の項目を優先し、なければ最初の項目を選択します。\n\nカウントダウン中に手動で回答すればそちらが優先され、「自動応答をキャンセル」でこの質問だけ手動に戻せます。設定は以降の質問にも有効です。",
+    "de": "Wenn aktiviert, beantwortet der Server AskUserQuestion-Dialoge nach der gewählten Verzögerung selbst — keine Browser-Verbindung nötig. „0 Min.“ antwortet sofort (für unbeaufsichtigte Läufe). \n\nAuswahlregel: die erste Option, deren Label einen „Empfohlen“-Marker trägt (mehrsprachig erkannt), gewinnt; ohne Marker gewinnt die erste Option. \n\nWährend des Countdowns kannst du manuell antworten (deine Antwort gewinnt) oder per „Auto-Antwort abbrechen“ nur diese Frage manuell stellen — die Einstellung bleibt für spätere Fragen aktiv.",
+    "es": "Al activarlo, el servidor responde los diálogos AskUserQuestion tras el retardo elegido, sin necesidad de navegador. «0 min» responde al instante (para ejecuciones desatendidas). \n\nRegla de selección: gana la primera opción cuya etiqueta lleva un marcador «Recomendado» (reconocido en varios idiomas); sin marcador, gana la primera opción. \n\nDurante la cuenta atrás puedes responder manualmente (tu respuesta gana) o pulsar «Cancelar respuesta auto» para dejar solo esta pregunta en manual — el ajuste sigue activo para las siguientes.",
+    "fr": "Si activé, le serveur répond lui-même aux dialogues AskUserQuestion après le délai choisi — sans connexion navigateur. « 0 min » répond immédiatement (pour les exécutions sans surveillance). \n\nRègle de choix : la première option dont le libellé porte un marqueur « Recommandé » (reconnu en plusieurs langues) l'emporte ; sans marqueur, la première option l'emporte. \n\nPendant le compte à rebours, vous pouvez répondre manuellement (votre réponse l'emporte) ou cliquer « Annuler la réponse auto » pour ne remettre que cette question en manuel — le réglage reste actif pour les suivantes.",
+    "it": "Se attivo, il server risponde da solo ai dialoghi AskUserQuestion dopo il ritardo scelto — senza connessione del browser. «0 min» risponde subito (per esecuzioni non presidiate). \n\nRegola di scelta: vince la prima opzione la cui etichetta contiene un marcatore «Consigliato» (riconosciuto in più lingue); senza marcatore, vince la prima opzione. \n\nDurante il conto alla rovescia puoi rispondere manualmente (la tua risposta vince) o fare clic su «Annulla risposta auto» per riportare solo questa domanda in manuale — l'impostazione resta attiva per le successive.",
+    "da": "Når aktiveret, besvarer serveren selv AskUserQuestion-dialoger efter den valgte forsinkelse — ingen browserforbindelse nødvendig. »0 min« svarer med det samme (til uovervågede kørsler). \n\nUdvalgsregel: den første mulighed, hvis label bærer en »Anbefalet«-markør (genkendt på flere sprog), vinder; uden markør vinder den første mulighed. \n\nUnder nedtællingen kan du svare manuelt (dit svar vinder) eller klikke »Annuller auto-svar« for kun at gøre dette spørgsmål manuelt — indstillingen forbliver aktiv for senere spørgsmål.",
+    "pl": "Po włączeniu serwer sam odpowiada na dialogi AskUserQuestion po wybranym opóźnieniu — bez połączenia z przeglądarką. „0 min” odpowiada natychmiast (do uruchomień bez nadzoru). \n\nZasada wyboru: wygrywa pierwsza opcja, której etykieta zawiera znacznik „Zalecane” (rozpoznawany w wielu językach); bez znacznika wygrywa pierwsza opcja. \n\nPodczas odliczania możesz odpowiedzieć ręcznie (Twoja odpowiedź wygrywa) albo kliknąć „Anuluj auto-odpowiedź”, aby tylko to pytanie przełączyć na ręczne — ustawienie pozostaje aktywne dla kolejnych pytań.",
+    "ru": "Когда включено, сервер сам отвечает на диалоги AskUserQuestion после выбранной задержки — подключение браузера не требуется. «0 мин» отвечает сразу (для автономных запусков). \n\nПравило выбора: побеждает первый вариант, в метке которого есть маркер «Рекомендуется» (распознаётся на разных языках); без маркера побеждает первый вариант. \n\nВо время отсчёта вы можете ответить вручную (ваш ответ имеет приоритет) или нажать «Отменить автоответ», чтобы только этот вопрос оставить ручным — настройка останется для следующих вопросов.",
+    "ar": "عند التفعيل، يجيب الخادم بنفسه على مطالبات AskUserQuestion بعد التأخير المحدد — دون الحاجة إلى اتصال المتصفح. «0 دقيقة» يجيب فورًا (مناسب للتشغيل غير المراقَب). \n\nقاعدة الاختيار: يفوز أول خيار تحمل تسميته علامة «موصى به» (مُتعرف عليها بعدة لغات)؛ وبدون علامة يفوز الخيار الأول. \n\nأثناء العدّ التنازلي يمكنك الإجابة يدويًا (إجابتك لها الأولوية) أو الضغط «إلغاء الرد التلقائي» لجعل هذا السؤال فقط يدويًا — يبقى الإعداد مفعّلًا للأسئلة التالية.",
+    "no": "Når aktivert, svarer serveren selv på AskUserQuestion-dialoger etter valgt forsinkelse — ingen nettlesertilkobling nødvendig. «0 min» svarer umiddelbart (for uovervåkede kjøringer). \n\nUtvalgsregel: det første alternativet hvis etikett bærer en «Anbefalt»-markør (gjenkjent på flere språk) vinner; uten markør vinner det første alternativet. \n\nUnder nedtellingen kan du svare manuelt (ditt svar vinner) eller klikke «Avbryt auto-svar» for å gjøre bare dette spørsmålet manuelt — innstillingen forblir aktiv for senere spørsmål.",
+    "pt-BR": "Quando ligado, o servidor responde sozinho aos diálogos AskUserQuestion após o atraso escolhido — sem precisar de conexão do navegador. «0 min» responde na hora (para execuções sem supervisão). \n\nRegra de escolha: vence a primeira opção cujo rótulo carrega um marcador «Recomendado» (reconhecido em vários idiomas); sem marcador, vence a primeira opção. \n\nDurante a contagem regressiva você pode responder manualmente (sua resposta vence) ou clicar «Cancelar resposta auto» para deixar apenas esta pergunta manual — a configuração continua valendo para as próximas.",
+    "th": "เมื่อเปิด เซิร์ฟเวอร์จะตอบหน้าต่าง AskUserQuestion เองหลังจากหน่วงเวลาที่เลือก — ไม่ต้องมีการเชื่อมต่อเบราว์เซอร์ «0 นาที» จะตอบทันที (เหมาะสำหรับการรันอัตโนมัติ) \n\nกฎการเลือก: ตัวเลือกแรกที่ป้ายมีเครื่องหมาย «แนะนำ» (รองรับหลายภาษา) จะชนะ ถ้าไม่มีเครื่องหมายจะเลือกตัวเลือกแรก \n\nระหว่างนับถอยหลังคุณสามารถตอบเอง (คำตอบของคุณชนะ) หรือกด «ยกเลิกการตอบอัตโนมัติ» เพื่อให้เฉพาะคำถามนี้กลับเป็นแบบแมนนวล — การตั้งค่ายังมีผลกับคำถามถัดไป",
+    "tr": "Açıkken, sunucu AskUserQuestion diyaloglarını seçilen gecikmeden sonra kendisi yanıtlar — tarayıcı bağlantısı gerekmez. «0 dk» anında yanıtlar (gözetimsiz çalıştırmalar için). \n\nSeçim kuralı: etiketinde «Önerilen» işareti (birden çok dilde tanınır) taşıyan ilk seçenek kazanır; işaret yoksa ilk seçenek kazanır. \n\nGeri sayım sırasında elle yanıt verebilirsiniz (yanıtınız geçerli olur) ya da «Otomatik yanıtı iptal et» ile yalnızca bu soruyu manuel yapabilirsiniz — ayar sonraki sorular için geçerli kalır.",
+    "uk": "Коли увімкнено, сервер сам відповідає на діалоги AskUserQuestion після вибраної затримки — підключення браузера не потрібне. «0 хв» відповідає одразу (для автономних запусків).\n\nПравило вибору: перемагає перший варіант, у мітці якого є маркер «Рекомендовано» (розпізнається кількома мовами); без маркера перемагає перший варіант.\n\nПід час відліку ви можете відповісти вручну (ваша відповідь має пріоритет) або натиснути «Скасувати автовідповідь», щоб лише це питання лишити ручним — налаштування лишиться для наступних питань."
+  },
   "ui.approval.settings.soundEnabled": {
     "zh": "审批提示音", "en": "Sound on approval", "zh-TW": "審批提示音",
     "ko": "승인 효과음", "ja": "承認時のサウンド", "de": "Ton bei Genehmigung",

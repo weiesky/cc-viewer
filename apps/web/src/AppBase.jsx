@@ -9,6 +9,7 @@ import NewProjectModal from './components/dashboard/NewProjectModal';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
 import LogTable from './components/viewers/LogTable';
 import { t, getLang, setLang } from './i18n';
+import { askAutoAnswerPrefValue } from './utils/autoApproveOptions';
 import { SettingsContext } from './contexts/SettingsContext';
 import { formatTokenCount, filterRelevantRequests, isRelevantRequest, visibleRequests, appendCacheLossMap, extractCachedContent } from './utils/helpers';
 import { snapToPreset, stepPreset } from './utils/displayScaleHelper';
@@ -308,6 +309,7 @@ class AppBase extends React.Component {
         soundEnabled: true,
         notifyOnlyWhenHidden: true,
         planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；CLI(PTY) 与 SDK 路径
+        askAutoAnswerMinutes: null, // 「问答题自动托管」分钟数（null=不托管 / 0=立即 / N=N 分钟后服务端自动回答）
         voicePack: {
           enabled: true,
           volume: 0.3,
@@ -503,6 +505,9 @@ class AppBase extends React.Component {
         soundEnabled: data.approvalModal.soundEnabled !== undefined ? !!data.approvalModal.soundEnabled : prevPrefs.soundEnabled,
         notifyOnlyWhenHidden: data.approvalModal.notifyOnlyWhenHidden !== undefined ? !!data.approvalModal.notifyOnlyWhenHidden : prevPrefs.notifyOnlyWhenHidden,
         planAutoApproveSeconds: typeof data.approvalModal.planAutoApproveSeconds === 'number' ? data.approvalModal.planAutoApproveSeconds : prevPrefs.planAutoApproveSeconds,
+        // null-aware: 持久化的 null（不托管）是合法值,不能用 typeof number 判断——
+        // 那会把 null 当"未持久化"而保留内存里的陈旧非 null 值。
+        askAutoAnswerMinutes: data.approvalModal.askAutoAnswerMinutes !== undefined ? data.approvalModal.askAutoAnswerMinutes : prevPrefs.askAutoAnswerMinutes,
         voicePack: mergedVP,
       };
       // 合并开关迁移：server 端 soundEnabled !== voicePack.enabled 时以 soundEnabled 为准强制对齐（幂等回写）。
@@ -4368,6 +4373,12 @@ class AppBase extends React.Component {
   // 避免 App/Mobile 每次 render 生成新闭包穿透 ChatView.shouldComponentUpdate。
   handlePlanAutoApproveChange = (seconds) => {
     this.handleApprovalPrefsChange({ planAutoApproveSeconds: seconds });
+  };
+
+  // 快捷设置菜单「问答题自动托管」档位回调。入参是 UI 档位（含 ASK_AUTO_ANSWER_OFF
+  // sentinel=-1），落盘前经 askAutoAnswerPrefValue 转 null。稳定引用，理由同上。
+  handleAskAutoAnswerChange = (uiValue) => {
+    this.handleApprovalPrefsChange({ askAutoAnswerMinutes: askAutoAnswerPrefValue(uiValue) });
   };
 
   // ─── Approval modal: ChatView -> AppBase bubbling handlers ───────────────────────

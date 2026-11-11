@@ -19,7 +19,9 @@
 //   plan: prefs.approvalModal.planAutoApproveSeconds (default 0 = off)
 //   perm: prefs.autoApproveSeconds                  (default 3 when unset)
 //   0/off, N>0 = N seconds, -1 = instant (resolve immediately, no buffer).
-// AskUserQuestion approvals are never auto-approved.
+// AskUserQuestion hosting ("问答题自动托管") is a separate feature with minute
+// semantics and lives in ./ask-auto-answer.js — it is not routed through this module
+// (the 300s cap would silently disable its 10/20/30-minute tiers).
 
 import { readPrefsRaw } from './prefs-store.js';
 import { getCurrentProjectKey, hasFork, resolveScoped } from './project-prefs.js';

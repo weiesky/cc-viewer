@@ -1,5 +1,5 @@
 // Ask / permission hook bridge routes (moved verbatim from server.js handleRequest).
-import { loadAskStore, consumeIfFinal as askStoreConsumeIfFinal, markCancelled as askStoreMarkCancelled } from '../lib/ask/ask-store.js';
+import { loadAskStore, consumeIfFinal as askStoreConsumeIfFinal, markCancelled as askStoreMarkCancelled, markAnswered as askStoreMarkAnswered } from '../lib/ask/ask-store.js';
 import { runWaterfallHook, runParallelHook } from '../lib/plugin-loader.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 import { filterClientsByScope } from '../lib/v2/view-router.js';
@@ -9,6 +9,7 @@ import { getCurrentProjectKey, hasFork, resolveScoped } from '../lib/project-pre
 import { reportSwallowed } from '../lib/error-report.js';
 import { computeAutoApprove, createAutoApproveState } from '../lib/auto-approve.js';
 import { isPublishCommand } from '../lib/approval-policy.js';
+import { computeAskAutoAnswer, createAskAutoAnswerState, pickAutoAnswers, replayAskAutoAnswerFields } from '../lib/ask-auto-answer.js';
 
 function pendingAsks(req, res, parsedUrl, isLocal, deps) {
   try {
@@ -17,6 +18,8 @@ function pendingAsks(req, res, parsedUrl, isLocal, deps) {
     // 答案投递仍由 WS ask-hook-answer 路径走 server 端 first-write-wins）。
     const memEntries = [...deps.pendingAskHooks.entries()].map(([id, e]) => ({
       id, questions: e.questions, createdAt: e.createdAt, source: 'memory',
+      // Hosting fields for the reconnect recovery chain (client countdown UI).
+      ...replayAskAutoAnswerFields(e.auto, e.autoCancelled),
     }));
     const memIds = new Set(memEntries.map(e => e.id));
     const diskAll = loadAskStore();
@@ -25,7 +28,12 @@ function pendingAsks(req, res, parsedUrl, isLocal, deps) {
     // 另外过滤 questions 数组非空（防御性）。
     const diskOnly = Object.values(diskAll)
       .filter(e => !memIds.has(e.id) && e.status === 'pending' && Array.isArray(e.questions) && e.questions.length > 0)
-      .map(e => ({ id: e.id, questions: e.questions, createdAt: e.createdAt, source: 'disk' }));
+      .map(e => ({
+        id: e.id, questions: e.questions, createdAt: e.createdAt, source: 'disk',
+        // Timers are memory-only: after a server restart an orphaned pending ask
+        // degrades to manual answering (documented decision — no schema migration).
+        autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false,
+      }));
     const all = [...memEntries, ...diskOnly].sort((a, b) => a.createdAt - b.createdAt);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ pendingAsks: all, askProtocolVersion: 1 }));
@@ -56,7 +64,7 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
       return;
     }
     try {
-      const { questions, toolUseId } = JSON.parse(body);
+      const { questions, toolUseId, cwd } = JSON.parse(body);
       if (!Array.isArray(questions) || questions.length === 0) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing questions' }));
@@ -81,6 +89,7 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
         const oldest = deps.pendingAskHooks.get(oldestId);
         if (oldest) {
           clearTimeout(oldest.timer);
+          if (oldest.auto?.timer) clearTimeout(oldest.auto.timer);
           try { if (!oldest.res.headersSent) { oldest.res.writeHead(429, { 'Content-Type': 'application/json' }); oldest.res.end(JSON.stringify({ error: 'Too many concurrent requests' })); } } catch {}
           deps.pendingAskHooks.delete(oldestId);
           deps.persistAskDelete(oldestId);
@@ -106,13 +115,25 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
         && toolUseId.length > 0 && toolUseId.length <= 256
         && /^[a-zA-Z0-9_-]+$/.test(toolUseId);
       let id;
+      // A durable per-ask hosting cancel carried over from the slot being replaced
+      // (ask-bridge retry) — initialized before the placeholder is created below.
+      let _placeholderAutoCancelled = false;
       if (wantsToolUseId) {
         const existing = deps.pendingAskHooks.get(toolUseId);
         if (!existing) {
           id = toolUseId;
         } else if (!existing.res || existing.res.writableEnded || existing.res.destroyed) {
           // 旧 res 已断（包含占位 res:null 残留）— ask-bridge 重试同 toolUseId 合理，复用槽位
+          // Clear the stale hosting timer too: it would otherwise fire later against the
+          // re-registered entry and answer it at the OLD deadline with the OLD selection.
+          // The new entry arms a fresh full-length timer from this re-arrival (the disk
+          // schema carries no deadline, so the original one cannot be preserved).
           if (existing.timer) clearTimeout(existing.timer);
+          if (existing.auto?.timer) clearTimeout(existing.auto.timer);
+          // Preserve a durable per-ask hosting cancel across the retry: a user who
+          // cancelled hosting for THIS ask must not be auto-answered by the re-posted
+          // incarnation. (The cancelling tab also re-asserts via its local latch.)
+          if (existing.autoCancelled === true) _placeholderAutoCancelled = true;
           deps.pendingAskHooks.delete(toolUseId);
           deps.persistAskDelete(toolUseId);
           id = toolUseId;
@@ -132,7 +153,11 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
       // TOCTOU 防御：占位 id 之前先注册 res.on('close')，否则 await runWaterfallHook 期间 client
       // abort 的 close 事件落空 → entry 残到 HOOK_TIMEOUT（24h）。占位 set 提前到 await 之前防两条同 ms 并发
       // POST 的 do-while 都通过 collision check 后 set 互相覆盖（first res 永泄漏到 HOOK_TIMEOUT）。
-      const _placeholderEntry = { questions, res, timer: null, createdAt: Date.now(), shortPoll: shortPollMode };
+      // Both hosting fields live on the placeholder too: a client ask-auto-cancel
+      // landing during the plugin-waterfall window stamps the durable flag here, and
+      // the live entry below inherits it (otherwise the cancel would be silently lost
+      // when the live object replaces the placeholder).
+      const _placeholderEntry = { questions, res, timer: null, createdAt: Date.now(), shortPoll: shortPollMode, autoCancelled: _placeholderAutoCancelled, auto: null };
       deps.pendingAskHooks.set(id, _placeholderEntry);
       deps.persistAskEntry(id, _placeholderEntry);
       // Seed waiter liveness for the reaper (ask-reaper.js). Optional chaining:
@@ -146,6 +171,7 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
         if (entry) {
           if (entry.shortPoll) return;
           if (entry.timer) clearTimeout(entry.timer);
+          if (entry.auto?.timer) clearTimeout(entry.auto.timer);
           deps.pendingAskHooks.delete(id);
           deps.persistAskDelete(id);
           if (deps.terminalWss) {
@@ -179,6 +205,7 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
       const timer = setTimeout(() => {
         const entry = deps.pendingAskHooks.get(id);
         if (entry) {
+          if (entry.auto?.timer) clearTimeout(entry.auto.timer); // defensive: outlives hosting in normal flows
           deps.pendingAskHooks.delete(id);
           deps.persistAskDelete(id);
           try {
@@ -199,7 +226,15 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
       }, HOOK_TIMEOUT);
 
       const askStartedAt = Date.now();
-      const _liveEntry = { questions, res, timer, createdAt: askStartedAt, shortPoll: shortPollMode };
+      // Server-side hosting ("问答题自动托管"): when approvalModal.askAutoAnswerMinutes
+      // is set (0 = instant, N = N minutes), the server answers the ask itself at the
+      // wall-clock deadline (+1s buffer) even with no browser connected. Computed after
+      // the plugin waterfall so a plugin-answered ask never arms. The pick prefers the
+      // first option carrying a localized "Recommended" marker, else the first option.
+      const autoMeta = computeAskAutoAnswer(typeof cwd === 'string' && cwd ? cwd : undefined, { file: deps.getPrefsFile?.() });
+      const autoAnswers = autoMeta.enabled ? pickAutoAnswers(questions) : null;
+      const hosting = autoMeta.enabled && !!autoAnswers;
+      const _liveEntry = { ..._placeholderEntry, timer, createdAt: askStartedAt };
       deps.pendingAskHooks.set(id, _liveEntry);
       deps.persistAskEntry(id, _liveEntry);
 
@@ -214,8 +249,16 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
       }
 
       // Broadcast to all terminal WS clients — 附 startedAt + timeoutMs 让前端渲染倒计时
+      // Honor a cancel inherited from the placeholder (slot-reuse) or landed during the
+      // plugin waterfall: never advertise a countdown that the fire guard will no-op.
+      const hostingActive = hosting && !_liveEntry.autoCancelled;
       if (deps.terminalWss) {
-        const pmsg = JSON.stringify({ type: 'ask-hook-pending', id, questions, startedAt: askStartedAt, timeoutMs: HOOK_TIMEOUT });
+        // Always stamp the hosting fields (null when off) so a client whose global pref
+        // disagrees with the fork-resolved server value never re-arms locally.
+        const pmsg = JSON.stringify({
+          type: 'ask-hook-pending', id, questions, startedAt: askStartedAt, timeoutMs: HOOK_TIMEOUT,
+          ...replayAskAutoAnswerFields(hostingActive ? autoMeta : null, _liveEntry.autoCancelled),
+        });
         deps.terminalWss.clients.forEach((client) => {
           if (client.readyState === 1) {
             try { client.send(pmsg); } catch {}
@@ -223,6 +266,43 @@ function askHook(req, res, parsedUrl, isLocal, deps) {
         });
       }
       deps.notifyParentPending({ type: 'ask-hook-pending', id, questions });
+
+      // Arm AFTER the entry is registered AND the pending frame is out: instant (0min)
+      // fires synchronously and resolves through the entry, so clients observe the
+      // order pending → resolved (never a ghost modal for an already-answered ask).
+      if (hostingActive) {
+        _liveEntry.auto = createAskAutoAnswerState(autoMeta, async () => {
+          const entry = deps.pendingAskHooks.get(id);
+          if (!entry || entry.autoCancelled) return;
+          if (entry.timer) clearTimeout(entry.timer);
+          deps.pendingAskHooks.delete(id);
+          deps.askWaiterLastPoll?.delete(id);
+          if (entry.shortPoll) {
+            // first-write-wins: a client answer (or another cc-viewer instance sharing
+            // ask-store.json) may have beaten the timer — never notify listeners with
+            // answers that disagree with the disk record.
+            let wrote = false;
+            try { wrote = await askStoreMarkAnswered(id, autoAnswers); } catch (err) { reportSwallowed('ask-perm.ask-auto-answered', err); }
+            if (!wrote) return;
+            deps.notifyShortPollAnswer?.(id, autoAnswers);
+          } else {
+            try {
+              if (entry.res && !entry.res.headersSent) {
+                entry.res.writeHead(200, { 'Content-Type': 'application/json' });
+                entry.res.end(JSON.stringify({ answers: autoAnswers }));
+              }
+            } catch {}
+            deps.persistAskDelete(id);
+          }
+          if (deps.terminalWss) {
+            const rmsg = JSON.stringify({ type: 'ask-hook-resolved', id, reason: 'auto-answered' });
+            deps.terminalWss.clients.forEach((c) => {
+              if (c.readyState === 1) try { c.send(rmsg); } catch {}
+            });
+          }
+          deps.notifyParentPending({ type: 'ask-hook-resolved', id });
+        });
+      }
     } catch {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid request body' }));
@@ -342,6 +422,7 @@ function askHookCancel(req, res, parsedUrl, isLocal, deps) {
       const entry = deps.pendingAskHooks.get(id);
       if (entry) {
         if (entry.timer) clearTimeout(entry.timer);
+        if (entry.auto?.timer) clearTimeout(entry.auto.timer);
         deps.pendingAskHooks.delete(id);
         deps.askWaiterLastPoll?.delete(id);
         if (entry.shortPoll) {

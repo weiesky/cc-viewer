@@ -2,7 +2,7 @@ import React from 'react';
 import { Switch, Select, Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { t, LANG_OPTIONS } from '../../i18n';
-import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions } from '../../utils/autoApproveOptions';
+import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions, askAutoAnswerSelectOptions, askAutoAnswerUiValue, askAutoAnswerPrefValue } from '../../utils/autoApproveOptions';
 import styles from './PreferencesForm.module.css';
 
 // 纯展示偏好控件，作用于传入的 values（某个项目的 fork），改动经 onPatch(partial) 上抛。
@@ -11,13 +11,13 @@ import styles from './PreferencesForm.module.css';
 //   - logDir / claudeConfigDir：机器级路径，不可按项目分叉
 //   - 任何 _ 前缀元字段：仅 GET 回包，不属偏好
 // soundEnabled 与主 UI 一致地把 voicePack.enabled 一并对齐（合并迁移规则）。
-function Row({ label, help, children }) {
+function Row({ label, help, helpPreLine = false, children }) {
   return (
     <div className={styles.row}>
       <span className={styles.label}>
         {label}
         {help && (
-          <Tooltip title={help}>
+          <Tooltip title={help} overlayInnerStyle={helpPreLine ? { whiteSpace: 'pre-line' } : undefined}>
             <QuestionCircleOutlined className={styles.help} />
           </Tooltip>
         )}
@@ -49,6 +49,15 @@ export default function PreferencesForm({ values = {}, onPatch }) {
           value={am.planAutoApproveSeconds || 0}
           onChange={(value) => patch({ approvalModal: { planAutoApproveSeconds: value } })}
           options={autoApproveSelectOptions(PLAN_AUTO_APPROVE_OPTIONS, t)}
+          style={{ width: 110 }}
+        />
+      </Row>
+      <Row label={t('ui.askAutoAnswer.setting')} help={t('ui.askAutoAnswer.help')} helpPreLine>
+        <Select
+          size="small"
+          value={askAutoAnswerUiValue(am.askAutoAnswerMinutes)}
+          onChange={(value) => patch({ approvalModal: { askAutoAnswerMinutes: askAutoAnswerPrefValue(value) } })}
+          options={askAutoAnswerSelectOptions(t)}
           style={{ width: 110 }}
         />
       </Row>

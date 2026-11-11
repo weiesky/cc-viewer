@@ -96,6 +96,7 @@ export async function reapDeadAskWaiters(deps, state, { now = Date.now() } = {})
     // row means another instance's answer consumed it — do not fabricate a
     // cancelled placeholder or grey out a real answer).
     if (entry.timer) clearTimeout(entry.timer);
+    if (entry.auto?.timer) clearTimeout(entry.auto.timer); // hosting timer must not outlive the reaped entry
     deps.pendingAskHooks.delete(id);
     lastPoll.delete(id);
     const diskRow = deps.loadAskStore()[id];
