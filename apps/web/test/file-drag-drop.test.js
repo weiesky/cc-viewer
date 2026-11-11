@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { FILE_DRAG_TYPE, isFileDrag, getDraggedFilePath, planFileDropInput, quotePathForTerminal } from '../src/utils/fileDragDrop.js';
+import { FILE_DRAG_TYPE, FOLDER_DRAG_TYPE, isFileDrag, getDraggedFilePath, getDraggedEntry, formatFolderPath, planFileDropInput, quotePathForTerminal } from '../src/utils/fileDragDrop.js';
 
 function drag(types, path = '') {
   return { dataTransfer: { types, getData: (type) => type === 'text/plain' ? path : '' } };
@@ -22,6 +22,28 @@ describe('file browser drag payload', () => {
     assert.equal(getDraggedFilePath(drag(['text/x-internal-move'], 'src')), null);
     assert.equal(getDraggedFilePath(drag(['text/x-internal-move', FILE_DRAG_TYPE], 'src/a\nb')), null);
     assert.equal(getDraggedFilePath(drag(['text/x-internal-move', FILE_DRAG_TYPE], '')), null);
+  });
+  it('accepts marked directories and preserves their type', () => {
+    assert.equal(isFileDrag(drag(['text/x-internal-move', FOLDER_DRAG_TYPE])), true);
+    assert.deepEqual(getDraggedEntry(drag(['text/x-internal-move', FOLDER_DRAG_TYPE], 'src/assets')), { path: 'src/assets', isDir: true });
+    assert.equal(getDraggedEntry(drag(['text/x-internal-move', FOLDER_DRAG_TYPE], 'a\0b')), null);
+    assert.deepEqual(getDraggedEntry(drag(['text/x-internal-move', FILE_DRAG_TYPE], 'src/a.txt')), { path: 'src/a.txt', isDir: false });
+  });
+
+  it('shortens only intermediate folder path segments', () => {
+    assert.equal(formatFolderPath('src'), 'src');
+    assert.equal(formatFolderPath('src/assets'), 'src/assets');
+    assert.equal(formatFolderPath('src/components/chat'), 'src/…/chat');
+    assert.equal(formatFolderPath('/Users/sky/project/assets/'), '/Users/…/assets');
+    assert.equal(formatFolderPath('C:\\Users\\sky\\assets'), 'C:/…/assets');
+    assert.equal(formatFolderPath('/'), '/');
+    assert.equal(formatFolderPath('C:\\'), 'C:');
+    assert.equal(formatFolderPath('//server/share/dir'), '/server/…/dir');
+  });
+
+  it('rejects unsafe folder labels', () => {
+    assert.equal(formatFolderPath('a\nb'), '');
+    assert.equal(formatFolderPath(''), '');
   });
 });
 
@@ -57,10 +79,10 @@ describe('file drop terminal input', () => {
 describe('file browser drop wiring', () => {
   const read = (path) => readFileSync(fileURLToPath(new URL(`../src/${path}`, import.meta.url)), 'utf8');
 
-  it('marks files while preserving directory move sources', () => {
+  it('marks files and folders while preserving directory move sources', () => {
     const source = read('components/files/FileExplorer.jsx');
-    assert.ok(source.includes("if (!isDir) e.dataTransfer.setData(FILE_DRAG_TYPE, '1')"));
-    assert.ok(source.includes("e.dataTransfer.effectAllowed = isDir ? 'move' : 'copyMove'"));
+    assert.ok(source.includes("e.dataTransfer.setData(isDir ? FOLDER_DRAG_TYPE : FILE_DRAG_TYPE, '1')"));
+    assert.ok(source.includes("e.dataTransfer.effectAllowed = 'copyMove'"));
     assert.ok(source.includes("e.dataTransfer.setData('text/x-internal-move', '1')"));
     assert.equal(source.split("e.dataTransfer.dropEffect !== 'move'").length - 1, 2);
   });
@@ -71,10 +93,26 @@ describe('file browser drop wiring', () => {
     assert.ok(input.includes('onDragOver={handleFileDragOver}'));
     assert.ok(input.includes('onDrop={handleFileDrop}'));
     const drop = input.slice(input.indexOf('const handleFileDrop'), input.indexOf('// 统一上传'));
-    assert.ok(drop.includes('onAttachPath?.(filePath)'));
+    assert.ok(drop.includes('onAttachPath?.(entry.path, entry.isDir)'));
     assert.ok(!drop.includes('onUploadPath') && !drop.includes('runUpload'));
-    assert.ok(view.includes("onAttachPath={(path) => this._addPendingImage(path, 'explorer')}"));
+    assert.ok(view.includes("onAttachPath={(path, isDir) => this._addPendingImage(path, 'explorer', isDir)}"));
+    assert.ok(view.includes('_addPendingImage = (path, source, isDir = false)'));
+    assert.ok(view.includes('{ path, source, isDir }'));
     assert.ok(view.includes("const imagePaths = this.state.pendingImages.map(img => `\"${img.path.replace(/\"/g, '')}\"`).join(' ');"));
+  });
+
+  it('renders folder chips in both composer and terminal attachment strips', () => {
+    const input = read('components/chat/ChatInputBar.jsx');
+    const panel = read('components/terminal/TerminalPanel.jsx');
+    assert.ok(input.includes("import { isFileDrag, getDraggedEntry, formatFolderPath }"));
+    assert.ok(input.includes("import { getFileIcon } from '../../utils/fileIcons'"));
+    assert.ok(panel.includes("import { getFileIcon } from '../../utils/fileIcons'"));
+    assert.ok(panel.includes('formatFolderPath }'));
+    for (const source of [input, panel]) {
+      assert.ok(source.includes("getFileIcon(fileName, 'directory')"));
+      assert.ok(source.includes('img.isDir ? formatFolderPath(img.path) : fileName'));
+      assert.ok(source.includes('const isImage = !img.isDir &&'));
+    }
   });
 
   it('scopes image previews to the viewed workspace', () => {

@@ -13,7 +13,7 @@ import { createFileMenuHandler } from './fileContextMenuActions';
 import { importFiles, isExternalFileDrag, getTopLevelEntries } from './importFiles';
 import { moveFile, canDropMoveOn } from './fileMove';
 import { isOverModalPortal } from '../../utils/dragGuards';
-import { FILE_DRAG_TYPE } from '../../utils/fileDragDrop';
+import { FILE_DRAG_TYPE, FOLDER_DRAG_TYPE } from '../../utils/fileDragDrop';
 import SearchPanel from '../search/SearchPanel';
 import styles from './FileExplorer.module.css';
 
@@ -211,8 +211,8 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     if (editing) { e.preventDefault(); return; }
     e.dataTransfer.setData('text/plain', childPath);
     e.dataTransfer.setData('text/x-internal-move', '1');
-    if (!isDir) e.dataTransfer.setData(FILE_DRAG_TYPE, '1');
-    e.dataTransfer.effectAllowed = isDir ? 'move' : 'copyMove';
+    e.dataTransfer.setData(isDir ? FOLDER_DRAG_TYPE : FILE_DRAG_TYPE, '1');
+    e.dataTransfer.effectAllowed = 'copyMove';
     setDragging(true);
   }, [childPath, editing, isDir]);
 

@@ -375,7 +375,7 @@ class ChatView extends React.Component {
       // ask resolve/cancel/timeout 时 delete，确保内存随 ask 生命周期回收（不会随会话增长无界累积）。
       pendingPtyPlan: null, // { id, prompt } — active plan approval. id 与 ExitPlanMode tool_use id (lastPendingPlanId) 同源，由 componentDidUpdate 从 _currentLastPendingPlanId 派生（cliMode 守卫 + _resolvedPlanIds 短暂窗口守卫）。
       planAutoApproveCountdown: null, // number|null — Remaining seconds for the active PTY/SDK plan countdown, rendered on the plan card.
-      pendingImages: [], // [{ path, source }] — images uploaded/pasted, shown as previews in chat input
+      pendingImages: [], // [{ path, source, isDir }] — uploaded/pasted files or dragged explorer folders
       uploadingItems: [], // [{ id, name, previewUrl }] — 上传在途的占位项(路径还没 resolve);预览条只从 pendingImages 渲染缩略图,故占位需独立 state
       sendDeferred: false, // 仅渲染用:有上传在途时按了发送 → 缓发态(发送按钮 spinner)。权威双发标志是实例字段 _sendDeferred
       // Optimistic: agent-teams is on by default at launch, so assume enabled until
@@ -1711,12 +1711,12 @@ class ChatView extends React.Component {
     });
   };
 
-  _addPendingImage = (path, source) => {
+  _addPendingImage = (path, source, isDir = false) => {
     if (!isSafeAttachmentPath(path)) return;
     this.setState(prev => {
       if (prev.pendingImages.length >= 20) return null; // cap
       if (prev.pendingImages.some(img => img.path === path)) return null; // dedup
-      return { pendingImages: [...prev.pendingImages, { path, source }] };
+      return { pendingImages: [...prev.pendingImages, { path, source, isDir }] };
     });
   };
 
@@ -5657,7 +5657,7 @@ class ChatView extends React.Component {
               onStop={this.handleInputStop}
               onSuggestionClick={this.handleSuggestionToTerminal}
               onUploadPath={this.handleUploadPath}
-              onAttachPath={(path) => this._addPendingImage(path, 'explorer')}
+              onAttachPath={(path, isDir) => this._addPendingImage(path, 'explorer', isDir)}
               presetItems={this.state.presetItems}
               onPresetSend={this.handlePresetSend}
               onOpenPresetModal={() => this.setState({ mobilePresetModalVisible: true })}

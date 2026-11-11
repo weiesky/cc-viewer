@@ -13,7 +13,8 @@ import { AgentTeamIcon, UltraplanIcon, UploadIcon, TrashIcon, ScheduleIcon, SPAR
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import SlashCommandMenu from './SlashCommandMenu';
-import { isFileDrag, getDraggedFilePath } from '../../utils/fileDragDrop';
+import { getFileIcon } from '../../utils/fileIcons';
+import { isFileDrag, getDraggedEntry, formatFolderPath } from '../../utils/fileDragDrop';
 import { createQuickMenuHoverIntent } from '../../utils/quickMenuHoverIntent';
 
 const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
@@ -336,8 +337,8 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
     e.stopPropagation();
     fileDragOverRef.current = false;
     setFileDragOver(false);
-    const filePath = getDraggedFilePath(e);
-    if (filePath) onAttachPath?.(filePath);
+    const entry = getDraggedEntry(e);
+    if (entry) onAttachPath?.(entry.path, entry.isDir);
     inputRef?.current?.focus();
   };
 
@@ -417,7 +418,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
             <div className={styles.imagePreviewStrip}>
               {pendingImages.map((img, i) => {
                 const fileName = img.path.split('/').pop() || img.path;
-                const isImage = /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|icns)$/i.test(fileName);
+                const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|icns)$/i.test(fileName);
                 const src = apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(img.path)}`, { project: viewProject }));
                 return isImage ? (
                   <div key={img.path} className={styles.imagePreviewItem}>
@@ -438,12 +439,14 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                     >&times;</ConfirmRemoveButton>
                   </div>
                 ) : (
-                  <div key={img.path} className={styles.filePreviewChip}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                    </svg>
-                    <span className={styles.filePreviewName}>{fileName}</span>
+                  <div key={img.path} className={styles.filePreviewChip} title={img.path}>
+                    {img.isDir ? getFileIcon(fileName, 'directory') : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                    )}
+                    <span className={styles.filePreviewName}>{img.isDir ? formatFolderPath(img.path) : fileName}</span>
                     <ConfirmRemoveButton
                       title={t('ui.chatInput.confirmRemoveFile')}
                       onConfirm={() => onRemovePendingImage?.(i)}

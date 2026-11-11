@@ -41,7 +41,8 @@ import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import ScheduleTaskModal from '../common/ScheduleTaskModal';
 import { createQuickMenuHoverIntent } from '../../utils/quickMenuHoverIntent';
-import { isFileDrag, getDraggedFilePath, planFileDropInput, quotePathForTerminal } from '../../utils/fileDragDrop';
+import { getFileIcon } from '../../utils/fileIcons';
+import { isFileDrag, getDraggedFilePath, planFileDropInput, quotePathForTerminal, formatFolderPath } from '../../utils/fileDragDrop';
 import chrome from '../common/sharedChrome.module.css';
 
 // WebGL longtask 自动降级常量
@@ -1766,7 +1767,7 @@ class TerminalPanel extends React.Component {
           <div className={styles.pendingFileStrip}>
             {pendingImages.map((img, i) => {
               const fileName = img.path.split('/').pop() || img.path;
-              const isImage = /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|icns)$/i.test(fileName);
+              const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|icns)$/i.test(fileName);
               const src = apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(img.path)}`, { project: this.props.viewProject, instance: this.props.viewInstance }));
               return isImage ? (
                 <div key={img.path} className={styles.pendingImageItem}>
@@ -1787,8 +1788,9 @@ class TerminalPanel extends React.Component {
                   >&times;</ConfirmRemoveButton>
                 </div>
               ) : (
-                <span key={img.path} className={styles.pendingFileTag}>
-                  <span className={styles.pendingFileName}>{fileName}</span>
+                <span key={img.path} className={styles.pendingFileTag} title={img.path}>
+                  {img.isDir && getFileIcon(fileName, 'directory')}
+                  <span className={styles.pendingFileName}>{img.isDir ? formatFolderPath(img.path) : fileName}</span>
                   <ConfirmRemoveButton
                     title={t('ui.chatInput.confirmRemoveFile')}
                     onConfirm={() => onRemovePendingImage?.(i)}

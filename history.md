@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- feat(web): **文件夹支持拖拽到终端或对话** — 终端追加目录路径；对话显示文件夹图标及省略中间层级的路径，发送时保留完整路径。Coverage: `file-drag-drop.test.js`.
 - feat(web): **文件浏览器支持拖拽到终端或对话** — 侧栏文件拖入终端追加转义路径但不发送回车；拖入对话输入框显示附件，发送时拼接文件路径。Coverage: `file-drag-drop.test.js`, `drag-drop-zones.test.js`.
 
 - feat(web): **文件搜索并入文件浏览器面板** — 左侧栏放大镜入口移除，改为文件浏览器标题栏刷新旁的放大镜开关；点击后搜索在文件树下方同面板展开（按钮变蓝），再次点击关闭；树与搜索之间的分界线可上下拖拽调整比例（35%–80%）；点击搜索结果联动展开文件树定位；浏览器刷新后保持搜索面板开启状态与已输入内容。Coverage: `search-into-file-explorer.test.js`, `git-changes-open-persist.test.js`.
