@@ -217,6 +217,7 @@ class ChatMessage extends React.Component {
       p.onPlanApprovalClick !== n.onPlanApprovalClick || p.onPlanFeedbackSubmit !== n.onPlanFeedbackSubmit ||
       p.onDangerousApprovalClick !== n.onDangerousApprovalClick || p.onAskQuestionSubmit !== n.onAskQuestionSubmit ||
       p.onAskQuestionCancel !== n.onAskQuestionCancel ||
+      p.onAskQuestionAutoCancel !== n.onAskQuestionAutoCancel ||
       p.askMetaMap !== n.askMetaMap ||
       p.lang !== n.lang ||
       p.runMembers !== n.runMembers || p.runMember !== n.runMember || p.minimalChat !== n.minimalChat ||
@@ -988,6 +989,8 @@ class ChatMessage extends React.Component {
         questions={questions}
         startedAt={meta?.startedAt}
         timeoutMs={meta?.timeoutMs}
+        autoAnswerAt={meta?.autoAnswerAt ?? null}
+        autoCancelled={meta?.autoCancelled === true}
         onSubmit={(answers) => {
           if (this.props.onAskQuestionSubmit) {
             this.props.onAskQuestionSubmit(answers, toolId, questions);
@@ -995,6 +998,17 @@ class ChatMessage extends React.Component {
         }}
         onCancel={this.props.onAskQuestionCancel
           ? () => this.props.onAskQuestionCancel(toolId, 'User aborted')
+          : undefined}
+        onCancelAutoHosting={this.props.onAskQuestionAutoCancel
+          // Outbound id: prefer the transcript toolId when its meta entry exists — that is
+          // by construction the SERVER ask id for this card, and with concurrent asks the
+          // rendered card can be a queued (non-head) ask while pendingAsk is the head; using
+          // the head id would cancel the WRONG ask. Fall back to the pendingAsk id only for
+          // legacy placeholder asks (__ask__ / ask_*) where toolId is not the server id.
+          ? () => {
+            const metaForTool = this.props.askMetaMap && this.props.askMetaMap[toolId];
+            this.props.onAskQuestionAutoCancel(metaForTool ? toolId : (this.props.pendingAsk?.id ?? toolId));
+          }
           : undefined}
       />
     );

@@ -36,6 +36,7 @@ const APP_PAYLOAD = [
   'plugins',
   'ultraAgents',
   'dist',
+  'LICENSE.md',
 ];
 
 // 1. Run the app assemble first: it copies apps/web/dist → packages/app/dist

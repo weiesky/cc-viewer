@@ -116,7 +116,7 @@ function MatchRow({ group, match: m, matchIndex, isActive, replaceActive, previe
   );
 }
 
-export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath, onReplaceApplied, project, instance }) {
+export default function SearchPanel({ style, embedded, className, onClose, onOpenResult, getDirtyPath, onReplaceApplied, project, instance }) {
   const [query, setQuery] = useState(() => lsStr(LS.query));
   const [caseSensitive, setCaseSensitive] = useState(() => lsBool(LS.caseSensitive));
   const [wholeWord, setWholeWord] = useState(() => lsBool(LS.wholeWord));
@@ -146,7 +146,9 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
   // remount reuses the ref object, which would wedge every post-replace setState (repo convention).
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // Focus on open, but not when the panel is restored by a refresh (its content
+  // is already populated, so stealing focus would also pop the pad on-screen keyboard).
+  useEffect(() => { if (!lsStr(LS.query)) inputRef.current?.focus(); }, []);
 
   const totalMatches = useMemo(() => results.reduce((n, r) => n + r.matches.length, 0), [results]);
 
@@ -217,7 +219,7 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
       clearTimeout(slowTimer);
       if (!ac.signal.aborted) { setLoading(false); setSlowNode(false); }
     }
-  }, [query, caseSensitive, wholeWord, regex, include, exclude, showReplace, instance]);
+  }, [query, caseSensitive, wholeWord, regex, include, exclude, showReplace, project, instance]);
 
   // Persist all inputs (incl. replace text/panel state) to localStorage.
   useEffect(() => {
@@ -279,7 +281,28 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
       if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
       runSearch();
     }
-    else if (e.key === 'Escape') { e.preventDefault(); setQuery(''); }
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (query) setQuery('');
+      else if (embedded) closeFromKeyboard();
+    }
+  };
+
+  // Embedded mode has no header close button, so Escape doubles as the close
+  // shortcut. Bound on the panel root (capture phase) so it also works when
+  // focus is on a result row / glob / replace input, not just the query input;
+  // closing returns focus to the host's search toggle button.
+  const closeFromKeyboard = useCallback(() => {
+    if (!embedded) return;
+    onClose?.();
+    document.querySelector('[data-search-toggle]')?.focus();
+  }, [embedded, onClose]);
+
+  const onPanelKeyDownCapture = (e) => {
+    if (!embedded || e.key !== 'Escape') return;
+    if (e.target === inputRef.current) return; // query input has its own Escape (clear/close)
+    e.preventDefault();
+    closeFromKeyboard();
   };
 
   const toggleCollapse = (file) => setCollapsed((prev) => {
@@ -394,15 +417,22 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
   const stop = (fn) => (e) => { if (e.key && e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault(); e.stopPropagation(); fn(e); };
 
   return (
-    <div className={styles.searchPanel} style={style}>
-      <div className={styles.header}>
-        <span className={styles.headerTitle}>{t('ui.search.title')}</span>
-        <button className={styles.headerCloseBtn} onClick={onClose} title={t('ui.search.close') || 'Close'}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" />
-          </svg>
-        </button>
-      </div>
+    <div className={`${styles.searchPanel}${embedded ? ' ' + styles.embedded : ''}${className ? ' ' + className : ''}`} style={style} onKeyDownCapture={onPanelKeyDownCapture}>
+      {/* Embedded mode (inside FileExplorer): the host panel's header carries the
+          toggle/close affordance, so our own header row is redundant chrome.
+          Note: FileExplorer is currently the only call site and always passes
+          `embedded`, so this standalone header (and the `style` prop / ui.search.title
+          & ui.search.close keys) are intentionally retained but not exercised today. */}
+      {!embedded && (
+        <div className={styles.header}>
+          <span className={styles.headerTitle}>{t('ui.search.title')}</span>
+          <button className={styles.headerCloseBtn} onClick={onClose} title={t('ui.search.close') || 'Close'}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className={styles.controls}>
         <div className={styles.searchBlock}>
@@ -420,15 +450,26 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
           </button>
           <div className={styles.searchFields}>
             <div className={styles.inputRow}>
-              <input ref={inputRef} className={styles.searchInput} type="text" value={query} spellCheck={false} placeholder={t('ui.search.placeholder')} onChange={(e) => setQuery(e.target.value)} onKeyDown={onInputKeyDown} />
-              <button type="button" className={showDetails ? `${styles.detailsBtn} ${styles.toggleActive}` : styles.detailsBtn} aria-pressed={showDetails} onClick={() => setShowDetails((v) => !v)} title={t('ui.search.toggleDetails')}>…</button>
+              {/* Match-mode toggles live inside the query input's trailing edge,
+                  VSCode-style, instead of a separate row below it. */}
+              <div className={styles.searchInputWrap}>
+                <input ref={inputRef} className={styles.searchInput} type="text" value={query} spellCheck={false} placeholder={t('ui.search.placeholder')} onChange={(e) => setQuery(e.target.value)} onKeyDown={onInputKeyDown} />
+                <div className={styles.inputToggles}>
+                  <ToggleBtn active={caseSensitive} onClick={() => setCaseSensitive((v) => !v)} title={t('ui.search.caseSensitive')}>Aa</ToggleBtn>
+                  <ToggleBtn active={wholeWord} onClick={() => setWholeWord((v) => !v)} title={t('ui.search.wholeWord')}><span className={styles.wholeWordGlyph}>ab</span></ToggleBtn>
+                  <ToggleBtn active={regex} onClick={() => setRegex((v) => !v)} title={t('ui.search.regex')}>.*</ToggleBtn>
+                </div>
+              </div>
             </div>
             {showReplace && (
               <div className={styles.inputRow}>
                 <input className={styles.searchInput} type="text" value={replaceText} spellCheck={false} placeholder={t('ui.search.replace')} onChange={(e) => setReplaceText(e.target.value)} />
                 <button type="button" className={styles.replaceAllBtn} disabled={isReplacing || !replaceActive} onClick={replaceAll} title={t('ui.search.replaceAll')}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 4v6h6" /><path d="M3 10a9 9 0 1 1 2 6" />
+                  {/* "Replace all" glyph from the design asset; fill follows the
+                      button's enabled/hover color via currentColor. */}
+                  <svg width="14" height="14" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true">
+                    <path d="M833.828571 512H65.828571c-14.628571 0-29.257143 14.628571-29.257142 29.257143v446.171428c0 14.628571 14.628571 29.257143 29.257142 29.257143h768c14.628571 0 29.257143-14.628571 29.257143-29.257143V541.257143c0-14.628571-14.628571-29.257143-29.257143-29.257143z m-29.257142 453.485714H95.085714V570.514286H804.571429v394.971428z" />
+                    <path d="M972.8 373.028571H504.685714c-14.628571 0-29.257143 14.628571-29.257143 29.257143s14.628571 29.257143 29.257143 29.257143H950.857143v343.771429c0 14.628571 14.628571 29.257143 29.257143 29.257143s29.257143-14.628571 29.257143-29.257143V402.285714c-7.314286-14.628571-14.628571-29.257143-36.571429-29.257143zM175.542857 475.428571c7.314286 7.314286 14.628571 7.314286 21.942857 7.314286s14.628571 0 21.942857-7.314286l131.657143-131.657142c14.628571-14.628571 14.628571-29.257143 0-43.885715s-29.257143-7.314286-36.571428 0L226.742857 387.657143V190.171429h146.285714c14.628571 0 29.257143-14.628571 29.257143-29.257143s-7.314286-29.257143-29.257143-29.257143H197.485714c-14.628571 0-29.257143 14.628571-29.257143 29.257143v219.428571L87.771429 299.885714C73.142857 292.571429 58.514286 292.571429 43.885714 299.885714c-14.628571 14.628571-14.628571 29.257143 0 43.885715l131.657143 131.657142zM241.371429 826.514286c0 36.571429 29.257143 58.514286 80.457142 58.514285 36.571429 0 58.514286-7.314286 73.142858-29.257142 0 14.628571 7.314286 21.942857 14.628571 29.257142h43.885714c-7.314286-14.628571-14.628571-29.257143-14.628571-58.514285v-80.457143C438.857143 687.542857 409.6 658.285714 351.085714 658.285714c-58.514286 0-95.085714 21.942857-102.4 73.142857l43.885715 7.314286c7.314286-29.257143 21.942857-36.571429 58.514285-36.571428 29.257143 0 43.885714 7.314286 43.885715 36.571428-7.314286 7.314286-29.257143 7.314286-65.828572 14.628572-58.514286 7.314286-87.771429 29.257143-87.771428 73.142857z m153.6-43.885715v21.942858c0 29.257143-21.942857 51.2-65.828572 51.2-21.942857 0-36.571429-7.314286-36.571428-21.942858 0-14.628571 14.628571-29.257143 43.885714-29.257142 29.257143-14.628571 43.885714-14.628571 58.514286-21.942858zM585.142857 892.342857c51.2 0 87.771429-21.942857 95.085714-73.142857l-43.885714-14.628571c-7.314286 29.257143-21.942857 43.885714-51.2 43.885714-36.571429 0-51.2-21.942857-51.2-73.142857s14.628571-73.142857 51.2-73.142857c21.942857 0 36.571429 14.628571 43.885714 36.571428l43.885715-7.314286c-7.314286-43.885714-36.571429-65.828571-87.771429-65.828571-65.828571 7.314286-95.085714 43.885714-102.4 117.028571 0 65.828571 36.571429 109.714286 102.4 109.714286zM468.114286 248.685714c0 36.571429 29.257143 58.514286 80.457143 58.514286 36.571429 0 58.514286-7.314286 73.142857-29.257143 0 14.628571 7.314286 21.942857 14.628571 29.257143h43.885714C665.6 292.571429 658.285714 270.628571 658.285714 248.685714V168.228571c0-58.514286-29.257143-87.771429-87.771428-87.771428-58.514286 0-87.771429 21.942857-102.4 65.828571l43.885714 14.628572c7.314286-29.257143 21.942857-36.571429 58.514286-36.571429 29.257143 0 43.885714 7.314286 43.885714 36.571429-7.314286 7.314286-29.257143 7.314286-65.828571 14.628571-58.514286 7.314286-80.457143 29.257143-80.457143 73.142857z m146.285714-51.2V219.428571c0 29.257143-21.942857 51.2-65.828571 51.2-21.942857 0-36.571429-7.314286-36.571429-21.942857 0-21.942857 14.628571-29.257143 43.885714-36.571428 29.257143 0 51.2-7.314286 58.514286-14.628572zM760.685714 277.942857c14.628571 14.628571 29.257143 29.257143 58.514286 29.257143 58.514286 0 87.771429-36.571429 87.771429-109.714286 0-80.457143-29.257143-117.028571-95.085715-117.028571-21.942857 0-43.885714 14.628571-58.514285 29.257143V7.314286h-36.571429v292.571428h43.885714v-21.942857z m0-95.085714c0-36.571429 14.628571-58.514286 51.2-58.514286 36.571429 0 51.2 21.942857 51.2 73.142857s-14.628571 73.142857-51.2 73.142857c-36.571429 0-51.2-21.942857-51.2-65.828571v-21.942857z" />
                   </svg>
                 </button>
               </div>
@@ -436,16 +477,30 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
           </div>
         </div>
 
-        <div className={styles.toggleRow}>
-          <ToggleBtn active={caseSensitive} onClick={() => setCaseSensitive((v) => !v)} title={t('ui.search.caseSensitive')}>Aa</ToggleBtn>
-          <ToggleBtn active={wholeWord} onClick={() => setWholeWord((v) => !v)} title={t('ui.search.wholeWord')}><span className={styles.wholeWordGlyph}>ab</span></ToggleBtn>
-          <ToggleBtn active={regex} onClick={() => setRegex((v) => !v)} title={t('ui.search.regex')}>.*</ToggleBtn>
+        {/* Borderless ellipsis pinned to the trailing edge of its own row, so the
+            query input keeps full width; click expands the glob filters below. */}
+        <div className={styles.detailsRow}>
+          <button type="button" className={showDetails ? `${styles.detailsBtn} ${styles.detailsActive}` : styles.detailsBtn} aria-pressed={showDetails} onClick={() => setShowDetails((v) => !v)} title={t('ui.search.toggleDetails')}>
+            {/* Three dots drawn as an SVG (6px tall, vertically centered) instead
+                of a text glyph, so the button no taller than the dots themselves. */}
+            <svg width="16" height="6" viewBox="0 0 16 6" fill="currentColor" aria-hidden="true">
+              <circle cx="3" cy="3" r="1.5" /><circle cx="8" cy="3" r="1.5" /><circle cx="13" cy="3" r="1.5" />
+            </svg>
+          </button>
         </div>
 
         {showDetails && (
           <div className={styles.details}>
-            <input className={styles.globInput} type="text" value={include} spellCheck={false} placeholder={t('ui.search.filesToInclude')} onChange={(e) => setInclude(e.target.value)} />
-            <input className={styles.globInput} type="text" value={exclude} spellCheck={false} placeholder={t('ui.search.filesToExclude')} onChange={(e) => setExclude(e.target.value)} />
+            {/* Inline label sits on the same row as its glob input; htmlFor+id keeps
+                each input's accessible name distinct now both share one placeholder. */}
+            <div className={styles.globField}>
+              <label htmlFor="ccv-search-include" className={styles.globLabel}>{t('ui.search.filesToInclude')}</label>
+              <input id="ccv-search-include" className={styles.globInput} type="text" value={include} spellCheck={false} placeholder={t('ui.search.filesGlobHint')} onChange={(e) => setInclude(e.target.value)} />
+            </div>
+            <div className={styles.globField}>
+              <label htmlFor="ccv-search-exclude" className={styles.globLabel}>{t('ui.search.filesToExclude')}</label>
+              <input id="ccv-search-exclude" className={styles.globInput} type="text" value={exclude} spellCheck={false} placeholder={t('ui.search.filesGlobHint')} onChange={(e) => setExclude(e.target.value)} />
+            </div>
           </div>
         )}
       </div>

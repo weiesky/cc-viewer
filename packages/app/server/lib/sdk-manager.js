@@ -43,6 +43,13 @@ import {
   cancelAutoApproveState,
   replayAutoApproveFields,
 } from './auto-approve.js';
+import {
+  computeAskAutoAnswer,
+  createAskAutoAnswerState,
+  cancelAskAutoAnswerState,
+  replayAskAutoAnswerFields,
+  pickAutoAnswers,
+} from './ask-auto-answer.js';
 
 let _query;
 try {
@@ -2130,11 +2137,25 @@ function _createSession(key, cwd) {
       // server/lib/ask/ask-constants.js.
       const askTimeoutMs = ASK_TIMEOUT_MS;
       const askStartedAt = Date.now();
-      const askPayload = { type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin };
+      // Server-side hosting ("问答题自动托管"): approvalModal.askAutoAnswerMinutes
+      // (0 = instant, N = N minutes) answers the ask at the wall-clock deadline even
+      // with no browser connected. Unlike plan/perm this deliberately applies to
+      // unattended scheduled-task runs (ctx != null): hosting is opt-in (default off)
+      // and the 0-minute tier exists precisely for those flows — without it an
+      // ephemeral run would hang the full 24h. The pick prefers the first option
+      // carrying a localized "Recommended" marker, else the first option.
+      const askAuto = computeAskAutoAnswer(_cwd);
+      const askAutoAnswers = askAuto.enabled ? pickAutoAnswers(input.questions) : null;
+      const askHosting = askAuto.enabled && !!askAutoAnswers;
+      const askPayload = { type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin,
+        // Always stamp the hosting fields (null when off) so a client whose global pref
+        // disagrees with the fork-resolved server value never re-arms locally.
+        ...replayAskAutoAnswerFields(askHosting ? askAuto : null, false) };
       if (_broadcastWs) {
         _broadcastWs(askPayload);
       }
-      const answers = await _waitForApproval(id, askTimeoutMs, 'ask', askPayload, options?.signal, ctx);
+      const answers = await _waitForApproval(id, askTimeoutMs, 'ask', askPayload, options?.signal, ctx,
+        askHosting ? askAuto : null, askHosting ? askAutoAnswers : undefined);
       if (answers === null) {
         return { behavior: 'deny', message: 'Timeout waiting for user answer' };
       }
@@ -2258,7 +2279,7 @@ function _createSession(key, cwd) {
     } catch (err) { console.warn('[sdk-manager] approval-dismiss broadcast threw:', err?.message); }
   }
 
-  function _waitForApproval(id, timeoutMs, kind, replay = null, signal = null, ctx = null, autoMeta = null) {
+  function _waitForApproval(id, timeoutMs, kind, replay = null, signal = null, ctx = null, autoMeta = null, autoValue = undefined) {
     // Record the id on the ephemeral run's ctx ONLY when it actually parks (the three
     // callers below sit after every auto-allow/hard-deny early-return, so an auto-allowed
     // tool never lands here) — keeps ctx.approvalIds bounded (review P3: no unbounded growth).
@@ -2294,15 +2315,25 @@ function _createSession(key, cwd) {
         },
       };
       _pendingApprovals.set(id, entry);
-      // Arm the server-side fallback AFTER the entry is in the map: instant (-1) fires
-      // synchronously and resolves through the same first-wins wrapper.
+      // Arm the server-side fallback AFTER the entry is in the map: instant (-1 for
+      // plan/perm, 0 minutes for ask hosting) fires synchronously and resolves through
+      // the same first-wins wrapper. Ask hosting arms its own state factory (minute
+      // semantics) and resolves the pre-picked answers map; plan/perm keep the generic
+      // auto-approve state. A null autoValue (no selectable option) never reaches here —
+      // the ask caller passes autoMeta only when answers were actually picked, otherwise
+      // resolve(null) would be misread as the timeout/deny path.
       if (autoMeta?.enabled) {
-        entry.auto = createAutoApproveState(autoMeta, () => {
+        const fireResolveValue = autoValue !== undefined
+          ? autoValue
+          : (kind === 'plan' ? { approve: true, feedback: '' } : { decision: 'allow' });
+        const fireResolvedType = kind === 'ask' ? 'sdk-ask-resolved' : (kind === 'plan' ? 'sdk-plan-resolved' : 'perm-hook-resolved');
+        const fireReason = kind === 'ask' ? 'auto-answered' : 'auto-approved';
+        entry.auto = (kind === 'ask' ? createAskAutoAnswerState : createAutoApproveState)(autoMeta, () => {
           const p = _pendingApprovals.get(id);
           if (!p || p.autoCancelled) return;
-          p.resolve(kind === 'plan' ? { approve: true, feedback: '' } : { decision: 'allow' });
+          p.resolve(fireResolveValue);
           try {
-            _broadcastWs?.({ type: kind === 'plan' ? 'sdk-plan-resolved' : 'perm-hook-resolved', id, reason: 'auto-approved', cwd: _cwd, sessionId: _sessionId || null, instanceKey });
+            _broadcastWs?.({ type: fireResolvedType, id, reason: fireReason, cwd: _cwd, sessionId: (ctx && ctx.sessionId) || _sessionId || null, instanceKey });
           } catch (err) { reportSwallowed('sdk-manager.auto-approve-broadcast', err); }
         });
       }
@@ -2350,30 +2381,44 @@ function _createSession(key, cwd) {
       if (remaining <= 0) continue;
       out.push({
         id, kind: p.kind || null, replay: p.replay || null, remainingMs: remaining,
-        ...replayAutoApproveFields(p.auto, p.autoCancelled),
+        // Ask hosting replays under its own field names (autoAnswerAt/…) — an ask
+        // entry must never advertise autoApproveAt (plan/perm-only contract, pinned
+        // by sdk-manager-auto-approve.test.js).
+        ...(p.kind === 'ask'
+          ? replayAskAutoAnswerFields(p.auto, p.autoCancelled)
+          : replayAutoApproveFields(p.auto, p.autoCancelled)),
       });
     }
     return out;
   }
 
   /**
-   * Cancel the SERVER-SIDE auto-approve countdown for a pending plan/perm approval
-   * (client clicked the countdown-cancel button). Unlike cancelApproval this does NOT
+   * Cancel the SERVER-SIDE auto-approve / hosting countdown for a pending plan/perm/ask
+   * approval (client clicked the countdown-cancel button). Unlike cancelApproval this does NOT
    * resolve the approval — it stays pending for a manual decision; only the fallback
    * timer is destroyed and the cancelled flag is replayed to fresh clients so they
    * never re-arm. Returns true when the id matched a pending approval of that kind
    * (even on a repeat cancel — the state change is durable while pending); false when
    * nothing matched (caller falls back to the legacy relay-only behavior).
+   * For ask specifically, false is also returned when no hosting timer was armed
+   * (hosting off / no selectable option) so the caller can fall through to the
+   * PTY-hook entry.
    */
   function _autoCancelApproval(id, kind) {
-    // plan/perm only — ask approvals never arm a server auto-approve timer.
-    if (kind !== 'plan' && kind !== 'perm') return false;
+    if (kind !== 'plan' && kind !== 'perm' && kind !== 'ask') return false;
     const pending = _pendingApprovals.get(id);
+    // A kind-collision (the id belongs to a plan/perm pending) must NOT be treated as
+    // handled: return false so the caller falls through to the PTY-hook entry, which may
+    // legitimately own that ask id. Without this the hosting cancel is silently dropped.
     if (!pending || pending.kind !== kind) return false;
-    const first = cancelAutoApproveState(pending);
+    // Ask with no armed hosting timer: nothing to cancel, but the durable latch is still
+    // stamped (harmless) and the caller falls through to relay the broadcast so sibling
+    // tabs stop their countdown.
+    if (kind === 'ask' && !pending.auto) return false;
+    const first = kind === 'ask' ? cancelAskAutoAnswerState(pending) : cancelAutoApproveState(pending);
     if (first && _broadcastWs) {
       try {
-        _broadcastWs({ type: kind === 'plan' ? 'sdk-plan-auto-cancel' : 'perm-hook-auto-cancel', id, cwd: _cwd, sessionId: _sessionId || null, instanceKey });
+        _broadcastWs({ type: kind === 'plan' ? 'sdk-plan-auto-cancel' : (kind === 'ask' ? 'ask-auto-cancel' : 'perm-hook-auto-cancel'), id, cwd: _cwd, sessionId: _sessionId || null, instanceKey });
       } catch (err) { reportSwallowed('sdk-manager.auto-cancel-broadcast', err); }
     }
     return true;
@@ -3046,10 +3091,11 @@ export function cancelApproval(id, reason) {
 }
 
 /**
- * Cancel the server-side auto-approve countdown for a plan/perm approval,
- * scanning EVERY session (auto-cancel WS handlers). The approval stays pending
- * for a manual decision. Returns false when no pending approval matched, so the
- * caller can fall back to the legacy relay-only broadcast.
+ * Cancel the server-side auto-approve countdown for a plan/perm approval, or the
+ * hosting ("问答题自动托管") timer for an AskUserQuestion approval, scanning EVERY
+ * session (auto-cancel WS handlers). The approval stays pending for a manual
+ * decision. Returns false when no pending approval matched, so the caller can fall
+ * back to the legacy relay-only broadcast.
  */
 export function autoCancelApproval(id, kind) {
   for (const sess of new Set([..._sessions.values(), ..._ephemeralHosts])) {

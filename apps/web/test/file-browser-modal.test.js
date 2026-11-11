@@ -152,7 +152,7 @@ describe('FileBrowserModal wiring contract', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('onClick={() => { onSelect(childPath); if (isMobile) onOpen(item); }}'),
       'grid cells must select on click and open directly only on mobile');
   });
-  it('office/pdf double-click downloads instead of no-op system open on the remote host', () => {
+  it('Office files double-click download instead of no-op system open on the remote host', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('downloadFile(childPath, item.name, project, instance)'),
       'system-open branch must fall back to a browser download (remote host has no GUI)');
     assert.ok(FILE_BROWSER_MODAL.includes('`/api/download-file?path=${encodeURIComponent(childPath)}`'),

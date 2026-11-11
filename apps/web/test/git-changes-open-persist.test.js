@@ -8,7 +8,9 @@
  *   - a _setGitChangesOpen setter writes localStorage, then setState, with the
  *     _pendingGitRefresh consumption folded inside (mirrors _setFileExplorerOpen),
  *   - ACTIVE closes go through the setter: nav icon onClick, panel onClose,
- *     and the FileExplorer / Search icons' mutual-exclusion close,
+ *     and the FileExplorer icon's mutual-exclusion close (the standalone Search
+ *     rail icon was later merged into the FileExplorer panel as an embedded
+ *     toggle, so only the FileExplorer icon participates in this exclusion),
  *   - PASSIVE closes stay as direct setState (no storage write): _detectGit
  *     (no-repo probe) and the jump-to-file paths — these are reactions to the
  *     environment, not user intent.
@@ -83,14 +85,6 @@ describe('gitChangesOpen persistence', () => {
     assert.ok(idx > 0, 'file-explorer nav onClick located');
     const window = chatViewSrc.slice(idx, idx + 400);
     assert.match(window, /_setGitChangesOpen\(false\)/);
-  });
-
-  it('search icon mutual-exclusion close goes through the setter (active close)', () => {
-    // Search icon's onClick must also persist gitChangesOpen=false on its open branch.
-    const idx = chatViewSrc.indexOf("t('ui.search')");
-    assert.ok(idx > 0, 'search nav icon located');
-    const before = chatViewSrc.slice(Math.max(0, idx - 1500), idx);
-    assert.match(before, /_setGitChangesOpen\(false\)/);
   });
 
   it('constructive invariant: ccv_gitChangesOpen is written from exactly ONE place (the setter)', () => {

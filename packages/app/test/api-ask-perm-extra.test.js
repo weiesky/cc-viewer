@@ -168,6 +168,39 @@ describe('ask-perm: pendingAsks (GET /api/pending-asks)', () => {
     const diskEntry = res.json.pendingAsks.find(e => e.id === 'diskP');
     assert.equal(diskEntry.source, 'disk');
     assert.equal(res.json.pendingAsks.find(e => e.id === 'mem').source, 'memory');
+    // 托管字段:disk-only entry 一律 null 组(timer 仅内存;重启后转人工 — 契约)
+    assert.deepEqual(
+      { autoAnswerAt: diskEntry.autoAnswerAt, autoAnswerSeconds: diskEntry.autoAnswerSeconds, autoCancelled: diskEntry.autoCancelled },
+      { autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false },
+      'disk-only orphans never advertise a hosting deadline',
+    );
+  });
+
+  it('memory entry 的托管字段经 replay 透传(含取消后 autoAnswerAt=null)', async () => {
+    const deps = makeDeps();
+    deps.pendingAskHooks.set('hosted', {
+      questions: [{ question: 'H' }], createdAt: 100,
+      auto: { autoAnswerAt: 999999, seconds: 600, minutes: 10, cancelled: false, timer: null },
+      autoCancelled: false,
+    });
+    deps.pendingAskHooks.set('hostedCancelled', {
+      questions: [{ question: 'HC' }], createdAt: 200,
+      auto: { autoAnswerAt: 999999, seconds: 600, minutes: 10, cancelled: true, timer: null },
+      autoCancelled: true,
+    });
+    const res = makeRes();
+    pendingAsksHandler({}, res, { pathname: '/api/pending-asks' }, true, deps);
+    const hosted = res.json.pendingAsks.find(e => e.id === 'hosted');
+    assert.deepEqual(
+      { autoAnswerAt: hosted.autoAnswerAt, autoAnswerSeconds: hosted.autoAnswerSeconds, autoCancelled: hosted.autoCancelled },
+      { autoAnswerAt: 999999, autoAnswerSeconds: 600, autoCancelled: false },
+    );
+    const cancelled = res.json.pendingAsks.find(e => e.id === 'hostedCancelled');
+    assert.deepEqual(
+      { autoAnswerAt: cancelled.autoAnswerAt, autoAnswerSeconds: cancelled.autoAnswerSeconds, autoCancelled: cancelled.autoCancelled },
+      { autoAnswerAt: null, autoAnswerSeconds: 600, autoCancelled: true },
+      'cancelled hosting replays null deadline + durable flag',
+    );
   });
 
   it('loadAskStore 抛错 → 500 错误回包', () => {

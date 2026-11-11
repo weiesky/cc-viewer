@@ -46,6 +46,10 @@
   box-shadow: inset 0 0 0 4px var(--border-secondary), 0 0 8px var(--color-primary-bg-light);
 }
 
+.terminalContainer.terminalContainerDragOver {
+  box-shadow: inset 0 0 0 4px var(--color-primary), 0 0 12px var(--color-primary-bg-light);
+}
+
 /* 悬浮在主 terminal 右下角的「刷新渲染」按钮：抖动高度强制 xterm 重绘，修花屏/白屏。
    right:18px 避开 xterm-viewport 滚动条；z-index:10 高于 xterm 内部层 (≤7)；
    常驻但半透明，hover 提亮——花屏时仍可见，正常时不喧宾夺主 */
@@ -84,6 +88,10 @@
 
 :global([data-theme="light"]) .terminalContainerFocused {
   box-shadow: inset 0 0 0 4px rgba(217, 119, 87, 0.15), 0 0 6px rgba(217, 119, 87, 0.08);
+}
+
+:global([data-theme="light"]) .terminalContainer.terminalContainerDragOver {
+  box-shadow: inset 0 0 0 4px var(--color-primary), 0 0 12px var(--color-primary-bg-light);
 }
 
 [data-theme="light"] .terminalContainer { background: #FFF; }
@@ -897,12 +905,21 @@
   overflow: hidden;
 }
 
+.scratchInner.scratchInnerDragOver,
+.scratchPanesFocused .scratchPane.scratchPaneActive .scratchInner.scratchInnerDragOver {
+  border-color: var(--color-primary);
+}
+
 .scratchPanesFocused .scratchPane.scratchPaneActive .scratchInner {
   border-color: var(--border-secondary);
 }
 
 :global([data-theme="light"]) .scratchPanesFocused .scratchPane.scratchPaneActive .scratchInner {
   border-color: rgba(217, 119, 87, 0.15);
+}
+
+:global([data-theme="light"]) .scratchPanesFocused .scratchPane.scratchPaneActive .scratchInner.scratchInnerDragOver {
+  border-color: var(--color-primary);
 }
 
 .scratchInner :global(.xterm-helper-textarea) {

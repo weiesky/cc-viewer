@@ -101,6 +101,19 @@ describe('mergeApprovalModalPrefs', () => {
     assert.equal(r.soundEnabled, true);
   });
 
+  it('persists the askAutoAnswerMinutes number incl. the explicit null (off) value', () => {
+    // The AskUserQuestion hosting pref uses null = off; an explicit null patch must
+    // survive the shallow merge so "turn hosting off" actually persists.
+    let r = mergeApprovalModalPrefs({ modalEnabled: true }, { askAutoAnswerMinutes: 10 });
+    assert.equal(r.askAutoAnswerMinutes, 10);
+    r = mergeApprovalModalPrefs({ askAutoAnswerMinutes: 10 }, { askAutoAnswerMinutes: null });
+    assert.equal(r.askAutoAnswerMinutes, null);
+    assert.ok('askAutoAnswerMinutes' in r, 'explicit null must not be dropped');
+    // a patch that omits the key preserves the previous value
+    r = mergeApprovalModalPrefs({ askAutoAnswerMinutes: 20 }, { soundEnabled: true });
+    assert.equal(r.askAutoAnswerMinutes, 20);
+  });
+
   it('voicePack partial update preserves untouched voicePack fields', () => {
     const base = {
       modalEnabled: true,

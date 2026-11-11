@@ -1,6 +1,33 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { remainingSeconds, startDeadlineCountdown } from '../src/utils/deadlineCountdown.js';
+import { remainingSeconds, startDeadlineCountdown, formatCountdownClock } from '../src/utils/deadlineCountdown.js';
+
+describe('formatCountdownClock', () => {
+  it('一分钟内: M:SS(分不补零,秒补零)', () => {
+    assert.equal(formatCountdownClock(0), '0:00');
+    assert.equal(formatCountdownClock(5), '0:05');
+    assert.equal(formatCountdownClock(65), '1:05');
+    assert.equal(formatCountdownClock(599), '9:59');
+  });
+
+  it('分钟级托管档位渲染成时钟格式而非裸秒数', () => {
+    assert.equal(formatCountdownClock(600), '10:00');
+    assert.equal(formatCountdownClock(1200), '20:00');
+    assert.equal(formatCountdownClock(1800), '30:00');
+  });
+
+  it('一小时及以上: H:MM:SS(分补零)', () => {
+    assert.equal(formatCountdownClock(3600), '1:00:00');
+    assert.equal(formatCountdownClock(3661), '1:01:01');
+    assert.equal(formatCountdownClock(3599), '59:59', '边界: 低于 1h 仍是 M:SS');
+  });
+
+  it('非法输入按 0 处理', () => {
+    assert.equal(formatCountdownClock(undefined), '0:00');
+    assert.equal(formatCountdownClock(null), '0:00');
+    assert.equal(formatCountdownClock(-5), '0:00');
+  });
+});
 
 describe('remainingSeconds', () => {
   it('向上取整并夹到 0', () => {

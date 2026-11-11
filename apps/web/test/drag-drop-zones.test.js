@@ -60,6 +60,13 @@ describe('AppBase drag state machine', () => {
     assert.ok(APP_BASE.includes("e.dataTransfer.types.includes('text/x-internal-move')"),
       '_onDragOver must short-circuit tree-internal moves');
   });
+  it('keeps external drags cancelable over modal portals to prevent browser navigation', () => {
+    const start = APP_BASE.indexOf('_onDragOver = (e) => {');
+    const body = APP_BASE.slice(start, APP_BASE.indexOf('_onDragLeave = (e) => {'));
+    const preventIdx = body.indexOf('e.preventDefault();');
+    const portalIdx = body.indexOf('if (isOverModalPortal(e))');
+    assert.ok(preventIdx >= 0 && portalIdx >= 0 && preventIdx < portalIdx);
+  });
   it('resolves the chat zone from the dragover target marker', () => {
     assert.ok(APP_BASE.includes(`e.target.closest('[data-drop-zone="chat"]')`),
       'dragover must look up the data-drop-zone="chat" marker');
@@ -82,9 +89,11 @@ describe('AppBase drag state machine', () => {
     assert.ok(leaveBody.includes('this.setState({ isDragging: false, dragZone: null });'),
       '_onDragLeave must reset both isDragging and dragZone');
     const dropStart = APP_BASE.indexOf('_onDrop = (e) => {');
-    const dropBody = APP_BASE.slice(dropStart, dropStart + 400);
-    assert.ok(dropBody.includes('this.setState({ isDragging: false, dragZone: null });'),
+    const globalDrop = APP_BASE.slice(dropStart, APP_BASE.indexOf('// 子类可 override', dropStart));
+    assert.ok(globalDrop.includes('this.setState({ isDragging: false, dragZone: null });'),
       '_onDrop must reset both isDragging and dragZone');
+    assert.ok(globalDrop.includes("if (e.dataTransfer.types.includes('text/x-internal-move')) return;"),
+      'internal file drops must not enter external upload');
   });
   it('drag-abort safety net: document-level dragend/drop reset is registered and removed', () => {
     // Esc / focus-loss cancel a drag without dragleave — without this the chat

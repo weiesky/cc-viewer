@@ -1167,26 +1167,6 @@ const i18nData = {
     "tr": "Mevcut günlüğü indir",
     "uk": "Завантажити поточний лог"
   },
-  "ui.exportPrompts": {
-    "zh": "查看用户 Prompt",
-    "en": "Export user prompts",
-    "zh-TW": "匯出用戶 Prompt",
-    "ko": "사용자 Prompt 내보내기",
-    "ja": "ユーザー Prompt をエクスポート",
-    "de": "Benutzer-Prompts exportieren",
-    "es": "Exportar prompts de usuario",
-    "fr": "Exporter les prompts utilisateur",
-    "it": "Esporta prompt utente",
-    "da": "Eksportér bruger-prompts",
-    "pl": "Eksportuj prompty użytkownika",
-    "ru": "Экспорт пользовательских Prompt",
-    "ar": "تصدير Prompt المستخدم",
-    "no": "Eksporter bruker-prompts",
-    "pt-BR": "Exportar prompts do usuário",
-    "th": "ส่งออก Prompt ผู้ใช้",
-    "tr": "Kullanıcı Prompt'larını dışa aktar",
-    "uk": "Експорт Prompt користувача"
-  },
   "ui.exportPromptsTxt": {
     "zh": "导出到本地 .txt",
     "en": "Export to local .txt",

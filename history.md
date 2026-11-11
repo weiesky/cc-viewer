@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- feat(web+server): **统一文件预览分类与二进制保护** — 跨平台识别归档、图片、HTML、Markdown、音频、视频、字体、PDF、文本和二进制；不支持预览的文件提供只读说明与下载，文本读取增加二进制内容检测，UTF-16 BOM 文本支持只读预览；旧编码文本保持下载回退。Coverage: `preview-kind.test.js`, `preview-wiring.test.js`, `binary-sniff.test.js`, `api-files-content.test.js`.
+
+- feat(web+server): **压缩包支持在线预览** — 全部文件入口支持 ZIP/TAR/GZIP/TGZ 目录树、文本与图片条目预览；7z/RAR/XZ/BZ2 提供说明与下载。Coverage: `archive-preview.test.js`, `archive-preview-wiring.test.js`, `api-files-content.test.js`.
+
+- feat(web): **文件夹支持拖拽到终端或对话** — 终端追加目录路径；对话显示文件夹图标及省略中间层级的路径，发送时保留完整路径。Coverage: `file-drag-drop.test.js`.
+- feat(web): **文件浏览器支持拖拽到终端或对话** — 侧栏文件拖入终端追加转义路径但不发送回车；拖入对话输入框显示附件，发送时拼接文件路径。Coverage: `file-drag-drop.test.js`, `drag-drop-zones.test.js`.
+
+- feat(web): **文件搜索并入文件浏览器面板** — 左侧栏放大镜入口移除，改为文件浏览器标题栏刷新旁的放大镜开关；点击后搜索在文件树下方同面板展开（按钮变蓝），再次点击关闭；树与搜索之间的分界线可上下拖拽调整比例（35%–80%）；点击搜索结果联动展开文件树定位；浏览器刷新后保持搜索面板开启状态与已输入内容。Coverage: `search-into-file-explorer.test.js`, `git-changes-open-persist.test.js`.
+
+- feat(header): **系统提示词生效后不再自动固定到顶部导航栏** — 移除「系统提示词修改」入口的自动露出机制（Web pins 块与 Electron 原生 tab bar 同步移除，激活态轮询一并删除），入口统一走汉堡菜单或手动钉住。
+
+- feat(chat): **「查看用户 Prompt」入口迁到左侧头像导航气泡「more」** — 汉堡菜单中的入口移除；导航气泡标题栏右侧新增 more 按钮，打开同款用户 Prompt 汇总弹窗（导出 .txt / 原文/上下文/纯文本三种视图），Mobile 端长按入口不受影响。
+
+- feat(ask): **新增「问答题自动托管」** — 快捷设置(权限/Plan 自动审批同级)新增 0/10/20/30 分钟或不托管(默认);服务端在到点时自动回答 AskUserQuestion,不依赖浏览器在线:优先选标签带「推荐」标记(内置 18 语言词表)的第一项,否则第一项;0 分钟到达即答(适合无人值守/定时任务)。弹窗显示倒计时,可点「取消托管」仅让本题转回手动(设置对后续题仍生效);截止前手动回答以手动为准(first-write-wins)。Coverage: `ask-auto-answer.test.js`(core + app 两份), `sdk-manager-auto-approve.test.js`, `branch-routes-ask-perm.test.js`, `server-ws-branches.test.js`, `api-ask-perm-extra.test.js`, `ask-flow-controller.test.js`, `auto-approve-options.test.js`, `deadline-countdown.test.js`, `ask-auto-answer-menu.test.js`, `quick-settings-i18n.test.js`.
+
 - fix(kimi-k3): **Kimi K3 system prompt 新增工具错误熔断段** — 报错先诊断再行动、区分参数非法与瞬时故障、同工具同参数最多重试 1 次、连续失败 2 次立即停手向用户报告，修复 TaskUpdate 空调用死循环。
 
 ## 1.9.23

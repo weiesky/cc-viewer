@@ -58,11 +58,36 @@ export class AskFlowController {
     this._lastClearedPendingAsk = null; // PTY 路径 abort 回滚面包屑
     this._lastAskSubmitId = null;
     this._pendingCancelIds = null;    // Map<askId, reason>：WS 不可用时缓存的 cancel，reopen 时重发
+    this._pendingAutoCancelIds = null; // Set<askId>：WS 不可用时缓存的"取消托管"，reopen 时重发
+    this._askAutoCancelled = new Set(); // 本端/远端已取消托管的 askId — 重连 replay 时重新断言,防倒计时复活
   }
+
+  // 合并(不替换)写入一条 ask 的 meta — 重连 replay 帧不带上次本地状态时,合并保留
+  // autoCancelled/autoAnswerAt,避免 replay 抹掉刚取消的托管。
+  _stampAskMeta = (askId, fields) => {
+    if (!askId) return;
+    this.host.setState(prev => ({
+      askMetaMap: {
+        ...prev.askMetaMap,
+        [askId]: {
+          ...(prev.askMetaMap?.[askId] || {}),
+          startedAt: fields.startedAt,
+          timeoutMs: fields.timeoutMs,
+          autoAnswerAt: typeof fields.autoAnswerAt === 'number' ? fields.autoAnswerAt : null,
+          autoAnswerSeconds: typeof fields.autoAnswerSeconds === 'number' ? fields.autoAnswerSeconds : null,
+          autoCancelled: fields.autoCancelled === true,
+        },
+      },
+    }));
+  };
 
   // 清 askMetaMap 中指定 askId 的 entry — 内存回收钩子。entry 不存在时返 null（不触发 re-render）。
   _clearAskMeta = (askId) => {
     if (!askId) return;
+    // Prune the hosting-cancel latch with the meta: a resolved/timeout ask id must not
+    // suppress a future countdown if the server ever re-registers the same toolUseId
+    // (ask-bridge slot reuse arms a fresh full-length timer).
+    this._askAutoCancelled.delete(askId);
     this.host.setState(prev => {
       if (!prev.askMetaMap || !prev.askMetaMap[askId]) return null;
       const next = { ...prev.askMetaMap };
@@ -504,6 +529,31 @@ export class AskFlowController {
     return askId;
   };
 
+  /**
+   * Cancel the SERVER-side hosting ("取消托管") for one pending ask — the countdown's
+   * cancel button. The ask stays pending for a manual answer; the global setting is
+   * untouched (later asks are still hosted). Optimistic: marks meta immediately so the
+   * countdown strip disappears without waiting for the server broadcast echo.
+   * WS down → cache in _pendingAutoCancelIds, resent on reconnect (the reconnect replay
+   * would otherwise re-arm a countdown the user already cancelled).
+   */
+  handleAskAutoCancel = (askId) => {
+    if (!askId) return;
+    this._askAutoCancelled.add(askId);
+    this.host.setState(prev => {
+      const cur = prev.askMetaMap?.[askId];
+      if (!cur) return null;
+      return { askMetaMap: { ...prev.askMetaMap, [askId]: { ...cur, autoCancelled: true, autoAnswerAt: null } } };
+    });
+    const ws = this.host.ws();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ type: 'ask-auto-cancel', id: askId })); } catch {}
+    } else {
+      if (!this._pendingAutoCancelIds) this._pendingAutoCancelIds = new Set();
+      this._pendingAutoCancelIds.add(askId);
+    }
+  };
+
   handleAskQuestionSubmit = (answers, askId, questions) => {
     // 每次新提交入口重置 abort。
     this._askAbortRequested = false;
@@ -616,9 +666,15 @@ export class AskFlowController {
       if (Array.isArray(msg.questions) && msg.questions.length > 0) {
         const askId = msg.id != null ? String(msg.id) : LEGACY_ASK_PLACEHOLDER_ID;
         if (typeof msg.startedAt === 'number' && typeof msg.timeoutMs === 'number') {
-          this.host.setState(prev => ({
-            askMetaMap: { ...prev.askMetaMap, [askId]: { startedAt: msg.startedAt, timeoutMs: msg.timeoutMs } },
-          }));
+          // Merge + re-assert a locally cancelled hosting the replay frame doesn't know about.
+          const reAssert = this._askAutoCancelled.has(askId);
+          this._stampAskMeta(askId, {
+            startedAt: msg.startedAt,
+            timeoutMs: msg.timeoutMs,
+            autoAnswerAt: reAssert ? null : msg.autoAnswerAt,
+            autoAnswerSeconds: msg.autoAnswerSeconds,
+            autoCancelled: reAssert || msg.autoCancelled === true,
+          });
         }
         if (msg.id == null && this.host.getState().pendingAsk?.id === LEGACY_ASK_PLACEHOLDER_ID) {
           console.warn('[ChatView] legacy ask-hook-pending without id arrived while a placeholder ask is already active — second ask will be silently dropped (legacy server does not support concurrent asks). Upgrade server to enable multi-ask multiplexing.');
@@ -662,9 +718,14 @@ export class AskFlowController {
       if (Array.isArray(msg.questions) && msg.questions.length > 0) {
         const askId = String(msg.id);
         if (typeof msg.startedAt === 'number' && typeof msg.timeoutMs === 'number') {
-          this.host.setState(prev => ({
-            askMetaMap: { ...prev.askMetaMap, [askId]: { startedAt: msg.startedAt, timeoutMs: msg.timeoutMs } },
-          }));
+          const reAssert = this._askAutoCancelled.has(askId);
+          this._stampAskMeta(askId, {
+            startedAt: msg.startedAt,
+            timeoutMs: msg.timeoutMs,
+            autoAnswerAt: reAssert ? null : msg.autoAnswerAt,
+            autoAnswerSeconds: msg.autoAnswerSeconds,
+            autoCancelled: reAssert || msg.autoCancelled === true,
+          });
         }
         this.host.setState(state => {
           if (state.pendingAsk) {
@@ -714,6 +775,19 @@ export class AskFlowController {
       }
       return true;
     }
+    if (msg.type === 'ask-auto-cancel') {
+      // Hosting cancelled (this tab or a sibling): stop the countdown everywhere.
+      // The ask itself stays pending — only the server-side timer is destroyed.
+      const askId = msg.id != null ? String(msg.id) : null;
+      if (!askId) return true;
+      this._askAutoCancelled.add(askId);
+      this.host.setState(prev => {
+        const cur = prev.askMetaMap?.[askId];
+        if (!cur) return null;
+        return { askMetaMap: { ...prev.askMetaMap, [askId]: { ...cur, autoCancelled: true, autoAnswerAt: null } } };
+      });
+      return true;
+    }
     if (msg.type === 'ask-hook-cancelled') {
       // server ack：handleAskCancel 发的 ask-cancel 已处理。① 本端发起 + 等 ack flush → 立即 flush；
       // ② 兜底清 modal/queue（远端 cancel）；③ 写 localAskAnswers 灰态。
@@ -759,6 +833,15 @@ export class AskFlowController {
       }
       this._pendingCancelIds.clear();
     }
+    // Resend cached hosting cancels BEFORE pulling pending asks: the pull/replay stamps
+    // meta again and would otherwise resurrect a countdown the user already cancelled
+    // while disconnected (the _askAutoCancelled set also re-asserts at stamp time).
+    if (this._pendingAutoCancelIds && this._pendingAutoCancelIds.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+      for (const askId of this._pendingAutoCancelIds) {
+        try { ws.send(JSON.stringify({ type: 'ask-auto-cancel', id: askId })); } catch {}
+      }
+      this._pendingAutoCancelIds.clear();
+    }
     try {
       this.host.fetchPendingAsks()
         .then(data => {
@@ -768,6 +851,11 @@ export class AskFlowController {
             this.handleWsMessage({
               type: 'ask-hook-pending', id: ask.id, questions: ask.questions,
               startedAt: ask.createdAt, timeoutMs: 24 * 60 * 60 * 1000,
+              // Hosting fields ride the recovery chain (server stamps them on memory
+              // entries; disk-only orphans carry nulls and degrade to manual).
+              autoAnswerAt: ask.autoAnswerAt ?? null,
+              autoAnswerSeconds: ask.autoAnswerSeconds ?? null,
+              autoCancelled: ask.autoCancelled === true,
             });
           }
         })
@@ -789,5 +877,7 @@ export class AskFlowController {
     if (this._waitForPtyTimer) clearTimeout(this._waitForPtyTimer);
     this._pendingHookAnswers = null;
     if (this._pendingCancelIds) this._pendingCancelIds.clear();
+    if (this._pendingAutoCancelIds) this._pendingAutoCancelIds.clear();
+    this._askAutoCancelled.clear();
   }
 }

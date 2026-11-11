@@ -41,7 +41,8 @@ describe('fileOpen.isSystemOpenFile — 与系统打开共用扩展名集合', (
   it('识别文档扩展且不发起请求', () => {
     let called = false;
     globalThis.fetch = () => { called = true; return Promise.resolve({}); };
-    assert.equal(isSystemOpenFile('/x/report.PDF'), true);
+    assert.equal(isSystemOpenFile('/x/report.DOCX'), true);
+    assert.equal(isSystemOpenFile('/x/report.PDF'), false);
     assert.equal(isSystemOpenFile('/x/report.txt'), false);
     assert.equal(isSystemOpenFile(null), false);
     assert.equal(called, false);
@@ -51,7 +52,7 @@ describe('fileOpen.isSystemOpenFile — 与系统打开共用扩展名集合', (
 describe('fileOpen.tryOpenWithSystem — 命中扩展名', () => {
   beforeEach(() => { globalThis.fetch = _origFetch; });
 
-  const hits = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'pdf'];
+  const hits = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'];
   for (const ext of hits) {
     it(`.${ext} → 返回 true 且 POST /api/open-file`, () => {
       const calls = installFetch();
@@ -67,11 +68,11 @@ describe('fileOpen.tryOpenWithSystem — 命中扩展名', () => {
     });
   }
 
-  it('大写扩展名归一化命中（.PDF）', () => {
+  it('大写扩展名归一化命中（.DOCX）', () => {
     const calls = installFetch();
-    assert.equal(tryOpenWithSystem('/A/B.PDF', 'git-diff'), true);
+    assert.equal(tryOpenWithSystem('/A/B.DOCX', 'git-diff'), true);
     assert.equal(calls.length, 1);
-    assert.deepEqual(JSON.parse(calls[0].opts.body), { path: '/A/B.PDF', source: 'git-diff' });
+    assert.deepEqual(JSON.parse(calls[0].opts.body), { path: '/A/B.DOCX', source: 'git-diff' });
   });
 
   it('混合大小写（.DocX）命中', () => {
@@ -82,9 +83,9 @@ describe('fileOpen.tryOpenWithSystem — 命中扩展名', () => {
 
   it('carries an explicitly supplied view scope without changing the request body', () => {
     const calls = installFetch();
-    tryOpenWithSystem('report.pdf', 'file-explorer', { project: 'other project', instance: 'ccv-a1b2' });
+    tryOpenWithSystem('report.docx', 'file-explorer', { project: 'other project', instance: 'ccv-a1b2' });
     assert.equal(calls[0].url, '/api/open-file?project=other%20project&instance=ccv-a1b2');
-    assert.deepEqual(JSON.parse(calls[0].opts.body), { path: 'report.pdf', source: 'file-explorer' });
+    assert.deepEqual(JSON.parse(calls[0].opts.body), { path: 'report.docx', source: 'file-explorer' });
   });
 
   it('source 透传进 body', () => {
@@ -96,7 +97,7 @@ describe('fileOpen.tryOpenWithSystem — 命中扩展名', () => {
   it('fetch reject 被内部 .catch 吞掉，函数仍同步返回 true 不抛', () => {
     installFetch({ reject: true });
     assert.doesNotThrow(() => {
-      const r = tryOpenWithSystem('a.pdf', 'file-explorer');
+      const r = tryOpenWithSystem('a.docx', 'file-explorer');
       assert.equal(r, true);
     });
   });
@@ -152,9 +153,15 @@ describe('fileOpen.tryOpenWithSystem — 未命中', () => {
     assert.equal(called, false);
   });
 
-  it('多段扩展（archive.pdf）命中末段 pdf → true', () => {
+  it('PDF 留给应用内只读预览，不调用系统打开', () => {
     const calls = installFetch();
-    assert.equal(tryOpenWithSystem('archive.tar.pdf', 'file-explorer'), true);
+    assert.equal(tryOpenWithSystem('archive.tar.pdf', 'file-explorer'), false);
+    assert.equal(calls.length, 0);
+  });
+
+  it('Windows 路径与点目录仍按文件扩展名打开 Office', () => {
+    const calls = installFetch();
+    assert.equal(tryOpenWithSystem('C:\\dir.with.dot\\report.DOCX', 'file-explorer'), true);
     assert.equal(calls.length, 1);
   });
 });

@@ -4,6 +4,9 @@ import { Modal, message } from 'antd';
 import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { useMarkdownExport } from '../../hooks/useMarkdownExport';
 import { detectMdExtensions } from '../../utils/mdExtensionDetect';
+import { getPreviewKind, isDownloadOnlyPreview, isBinaryContentError } from '../../utils/previewKind.js';
+import UnsupportedFilePreview from '../viewers/UnsupportedFilePreview';
+import { reportSwallowed } from '../../utils/errorReport';
 import { handleStaleChunk } from '../../utils/lazyWithReload';
 import CodeMirror from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
@@ -313,7 +316,15 @@ const highlightStyle = HighlightStyle.define([
 
 const syntaxTheme = syntaxHighlighting(highlightStyle);
 
-export default function FileContentView({
+const ArchivePreview = lazy(() =>
+  import('../viewers/ArchivePreview').catch((err) =>
+    handleStaleChunk('ArchivePreview', err, {
+      onReload: () => message.warning(i18n('ui.chunkOutdatedReloading')),
+    }),
+  ),
+);
+
+function FileContentViewImpl({
   filePath,
   onClose,
   editorSession,
@@ -325,7 +336,7 @@ export default function FileContentView({
   onDirtyChange,
   project,
   instance,
-  readOnly = false,
+  readOnly: readOnlyProp = false,
   displayPath,
   target,          // optional; CLAUDE.md/skill browser modal — save resolves the
                    // navigation root from this target identity (query), not the
@@ -339,7 +350,11 @@ export default function FileContentView({
   const [saveStatus, setSaveStatus] = useState(null);
   const [lineCount, setLineCount] = useState(0);
   const [closing, setClosing] = useState(false);
-  const isMdFile = /\.md$/i.test(filePath);
+  const [binaryFallback, setBinaryFallback] = useState(null);
+  if (binaryFallback?.path && binaryFallback.path !== filePath) setBinaryFallback(null);
+  const [readOnlyEncoding, setReadOnlyEncoding] = useState(null);
+  const readOnly = readOnlyProp || readOnlyEncoding?.path === filePath;
+  const isMdFile = getPreviewKind(filePath) === 'markdown';
   const [viewMode, setViewMode] = useState(isMdFile ? 'markdown' : 'text');
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   // MDX 编辑相关 state
@@ -521,7 +536,7 @@ export default function FileContentView({
   }, [viewMode, isDirty, content]);
 
   const doSave = useCallback(async () => {
-    if (readOnly || !isDirty) return;
+    if (readOnly || binaryFallback || !isDirty) return;
     // MDX 模式下优先从 editor ref 取最新 markdown（onChange 是 debounced，currentContent 可能滞后）
     let saveContent = currentContent;
     if (useMdxEditor && mdxRef.current?.getMarkdown) {
@@ -571,7 +586,7 @@ export default function FileContentView({
         }, 3000);
       }
     }
-  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession, project, instance, readOnly, target]);
+  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession, project, instance, readOnly, target, binaryFallback]);
 
   saveRef.current = doSave;
 
@@ -631,43 +646,58 @@ export default function FileContentView({
   }, [reportScrollSnap]);
 
   const loadFileContent = useCallback(() => {
+    const controller = new AbortController();
     mounted.current = true;
     setContent(null);
     setCurrentContent(null);
     setError(null);
+    setBinaryFallback(null);
+    setReadOnlyEncoding(null);
     setLoading(true);
     setLineCount(0);
     // 切换文件时重置 MDX 相关 state，避免上一个文件的扩展检测/解析错误跨文件污染
     setExtensionDetected(false);
     setMdxParseErrored(false);
 
-    fetch(apiUrl(withViewParams(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`, { project, instance })))
+    fetch(apiUrl(withViewParams(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`, { project, instance })), { signal: controller.signal })
       .then((r) => {
         if (!r.ok) {
           return r
             .json()
+            .catch((error) => {
+              if (error.name === 'AbortError' || controller.signal.aborted) throw error;
+              reportSwallowed('fileContent.errorBody', error);
+              return {};
+            })
             .then((err) => {
+              if (controller.signal.aborted) return null;
+              if (!mounted.current) return null;
+              if (isBinaryContentError(r.status, err)) {
+                setContent(null);
+                setCurrentContent(null);
+                setFileSize(err.size || 0);
+                setBinaryFallback({ path: filePath, size: err.size });
+                setLoading(false);
+                return null;
+              }
               // 服务端 file-access-policy 现在统一返回 {error, reason, allowedRoots?}
-              // reason 取值见 server/lib/file-access-policy.js:isReadAllowed,前端解析后展示具体原因
               const reasonMsg = err.reason
                 ? (i18n(`ui.fileLoadError.reason.${err.reason}`) || err.error)
-                : (err.error || 'Failed to load');
+                : (err.error || `HTTP ${r.status}`);
               const e = new Error(reasonMsg);
               if (err.allowedRoots) e.allowedRoots = err.allowedRoots;
               throw e;
-            })
-            .catch((parsedErr) => {
-              if (parsedErr && parsedErr.message) throw parsedErr;
-              throw new Error(`HTTP ${r.status}`);
             });
         }
         return r.json();
       })
       .then((data) => {
-        if (mounted.current) {
+        if (data && mounted.current && !controller.signal.aborted) {
+          setError(null);
           setContent(data.content);
           setCurrentContent(data.content);
           setFileSize(data.size);
+          setReadOnlyEncoding(data.encoding || data.readOnly ? { path: filePath, encoding: data.encoding } : null);
           setLineCount(data.content.split('\n').length);
           setLoading(false);
           // 仅对 .md 且 flag 开启时做扩展检测，命中则提示 + 走旧 marked 渲染（自动 fallback）
@@ -686,16 +716,18 @@ export default function FileContentView({
         }
       })
       .catch((err) => {
-        if (mounted.current) {
+        if (mounted.current && !controller.signal.aborted && err.name !== 'AbortError') {
           setError(`${i18n('ui.fileLoadError')}: ${err.message}`);
           setLoading(false);
         }
       });
+    return () => controller.abort();
   }, [filePath, editorSession, isMdFile, mdxFeatureEnabled, project, instance]);
 
   useEffect(() => {
-    loadFileContent();
+    const abort = loadFileContent();
     return () => {
+      abort();
       mounted.current = false;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
@@ -887,6 +919,10 @@ export default function FileContentView({
     return lines;
   }, [lineCount]);
 
+  if (binaryFallback?.path === filePath) {
+    return <UnsupportedFilePreview {...{ filePath, displayPath, onClose, project, instance }} kind="binary" contentDetected fileSize={binaryFallback.size} />;
+  }
+
   return (
     <div ref={containerRef} className={`${styles.fileContentView}${closing ? ` ${styles.closing}` : ''}`}>
       {editorSession && (
@@ -902,6 +938,7 @@ export default function FileContentView({
             </svg>
           </button>
           <span className={styles.filePath}>{displayPath || filePath}</span>
+          {readOnlyEncoding?.path === filePath && readOnlyEncoding.encoding && <span className={styles.fileSize} title={i18n('ui.filePreview.utf16ReadOnly')}>UTF-16</span>}
           {fileSize > 0 && (
             <span className={styles.fileSize}>{formatFileSize(fileSize)}</span>
           )}
@@ -1041,4 +1078,18 @@ export default function FileContentView({
       </div>
     </div>
   );
+}
+
+// Keep this dispatcher hook-free: callers may replace preview paths in place.
+export default function FileContentView(props) {
+  const kind = getPreviewKind(props.filePath);
+  if (kind === 'archive') {
+    return (
+      <Suspense fallback={<div className={styles.fileContentView}><div className={styles.loading}>{i18n('ui.loading')}</div></div>}>
+        <ArchivePreview key={props.filePath} {...props} />
+      </Suspense>
+    );
+  }
+  if (isDownloadOnlyPreview(kind)) return <UnsupportedFilePreview key={props.filePath} {...props} kind={kind} />;
+  return <FileContentViewImpl {...props} />;
 }

@@ -3,7 +3,6 @@ import { Empty, Typography, Divider, Popover, Modal, message } from 'antd';
 import ChatMessage from './ChatMessage';
 import TerminalPanel, { uploadFileAndGetPath } from '../terminal/TerminalPanel';
 import FileExplorer from '../files/FileExplorer';
-import SearchPanel from '../search/SearchPanel';
 import FileContentView from '../files/FileContentView';
 import ImageViewer from '../viewers/ImageViewer';
 import ImageLightbox from '../common/ImageLightbox';
@@ -29,14 +28,17 @@ import { resolvePlanAutoApproveTarget, sdkPlanMatchesView } from '../../utils/pl
 import { startDeadlineCountdown } from '../../utils/deadlineCountdown';
 import { reportSwallowed } from '../../utils/errorReport';
 import { isImageFile } from '../../utils/commandValidator';
+import { isDownloadOnlyPreview, getPreviewKind } from '../../utils/previewKind.js';
 import { loadExpandedPaths, saveExpandedPaths } from '../../utils/fileExpandedPathsStorage';
 import { createEmptyToolState, appendToolResultMap, cachedBuildToolResultMap, getToolResultCache, setToolResultCache, buildSubAgentResultMap, createEmptyGlobalIndexState, appendToGlobalToolResultIndex } from '../../utils/toolResultBuilder';
 import { refreshCachedItemProp } from '../../utils/refreshCachedItemProp';
 import { refreshResolvedModelInfo, healUnresolvedTeammateEntries, needsFullReqRescan } from '../../utils/identityHeal';
 import { resolveBubbleProducerTs, getSessionStableId } from '../../utils/sessionManager';
 import { terminalAnchor } from '../../utils/terminalAnchor';
+import { isSafeAttachmentPath } from '../../utils/fileDragDrop';
 import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
+import UserPromptsModal from './UserPromptsModal';
 import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
 import ActiveAgentsBar from './ActiveAgentsBar';
@@ -317,7 +319,10 @@ class ChatView extends React.Component {
       currentGitDiff: null,
       scrollToLine: null,
       scrollToMatch: null,
-      searchOpen: false,
+      // Refresh persistence: restore the search panel's open flag from localStorage,
+      // mirroring the panel's own ccv_search_* content persistence. Default closed.
+      // Phones (isMobile && !isPad) use Mobile.jsx (no such panel) and stay closed.
+      searchOpen: (isMobile && !isPad) ? false : localStorage.getItem('ccv_searchOpen') === 'true',
       fileExplorerExpandedPaths: loadExpandedPaths(props.viewProject || props.projectName),
       // 刷新保持(2026-10-08):desktop / iPad pad 模式从 localStorage 读回(与 fileExplorerOpen
       // 的 isPad 分支完全对称),手机恒 false(手机走 Mobile.jsx 独立 state)。默认关。
@@ -353,6 +358,8 @@ class ChatView extends React.Component {
       activeAgentsBarVisible: false,
       teamModalSession: null,
       workflowModalRun: null,
+      // 用户 Prompt 汇总弹窗（侧栏头像导航气泡「more」入口打开）
+      userPromptsModalOpen: false,
       mdLightboxSrc: null,
       streamingFading: false,
       stopOptimistic: false, // 点「停止」后乐观置 true：按钮/指示器立即切非运行态，真实 isStreaming 翻 false 或兜底超时后清除
@@ -369,7 +376,7 @@ class ChatView extends React.Component {
       // ask resolve/cancel/timeout 时 delete，确保内存随 ask 生命周期回收（不会随会话增长无界累积）。
       pendingPtyPlan: null, // { id, prompt } — active plan approval. id 与 ExitPlanMode tool_use id (lastPendingPlanId) 同源，由 componentDidUpdate 从 _currentLastPendingPlanId 派生（cliMode 守卫 + _resolvedPlanIds 短暂窗口守卫）。
       planAutoApproveCountdown: null, // number|null — Remaining seconds for the active PTY/SDK plan countdown, rendered on the plan card.
-      pendingImages: [], // [{ path, source }] — images uploaded/pasted, shown as previews in chat input
+      pendingImages: [], // [{ path, source, isDir }] — uploaded/pasted files or dragged explorer folders
       uploadingItems: [], // [{ id, name, previewUrl }] — 上传在途的占位项(路径还没 resolve);预览条只从 pendingImages 渲染缩略图,故占位需独立 state
       sendDeferred: false, // 仅渲染用:有上传在途时按了发送 → 缓发态(发送按钮 spinner)。权威双发标志是实例字段 _sendDeferred
       // Optimistic: agent-teams is on by default at launch, so assume enabled until
@@ -605,10 +612,19 @@ class ChatView extends React.Component {
     }
   }
 
-  // 与 _setFileExplorerOpen 完全同构:先写 localStorage,再按 opening 分支消费 _pendingGitRefresh。
-  // 主动开关走这里(nav 图标 onClick / 面板右上角 X / FileExplorer 与 Search 图标的互斥关);
-  // 被动关闭仍走直接 setState 不动 storage(_detectGit 探测无仓库、跳文件),这样切到无 git
-  // 项目再切回,面板保持用户上次的意图。
+  // Persists the search panel's open flag like _setFileExplorerOpen does for the
+  // explorer, so a browser refresh restores whether the panel was showing.
+  _setSearchOpen(open) {
+    try { localStorage.setItem('ccv_searchOpen', String(open)); } catch { /* private mode */ }
+    this.setState({ searchOpen: open });
+  }
+
+  // Mirrors _setFileExplorerOpen exactly: write localStorage first, then consume
+  // _pendingGitRefresh on the opening branch. Active toggles go through here (nav
+  // icon onClick / panel X / the FileExplorer icon's mutual-exclusion close);
+  // passive closes stay as direct setState without touching storage (_detectGit's
+  // no-repo probe, jump-to-file), so switching to a git-less project and back
+  // keeps the user's last intent.
   _setGitChangesOpen(open) {
     try { localStorage.setItem('ccv_gitChangesOpen', String(open)); } catch { /* 隐私模式容错 */ }
     if (open && this._pendingGitRefresh) {
@@ -778,6 +794,8 @@ class ChatView extends React.Component {
       // 审批档位值要直达终端工具栏快捷菜单：不能只依赖 preferences 引用同批变化放行
       nextProps.autoApproveSeconds !== this.props.autoApproveSeconds ||
       nextProps.planAutoApproveSeconds !== this.props.planAutoApproveSeconds ||
+      // 「问答题自动托管」档位同样直达快捷菜单（分钟语义,null=不托管）
+      nextProps.askAutoAnswerMinutes !== this.props.askAutoAnswerMinutes ||
       // Session-history star-menu row (2026-10-06): the viewed project + attached session +
       // the resume handler feed the row's list scope / blue dot / confirm, so they must
       // re-render ChatView (and re-thread into ChatInputBar/TerminalPanel) on change.
@@ -1077,12 +1095,22 @@ class ChatView extends React.Component {
         }
       } catch { /* never throw from componentDidUpdate */ }
     }
-    if (prevState.pendingAsk !== this.state.pendingAsk) {
+    // Hosting: the fallback modal snapshots askAutoAnswerAt/askAutoCancelled at bubble time;
+    // a meta-only change (ask-auto-cancel local/sibling, replay re-stamp) keeps pendingAsk's
+    // identity, so re-bubble on an askMetaMap reference change too — same id, so the modal's
+    // dismissed state is preserved (shouldWipeApprovalDismissal).
+    const askMetaChanged = prevState.askMetaMap !== this.state.askMetaMap;
+    if (prevState.pendingAsk !== this.state.pendingAsk || (askMetaChanged && this.state.pendingAsk)) {
       if (this.props.onPendingAsk) {
         if (this.state.pendingAsk) {
+          // Hosting fields ride the bubble so the ApprovalModal FALLBACK form (no
+          // transcript portal yet) renders the same countdown strip + cancel button.
+          const askMeta = this.state.pendingAsk?.id ? this.state.askMetaMap?.[this.state.pendingAsk.id] : null;
           this.props.onPendingAsk({
             ask: this.state.pendingAsk,
-            handlers: { submit: this.handleAskQuestionSubmit, cancel: this.handleAskCancel },
+            askAutoAnswerAt: askMeta?.autoAnswerAt ?? null,
+            askAutoCancelled: askMeta?.autoCancelled === true,
+            handlers: { submit: this.handleAskQuestionSubmit, cancel: this.handleAskCancel, cancelAutoHosting: this.handleAskAutoCancel },
           });
         } else {
           // The view-switch clear above wipes pendingAsk but is NOT a real dismissal —
@@ -1684,12 +1712,12 @@ class ChatView extends React.Component {
     });
   };
 
-  _addPendingImage = (path, source) => {
-    if (!path) return;
+  _addPendingImage = (path, source, isDir = false) => {
+    if (!isSafeAttachmentPath(path)) return;
     this.setState(prev => {
       if (prev.pendingImages.length >= 20) return null; // cap
       if (prev.pendingImages.some(img => img.path === path)) return null; // dedup
-      return { pendingImages: [...prev.pendingImages, { path, source }] };
+      return { pendingImages: [...prev.pendingImages, { path, source, isDir }] };
     });
   };
 
@@ -2090,7 +2118,7 @@ class ChatView extends React.Component {
         }
         if (asstContent) {
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
+            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} onAskQuestionAutoCancel={this.handleAskAutoCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
           );
         }
       } else if (msg.role === 'system') {
@@ -2365,7 +2393,13 @@ class ChatView extends React.Component {
     // 与 sdkMode 纳入签名，让 session item cache 在 plan 到达/决议时失效以重建 lastPendingPlanId。
     const { showThinkingSummaries } = this.props;
     const activePromptIds = (this.state.ptyPromptHistory || []).filter(p => p.status === 'active').map(p => p.id).join(',');
-    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.pendingPlanApproval?.id || ''}|${!!this.props.sdkMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}|${queuedPromptsSignature(mainAgentSessions.map((session) => session._ccvQueuedPrompts || []).flat())}`;
+    // ask hosting (问答题自动托管): pendingAsk identity + askMetaMap reference must invalidate
+    // the session-item cache, else a cached ChatMessage element keeps a frozen askMetaMap
+    // (autoAnswerAt/autoCancelled) and the hosting countdown never appears / never clears.
+    // askMetaMap is rebuilt by _stampAskMeta / the ask-auto-cancel branch with a fresh object
+    // identity on every change, so a reference compare is the version signal.
+    const pendingAskId = this.state.pendingAsk?.id || '';
+    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.pendingPlanApproval?.id || ''}|${!!this.props.sdkMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}|${pendingAskId}|${queuedPromptsSignature(mainAgentSessions.map((session) => session._ccvQueuedPrompts || []).flat())}`;
     if (toggleSig !== this._itemCacheToggleSig) {
       this._sessionItemCache = [];
       this._itemCacheToggleSig = toggleSig;
@@ -2485,6 +2519,12 @@ class ChatView extends React.Component {
         // 刷新持有相应 tool_use 的旧 element 的 prop，避免 React 因 element 引用未变跳过 SCU 让卡片永远停在 pending 视图。
         msgs = refreshCachedItemProp(sc.items, sc.planApprovalMap, mergedPlanApprovalMap, 'ExitPlanMode', 'planApprovalMap');
         msgs = refreshCachedItemProp(msgs, sc.askAnswerMap, mergedAskAnswerMap, 'AskUserQuestion', 'askAnswerMap');
+        // Hosting (问答题自动托管): refresh the frozen askMetaMap + pendingAsk on cached
+        // AskUserQuestion cards when those references change — a stamped autoAnswerAt must
+        // reach the countdown, and an ask-auto-cancel must clear it. Reference compare is
+        // the signal (askMetaMap is rebuilt per change; pendingAsk identity flips on promote).
+        msgs = refreshCachedItemProp(msgs, sc.askMetaMap, this.state.askMetaMap, 'AskUserQuestion', 'askMetaMap');
+        msgs = refreshCachedItemProp(msgs, sc.pendingAsk, this.state.pendingAsk, 'AskUserQuestion', 'pendingAsk');
         // Heal rows whose modelInfo was baked null before the request scan
         // could resolve the producer (post-refresh race). The resolver closes
         // over caches rebuilt earlier in THIS call; the write-back below
@@ -2500,6 +2540,9 @@ class ChatView extends React.Component {
         // 旧段同样要刷新 planApprovalMap / askAnswerMap prop（同 FULL HIT 理由）
         msgs = refreshCachedItemProp(sc.items, sc.planApprovalMap, mergedPlanApprovalMap, 'ExitPlanMode', 'planApprovalMap').slice();
         msgs = refreshCachedItemProp(msgs, sc.askAnswerMap, mergedAskAnswerMap, 'AskUserQuestion', 'askAnswerMap');
+        // Hosting: keep the reused old segment's askMetaMap / pendingAsk current (same reason).
+        msgs = refreshCachedItemProp(msgs, sc.askMetaMap, this.state.askMetaMap, 'AskUserQuestion', 'askMetaMap');
+        msgs = refreshCachedItemProp(msgs, sc.pendingAsk, this.state.pendingAsk, 'AskUserQuestion', 'pendingAsk');
         // Same modelInfo healing for the reused old segment (see FULL HIT above).
         // MUST stay the PRECISE resolver — never sessionResolveModelInfo.
         msgs = refreshResolvedModelInfo(msgs, resolveModelInfo);
@@ -2568,6 +2611,11 @@ class ChatView extends React.Component {
         // 记下本轮 planApprovalMap / askAnswerMap 引用，下轮 FULL HIT / INCREMENTAL 据此判断是否要刷新旧 element 的 prop。
         planApprovalMap: mergedPlanApprovalMap,
         askAnswerMap: mergedAskAnswerMap,
+        // Hosting: remember this round's askMetaMap / pendingAsk references so a later
+        // FULL HIT / INCREMENTAL can detect a stamped deadline or a cancel and refresh
+        // the frozen props on cached AskUserQuestion cards.
+        askMetaMap: this.state.askMetaMap,
+        pendingAsk: this.state.pendingAsk,
       };
       // LR 持有交互权 → 派生新的 msgs 数组（不污染 cache.items），让 messages-side 同 toolId 卡降级成静态展示，
       // 保证唯一交互点是 LR <ChatMessage key="resp-asst">。
@@ -2691,7 +2739,7 @@ class ChatView extends React.Component {
                 <Divider className={styles.lastResponseDivider}>
                   <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
                 </Divider>
-                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
+                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} onAskQuestionAutoCancel={this.handleAskAutoCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
               </React.Fragment>
             );
           }
@@ -3801,6 +3849,9 @@ class ChatView extends React.Component {
   // 委托 → AskFlowController（handleAskCancel 是 public 入口：bubble handlers + ChatMessage props 引用）
   handleAskCancel = (askId, reason) => this._askFlow.handleAskCancel(askId, reason);
 
+  // 「取消托管」入口:销毁服务端本题托管定时器,题保持 pending 等手动回答;全局设置不变。
+  handleAskAutoCancel = (askId) => this._askFlow.handleAskAutoCancel(askId);
+
   /**
    * Send queued user message after ack received (or 500ms timeout best effort).
    * Extracted from handleInputSend so handleInputSend can short-circuit with ack-wait
@@ -4618,7 +4669,7 @@ class ChatView extends React.Component {
         {showFileExplorerAndGit && (
           <button
             className={this.state.fileExplorerOpen ? styles.navBtnActive : styles.navBtn}
-            onClick={() => { this._setFileExplorerOpen(!this.state.fileExplorerOpen); this._setGitChangesOpen(false); this.setState({ searchOpen: false }); }}
+            onClick={() => { this._setFileExplorerOpen(!this.state.fileExplorerOpen); this._setGitChangesOpen(false); this._setSearchOpen(false); }}
             title={t('ui.fileExplorer')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -4632,29 +4683,12 @@ class ChatView extends React.Component {
             onClick={() => {
               this._setFileExplorerOpen(false);
               this._setGitChangesOpen(!this.state.gitChangesOpen);
-              this.setState({ searchOpen: false });
+              this._setSearchOpen(false);
             }}
             title={t('ui.gitChanges')}
           >
             <svg width="24" height="24" viewBox="0 0 1024 1024" fill="currentColor">
               <path d="M759.53332137 326.35000897c0-48.26899766-39.4506231-87.33284994-87.87432908-86.6366625-46.95397689 0.69618746-85.08957923 39.14120645-85.39899588 86.09518335-0.23206249 40.68828971 27.53808201 74.87882971 65.13220519 84.47074592 10.82958281 2.78474987 18.41029078 12.37666607 18.64235327 23.51566553 0.38677082 21.11768647-3.40358317 44.40128953-17.24997834 63.81718442-22.20064476 31.17372767-62.42480948 42.46743545-97.93037026 52.44612248-22.43270724 6.26568719-38.75443563 7.89012462-53.14230994 9.28249954-20.42149901 2.01120825-39.76003975 3.94506233-63.89453858 17.79145747-5.10537475 2.93945818-10.13339535 6.18833303-14.85199928 9.74662453-4.09977063 3.09416652-9.90133285 0.15470833-9.90133286-4.95066641V302.60228095c0-9.43720788 5.26008307-18.17822829 13.69168683-22.3553531 28.69839444-14.23316598 48.42370599-43.93716454 48.19164353-78.20505872-0.38677082-48.57841433-41.15241468-87.71962076-89.730829-86.01782918C338.80402918 117.57112321 301.59667683 155.70672553 301.59667683 202.58334827c0 34.03583169 19.64795738 63.50776777 48.1916435 77.66357958 8.43160375 4.17712479 13.69168685 12.76343689 13.69168684 22.12329062v419.02750058c0 9.43720788-5.26008307 18.17822829-13.69168684 22.3553531-28.69839444 14.23316598-48.42370599 43.93716454-48.1916435 78.20505872 0.30941665 48.57841433 41.07506052 87.6422666 89.65347484 86.01782918C437.74000359 906.42887679 474.87000179 868.2159203 474.87000179 821.41665173c0-34.03583169-19.64795738-63.50776777-48.1916435-77.66357958-8.43160375-4.17712479-13.69168685-12.76343689-13.69168684-22.12329062v-14.85199926c0-32.48874844 15.39347842-63.27570528 42.00331048-81.91805854 2.39797906-1.70179159 4.95066642-3.32622901 7.50335379-4.79595812 14.92935344-8.58631209 25.91364457-9.66927037 44.09187287-11.4484161 15.62554091-1.54708326 35.04143581-3.48093734 61.65126786-10.90693699 39.06385228-10.98429114 92.51557887-25.91364457 124.84961898-71.39789238 18.56499911-26.06835292 27.38337367-58.01562219 26.37776956-95.14562041-0.15470833-5.33743724-0.54147915-10.67487447-1.08295828-16.16702004-0.85089578-8.27689543 2.70739569-16.24437421 9.12779121-21.50445729 19.57060322-15.78024923 32.02462345-39.99210223 32.02462345-67.14341343zM351.1033411 202.58334827c0-20.49885317 16.63114503-37.12999821 37.1299982-37.1299982s37.12999821 16.63114503 37.12999821 37.1299982-16.63114503 37.12999821-37.12999821 37.1299982-37.12999821-16.63114503-37.1299982-37.1299982z m74.25999641 618.83330346c0 20.49885317-16.63114503 37.12999821-37.12999821 37.1299982s-37.12999821-16.63114503-37.1299982-37.1299982 16.63114503-37.12999821 37.1299982-37.1299982 37.12999821 16.63114503 37.12999821 37.1299982z m247.53332139-457.93664456c-20.49885317 0-37.12999821-16.63114503-37.1299982-37.1299982s16.63114503-37.12999821 37.1299982-37.12999821 37.12999821 16.63114503 37.1299982 37.12999821-16.63114503 37.12999821-37.1299982 37.1299982z"/>
-            </svg>
-          </button>
-        )}
-        {showFileExplorerAndGit && (
-          <button
-            className={this.state.searchOpen ? styles.navBtnActive : styles.navBtn}
-            onClick={() => {
-              if (this.state.searchOpen) { this.setState({ searchOpen: false }); return; }
-              this._setFileExplorerOpen(false);
-              this._setGitChangesOpen(false);
-              this.setState({ searchOpen: true });
-            }}
-            title={t('ui.search')}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.3-4.3"/>
             </svg>
           </button>
         )}
@@ -4730,7 +4764,16 @@ class ChatView extends React.Component {
 
     const result = (
       <div className={styles.userPromptNavWrap}>
-        <div className={styles.userPromptNavTitle}>{t('ui.userPromptNav')} ({prompts.length})</div>
+        <div className={styles.userPromptNavTitle}>
+          <span>{t('ui.userPromptNav')} ({prompts.length})</span>
+          <button
+            type="button"
+            className={styles.userPromptNavMore}
+            onClick={() => this.setState({ userPromptsModalOpen: true })}
+          >
+            {t('ui.more')}
+          </button>
+        </div>
         <div className={styles.userPromptNavList}>
           {prompts.map((p, idx) => {
             const timeStr = formatPromptNavTime(p.timestamp);
@@ -5305,6 +5348,7 @@ class ChatView extends React.Component {
         </div>
         <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} isHistoryLog={this._getIsHistoryLog()} lang={this.props.lang} onClose={() => this.setState({ teamModalSession: null })} />
         <WorkflowRunsModal run={this.state.workflowModalRun} onClose={() => this.setState({ workflowModalRun: null })} />
+        <UserPromptsModal open={this.state.userPromptsModalOpen} requests={this.props.requests} onClose={() => this.setState({ userPromptsModalOpen: false })} />
       </>);
     }
 
@@ -5320,7 +5364,7 @@ class ChatView extends React.Component {
               onManualRefresh={() => this.setState(prev => ({ fileExplorerRefresh: prev.fileExplorerRefresh + 1 }))}
               project={this.props.viewProject || this.props.projectName}
               instance={this.props.viewInstance}
-              onClose={() => this._setFileExplorerOpen(false)}
+              onClose={() => { this._setSearchOpen(false); this._setFileExplorerOpen(false); }}
               onFileClick={(path) => {
                 if (tryOpenWithSystem(path, 'file-explorer', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
                 this.setState({ currentFile: path, currentGitDiff: null, scrollToLine: null, scrollToMatch: null });
@@ -5336,6 +5380,57 @@ class ChatView extends React.Component {
                   fileExplorerRefresh: prev.fileExplorerRefresh + 1,
                 }));
               }}
+              searchOpen={this.state.searchOpen}
+              onToggleSearch={() => this._setSearchOpen(!this.state.searchOpen)}
+              searchGetDirtyPath={this.getOpenFileDirtyPath}
+              onSearchReplaceApplied={(files) => {
+                this.setState(prev => ({ fileExplorerRefresh: prev.fileExplorerRefresh + 1 }));
+                const cur = normalizeProjectPath(this.state.currentFile);
+                if (cur && files.some(f => normalizeProjectPath(f) === cur)) {
+                  // Reload the open (non-dirty — dirty is skipped) viewer to show replaced content.
+                  this.setState(prev => ({ fileVersion: (prev.fileVersion || 0) + 1 }));
+                }
+              }}
+              onOpenSearchResult={(path, line, range) => {
+                // Capture the viewed project up front for the persistence
+                // callback below (same race guard as handleToggleExpandPath):
+                // it runs after setState, by which time a same-tick project
+                // switch would write the old project's paths under the new
+                // project's key. The tryOpenWithSystem call keeps the inline
+                // expression per the chat-file-open-scope source contract.
+                const viewProject = this.props.viewProject || this.props.projectName;
+                if (tryOpenWithSystem(path, 'search', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
+                // Opening a result finishes any active $EDITOR session (mirrors the viewer's
+                // onClose) so the blocked terminal editor is released, not orphaned.
+                if (this.state.editorSessionId) {
+                  fetch(apiUrl('/api/editor-done'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: this.state.editorSessionId }),
+                  }).catch((err) => reportSwallowed('chat.editor-done', err));
+                }
+                // Reveal the hit in the adjacent tree too: expand its ancestors so the
+                // opened file is visible (same pattern as GitChanges.onOpenFile).
+                const parts = path.split('/');
+                const ancestors = [];
+                for (let i = 1; i < parts.length; i++) ancestors.push(parts.slice(0, i).join('/'));
+                this.setState(prev => {
+                  const newSet = new Set(prev.fileExplorerExpandedPaths);
+                  ancestors.forEach(p => newSet.add(p));
+                  return {
+                    currentFile: path,
+                    scrollToLine: line || 1,
+                    scrollToMatch: range || null,
+                    currentGitDiff: null,
+                    editorSessionId: null,
+                    editorFilePath: null,
+                    fileVersion: 0,
+                    fileExplorerExpandedPaths: newSet,
+                  };
+                }, () => {
+                  saveExpandedPaths(viewProject, this.state.fileExplorerExpandedPaths);
+                });
+              }}
             />
           )}
           {this.state.gitChangesOpen && (
@@ -5350,6 +5445,10 @@ class ChatView extends React.Component {
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
                 if (tryOpenWithSystem(resolvedPath, 'git-changes', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
+                if (isDownloadOnlyPreview(getPreviewKind(resolvedPath))) {
+                  this.setState({ currentGitDiff: null, currentFile: resolvedPath });
+                  return;
+                }
                 this.setState({ currentGitDiff: { repo: repoPath, file: filePath, commit: commitHash || null }, currentFile: null });
               }}
               onOpenFile={(repoPath, filePath) => {
@@ -5370,46 +5469,7 @@ class ChatView extends React.Component {
               }}
             />
           )}
-          {this.state.searchOpen && (
-            <SearchPanel
-              style={{ width: this.state.sidebarWidth }}
-              projectName={this.props.projectName}
-              project={this.props.viewProject || this.props.projectName}
-              instance={this.props.viewInstance}
-              onClose={() => this.setState({ searchOpen: false })}
-              getDirtyPath={this.getOpenFileDirtyPath}
-              onReplaceApplied={(files) => {
-                this.setState(prev => ({ fileExplorerRefresh: prev.fileExplorerRefresh + 1 }));
-                const cur = normalizeProjectPath(this.state.currentFile);
-                if (cur && files.some(f => normalizeProjectPath(f) === cur)) {
-                  // Reload the open (non-dirty — dirty is skipped) viewer to show replaced content.
-                  this.setState(prev => ({ fileVersion: (prev.fileVersion || 0) + 1 }));
-                }
-              }}
-              onOpenResult={(path, line, range) => {
-                if (tryOpenWithSystem(path, 'search', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
-                // Opening a result finishes any active $EDITOR session (mirrors the viewer's
-                // onClose) so the blocked terminal editor is released, not orphaned.
-                if (this.state.editorSessionId) {
-                  fetch(apiUrl('/api/editor-done'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionId: this.state.editorSessionId }),
-                  }).catch(() => {});
-                }
-                this.setState({
-                  currentFile: path,
-                  scrollToLine: line || 1,
-                  scrollToMatch: range || null,
-                  currentGitDiff: null,
-                  editorSessionId: null,
-                  editorFilePath: null,
-                  fileVersion: 0,
-                });
-              }}
-            />
-          )}
-          {(this.state.fileExplorerOpen || this.state.gitChangesOpen || this.state.searchOpen) && (
+          {(this.state.fileExplorerOpen || this.state.gitChangesOpen) && (
             <div className={styles.vResizer} onMouseDown={this.handleSidebarMouseDown} />
           )}
           <div className={styles.chatSection} data-drop-zone="chat">
@@ -5602,6 +5662,7 @@ class ChatView extends React.Component {
               onStop={this.handleInputStop}
               onSuggestionClick={this.handleSuggestionToTerminal}
               onUploadPath={this.handleUploadPath}
+              onAttachPath={(path, isDir) => this._addPendingImage(path, 'explorer', isDir)}
               presetItems={this.state.presetItems}
               onPresetSend={this.handlePresetSend}
               onOpenPresetModal={() => this.setState({ mobilePresetModalVisible: true })}
@@ -5663,6 +5724,8 @@ class ChatView extends React.Component {
               onAutoApproveChange={this.props.onAutoApproveChange}
               planAutoApproveSeconds={this.props.planAutoApproveSeconds}
               onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
+              askAutoAnswerMinutes={this.props.askAutoAnswerMinutes}
+              onAskAutoAnswerChange={this.props.onAskAutoAnswerChange}
               agentTeamEnabled={this.state.agentTeamEnabled}
               onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
               viewProject={this.props.viewProject}
@@ -5787,6 +5850,8 @@ class ChatView extends React.Component {
                 onAutoApproveChange={this.props.onAutoApproveChange}
                 planAutoApproveSeconds={this.props.planAutoApproveSeconds}
                 onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
+                askAutoAnswerMinutes={this.props.askAutoAnswerMinutes}
+                onAskAutoAnswerChange={this.props.onAskAutoAnswerChange}
                 isStreaming={uiStreaming}
                 onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
                 viewProject={this.props.viewProject}
@@ -5802,6 +5867,7 @@ class ChatView extends React.Component {
       </div>
       <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} isHistoryLog={this._getIsHistoryLog()} lang={this.props.lang} onClose={() => this.setState({ teamModalSession: null })} />
       <WorkflowRunsModal run={this.state.workflowModalRun} onClose={() => this.setState({ workflowModalRun: null })} />
+      <UserPromptsModal open={this.state.userPromptsModalOpen} requests={this.props.requests} onClose={() => this.setState({ userPromptsModalOpen: false })} />
       <PresetModal open={this.state.mobilePresetModalVisible} onClose={() => this.setState({ mobilePresetModalVisible: false })} items={this.state.presetItems} onItemsChange={(items) => this.setState({ presetItems: items })} onSavePresets={(payload) => { if (this.props.onUpdatePreferences) this.props.onUpdatePreferences(payload); }} />
       <ScheduleTaskModal
         open={this.state.scheduleModalVisible}

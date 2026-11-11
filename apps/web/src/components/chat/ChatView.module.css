@@ -298,12 +298,34 @@
 }
 
 .userPromptNavTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   padding: 4px 12px 8px;
   border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
+}
+
+/* 标题右侧「more」入口：打开用户 Prompt 汇总弹窗（原汉堡菜单「查看用户 Prompt」）。
+   原生 <button>（antd type="link" 会把颜色钉在 var(--ant-color-link) 上覆盖不掉）；
+   默认正文色、hover 时才呈链接蓝。 */
+.userPromptNavMore {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.userPromptNavMore:hover {
+  color: var(--primary-color, #1677ff);
 }
 
 .userPromptNavList {

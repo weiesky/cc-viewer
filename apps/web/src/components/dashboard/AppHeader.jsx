@@ -8,14 +8,12 @@ import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modi
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
 import Loading from '../common/Loading';
 import { hasNativeZoom, isMac } from '../../env';
-import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled, PlusOutlined } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, DashboardOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled, PlusOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from '../../utils/helpers';
 import { contextSeverityColor } from '../../utils/formatters';
-import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions } from '../../utils/autoApproveOptions';
-import { classifyUserContent, isMainAgent, extractDisplayText } from '@ccv/core/contentFilter';
-import { parseImOrigin } from '../../utils/imOrigin';
-import { BLUR_MASK_STYLE } from '../../utils/modalMask';
+import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions, askAutoAnswerSelectOptions, askAutoAnswerUiValue, askAutoAnswerPrefValue } from '../../utils/autoApproveOptions';
+import { isMainAgent } from '@ccv/core/contentFilter';
 import { sortSkillsDefault } from '../../utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from '../../utils/skillModalController';
 import { PINNED_KEY, togglePinned, normalizePinnedKeys, resolvePinnedKeys } from '../../utils/pinnedMenu';
@@ -484,7 +482,7 @@ class AppHeader extends React.Component {
 
   constructor(props, context) {
     super(props);
-    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, pluginPanels: [], activePluginPanel: null, pluginPanelAttempt: 0, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
+    this.state = { countdownText: '', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, pluginPanels: [], activePluginPanel: null, pluginPanelAttempt: 0, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
       // 文件系统权威的 skill 列表（/api/skills 返回）；live-tail 下作为 popover chip 和管理弹窗的共享数据源。
       // null=未加载 / false=失败 / [] 或 Array=加载结果。workspace 切换由 componentDidUpdate + seq 控制。
       _fsSkills: null,
@@ -520,12 +518,6 @@ class AppHeader extends React.Component {
       // until the authoritative hydrate (_hydratePinnedKeys) lands; afterwards componentDidUpdate
       // re-syncs it on external prefs changes (project-scoped toggle / refreshPreferences).
       pinnedKeys: initialPinnedKeys(context),
-      // 「系统提示词修改」是否有会在下次启动注入的提示词(命中当前模型的用户条目/内置 preset，
-      // 或工作区默认 sentinel)。为 true 时入口自动露出在头部工具栏(无需手动钉住)；
-      // 由 /api/expert/system-prompt-status 供给。
-      systemPromptActive: false,
-      // 当前模型命中的内置 preset 被墓碑禁用：入口以「已禁用」态保活（可点入重启用）。
-      systemPromptBuiltinDisabled: false,
     };
     this._countdownTimer = null;
     this._expiredTimer = null;
@@ -536,8 +528,6 @@ class AppHeader extends React.Component {
     // 切换/快速重开 popover 时旧回包不会污染新状态（参考 _memorySeq 模式）
     this._claudeMdSeq = 0;
     this._claudeMdDetailSeq = 0;
-    // 与 _fsSkillsSeq 同语义：status 拉取在途期间发生新一轮触发时，旧回包不得覆盖新状态。
-    this._systemPromptSeq = 0;
     this.updateCountdown = this.updateCountdown.bind(this);
     // Pinned-menu persistence guards: _pinnedTouched latches once the user toggles (the hydrate
     // must never overwrite an in-flight user action); _prefsHydrated marks that the user's value
@@ -604,7 +594,6 @@ class AppHeader extends React.Component {
       }));
     return [
       { key: 'import-local', icon: <FileTextOutlined />, label: t('ui.importLocalLogs'), onClick: onImportLocalLogs },
-      { key: 'export-prompts', icon: <MessageOutlined />, label: t('ui.exportPrompts'), onClick: this.handleShowPrompts },
       { key: 'plugin-management', icon: <ApiOutlined />, label: t('ui.pluginManagement'), onClick: this.handleShowPlugins },
       ...panelDescriptors,
       { key: 'process-management', icon: <DashboardOutlined />, label: t('ui.processManagement'), onClick: this.handleShowProcesses },
@@ -778,10 +767,6 @@ class AppHeader extends React.Component {
       .map(k => descByKey.get(k))
       .filter(Boolean)
       .map(d => ({ key: d.key, name: d.label }));
-    // 「系统提示词修改」激活且未手动钉住时自动露出(与 Web 端 pins 块同规则，见 _autoSystemPromptDesc)；
-    // tab bar 侧经 MENU_ICON['edit-system-prompt'] 取图标、menuShortcut 回传触发同一描述符 onClick。
-    const autoPin = this._autoSystemPromptDesc(descByKey);
-    if (autoPin) pins.push({ key: autoPin.key, name: autoPin.label });
     const cd = this.state.countdownText;
     const countdown = (viewMode === 'raw' && cd)
       ? { text: `${t('ui.cacheCountdown', { type: this.props.cacheType ? `(${this.props.cacheType})` : '' })} ${cd}` }
@@ -887,42 +872,8 @@ class AppHeader extends React.Component {
     if (e && e.key === 'Escape' && this.state.electronQrOpen) this.setState({ electronQrOpen: false });
   };
 
-  // 「系统提示词修改」自动露出规则(Web pins 块与 Electron header model 共用)：
-  // 激活（含内置 preset 生效）或内置被墓碑禁用（保活——否则禁用后入口消失、无法找回
-  // 重启用路径）且未被手动钉住时返回其描述符；禁用态在 label 上标注「已禁用」。
-  _autoSystemPromptDesc(descByKey) {
-    if (this.state.pinnedKeys.includes('edit-system-prompt')) return null;
-    if (!this.state.systemPromptActive && !this.state.systemPromptBuiltinDisabled) return null;
-    const desc = descByKey.get('edit-system-prompt') || null;
-    if (!desc || this.state.systemPromptActive) return desc;
-    return { ...desc, label: `${desc.label} (${t('ui.expert.systemText.builtinDisabledBadge')})` };
-  }
-
-  // 拉取「系统提示词修改」激活态：激活时入口自动露出在头部工具栏(无需手动钉住)。
-  // 触发点：挂载 / 代理配置或工作区切换(componentDidUpdate) / 系统提示词弹窗关闭(保存即改变激活态)。
-  reloadSystemPromptStatus = () => {
-    const seq = ++this._systemPromptSeq;
-    // Multi-project (2026-10)：系统提示词入口可见性跟随 viewed 项目（server GET 已支持
-    // ?project=；POST 写操作仍保持绑定项目）。
-    fetch(apiUrl(withViewParams('/api/expert/system-prompt-status', { project: this.props.viewProject, instance: this.props.viewedInstance })))
-      .then((r) => r.json())
-      .then((d) => {
-        if (seq === this._systemPromptSeq) {
-          this.setState({
-            systemPromptActive: !!(d && d.active),
-            systemPromptBuiltinDisabled: !!(d && d.builtinDisabled),
-          });
-        }
-      })
-      .catch((err) => {
-        // 瞬时失败(服务重启/远程登录窗口 401)不翻状态 —— 只认成功回包，避免入口闪烁。
-        reportSwallowed('systemPromptStatus.fetch', err);
-      });
-  };
-
   componentDidMount() {
     this.startCountdown();
-    this.reloadSystemPromptStatus();
     this._refreshPluginPanels();
     fetch(apiUrl('/api/local-url')).then(r => r.json()).then(data => {
       if (data.url) this.setState({ localUrl: data.url });
@@ -974,14 +925,6 @@ class AppHeader extends React.Component {
     }
     if (prevProps.cacheExpireAt !== this.props.cacheExpireAt) {
       this.startCountdown();
-    }
-    // 激活态依赖「当前模型 + 当前工作区」：代理配置/工作区任一变化都可能翻转命中结果。
-    // proxyProfiles 引用在两次真实拉取之间保持稳定(AppBase state)，本组件的 setState 不会
-    // 改动 props → 该 guard 不会自触发循环。
-    if (prevProps.activeProxyId !== this.props.activeProxyId
-      || prevProps.proxyProfiles !== this.props.proxyProfiles
-      || prevProps.projectName !== this.props.projectName) {
-      this.reloadSystemPromptStatus();
     }
     // Workspace 切换 OR viewed-project 切换：viewProject 变了 → 旧的 _fsSkills/_memory/_claudeMd
     // 属于旧 viewed 项目，直接作废（multi-project 2026-10；viewProject = viewedProject || projectName）。
@@ -1415,138 +1358,6 @@ class AppHeader extends React.Component {
     this._countdownTimer = setTimeout(this.updateCountdown, delay);
   }
 
-  // 命令相关的标签集合，已作为独立 prompt 输出，在 segments 中直接丢弃
-  static COMMAND_TAGS = new Set([
-    'command-name', 'command-message', 'command-args',
-    'local-command-caveat', 'local-command-stdout',
-  ]);
-
-  // 将一段文本拆分为普通文本和 XML 标签片段（可折叠）
-  static parseSegments(text) {
-    const segments = [];
-    // 匹配所有成对的 XML 标签: <tag-name ...>...</tag-name>
-    const regex = /<([a-zA-Z_][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
-    let lastIndex = 0;
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      const before = text.slice(lastIndex, match.index).trim();
-      if (before) segments.push({ type: 'text', content: before });
-      const tagName = match[1];
-      lastIndex = match.index + match[0].length;
-      // 命令相关标签直接跳过
-      if (AppHeader.COMMAND_TAGS.has(tagName)) continue;
-      // 提取标签内的内容（去掉外层开闭标签）
-      const innerRegex = new RegExp(`^<${tagName}(?:\\s[^>]*)?>([\\s\\S]*)<\\/${tagName}>$`);
-      const innerMatch = match[0].match(innerRegex);
-      const content = innerMatch ? innerMatch[1].trim() : match[0].trim();
-      segments.push({ type: 'system', content, label: tagName });
-    }
-    const after = text.slice(lastIndex).trim();
-    if (after) segments.push({ type: 'text', content: after });
-    return segments;
-  }
-
-
-  // 从消息列表中提取用户文本
-  static extractUserTexts(messages) {
-    const userMsgs = [];   // 纯用户文本（不含系统标签），用于去重
-    const fullTexts = [];  // 完整文本（含系统标签），用于展示
-    let slashCmd = null;
-    for (const msg of messages) {
-      if (msg.role !== 'user') continue;
-      if (typeof msg.content === 'string') {
-        const text = extractDisplayText(parseImOrigin(msg.content).text);
-        if (!text) continue;
-        if (/Implement the following plan:/i.test(text)) continue;
-        userMsgs.push(text);
-        fullTexts.push(text);
-      } else if (Array.isArray(msg.content)) {
-        const { commands, textBlocks } = classifyUserContent(msg.content);
-        // 取最后一个 slash command（与之前行为一致）
-        if (commands.length > 0) {
-          slashCmd = commands[commands.length - 1];
-        }
-        // 过滤掉 plan prompt
-        const userParts = [];
-        for (const b of textBlocks) {
-          if (/Implement the following plan:/i.test((b.text || '').trim())) continue;
-          userParts.push(b.text.trim());
-        }
-        // 收集完整文本用于 context 视图
-        const allParts = msg.content
-          .filter(b => b.type === 'text' && b.text?.trim())
-          .map(b => b.text.trim());
-        if (userParts.length > 0) {
-          userMsgs.push(userParts.join('\n'));
-          fullTexts.push(allParts.join('\n'));
-        }
-      }
-    }
-    return { userMsgs, fullTexts, slashCmd };
-  }
-
-  extractUserPrompts() {
-    const { requests = [] } = this.props;
-    const prompts = [];
-    const seen = new Set();
-    let prevSlashCmd = null;
-    const mainAgentRequests = requests.filter(r => isMainAgent(r));
-    for (let ri = 0; ri < mainAgentRequests.length; ri++) {
-      const req = mainAgentRequests[ri];
-      const messages = req.body?.messages || [];
-      const timestamp = req.timestamp || '';
-      const { userMsgs, fullTexts, slashCmd } = AppHeader.extractUserTexts(messages);
-
-      // 斜杠命令去重
-      if (slashCmd && slashCmd !== '/compact' && slashCmd !== prevSlashCmd) {
-        prompts.push({ type: 'prompt', segments: [{ type: 'text', content: slashCmd }], timestamp });
-      }
-      prevSlashCmd = slashCmd;
-
-      // 逐条检查用户消息，用内容哈希去重
-      for (let i = 0; i < userMsgs.length; i++) {
-        const key = userMsgs[i];
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const raw = fullTexts[i] || key;
-        prompts.push({ type: 'prompt', segments: AppHeader.parseSegments(raw), timestamp });
-      }
-    }
-    return prompts;
-  }
-
-  handleShowPrompts = () => {
-    this.setState({
-      promptModalVisible: true,
-      promptData: this.extractUserPrompts(),
-    });
-  }
-
-  handleExportPromptsTxt = () => {
-    const prompts = this.state.promptData;
-    if (!prompts || prompts.length === 0) return;
-    const blocks = [];
-    for (const p of prompts) {
-      const lines = [];
-      const ts = p.timestamp ? new Date(p.timestamp).toLocaleString() : '';
-      if (ts) lines.push(`${ts}:\n`);
-      // 只输出纯文本 segments，跳过 system 标签
-      const textParts = (p.segments || [])
-        .filter(seg => seg.type === 'text')
-        .map(seg => seg.content);
-      if (textParts.length > 0) lines.push(textParts.join('\n'));
-      blocks.push(lines.join('\n'));
-    }
-    if (blocks.length === 0) return;
-    const blob = new Blob([blocks.join('\n\n\n\n')], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `user-prompts-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   renderTokenStats(closeParent) {
     const { requests = [] } = this.props;
     const { cacheHighlightIdx, cacheHighlightFading } = this.state;
@@ -1913,58 +1724,6 @@ class AppHeader extends React.Component {
     );
   }
 
-  renderTextPrompt(p) {
-    return (
-      <div className={styles.textPromptCard}>
-        {p.segments.map((seg, j) => {
-          if (seg.type === 'text') {
-            return (
-              <pre key={j} className={styles.preText}>{seg.content}</pre>
-            );
-          }
-          return (
-            <Collapse
-              key={j}
-              size="small"
-              className={styles.systemCollapse}
-              items={[{
-                key: `sys-${j}`,
-                label: <span className={styles.systemLabel}>{seg.label}</span>,
-                children: (
-                  <pre className={styles.preSys}>{seg.content}</pre>
-                ),
-              }]}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
-  renderOriginalPrompt(p) {
-    const textSegments = p.segments.filter(seg => seg.type === 'text');
-    if (textSegments.length === 0) return null;
-    return (
-      <div className={styles.textPromptCard}>
-        {textSegments.map((seg, j) => (
-          <pre key={j} className={styles.preText}>{seg.content}</pre>
-        ))}
-      </div>
-    );
-  }
-
-  buildTextModeContent() {
-    const { promptData } = this.state;
-    const blocks = [];
-    for (const p of promptData) {
-      const textParts = (p.segments || [])
-        .filter(seg => seg.type === 'text')
-        .map(seg => seg.content);
-      if (textParts.length > 0) blocks.push(textParts.join('\n'));
-    }
-    return blocks.join('\n\n\n');
-  }
-
   handleShowProjectStats = () => {
     this.setState({ projectStatsVisible: true, projectStatsLoading: true });
     // project-stats is name-keyed (shared between same-name projects), but its presence oracle
@@ -2321,10 +2080,6 @@ class AppHeader extends React.Component {
             // 但保留在 pinnedMenuKeys，切回对应模式自动恢复)。Electron 下走原生 tab bar(见 _buildHeaderModel.pins)。
             const descByKey = new Map(this._getMenuDescriptors().map(d => [d.key, d]));
             const pins = this.state.pinnedKeys.map(k => descByKey.get(k)).filter(Boolean);
-            // 「系统提示词修改」激活(下次启动会注入提示词)且未被手动钉住时，入口自动露出；
-            // 合入 pins 后再判空 —— 否则零钉住用户永远看不到这个自动入口。
-            const autoDesc = this._autoSystemPromptDesc(descByKey);
-            if (autoDesc) pins.push(autoDesc);
             if (pins.length === 0) return null;
             return pins.map((d) => (
               <Tooltip key={d.key} title={d.label}>
@@ -2557,56 +2312,6 @@ class AppHeader extends React.Component {
             onClose={this.closeTargetBrowser}
           />
         )}
-        <Modal
-          title={`${t('ui.userPrompt')} (${this.state.promptData.length}${t('ui.promptCountUnit')})`}
-          open={this.state.promptModalVisible}
-          onCancel={() => this.setState({ promptModalVisible: false })}
-          footer={null}
-          width={700}
-          styles={{ mask: BLUR_MASK_STYLE }}
-        >
-          <div className={styles.promptExportBar}>
-            <Button icon={<DownloadOutlined />} onClick={this.handleExportPromptsTxt}>
-              {t('ui.exportPromptsTxt')}
-            </Button>
-          </div>
-          <Tabs
-            activeKey={this.state.promptViewMode}
-            onChange={(key) => this.setState({ promptViewMode: key })}
-            size="small"
-            items={[
-              { key: 'original', label: t('ui.promptModeOriginal') },
-              { key: 'context', label: t('ui.promptModeContext') },
-              { key: 'text', label: t('ui.promptModeText') },
-            ]}
-          />
-          {this.state.promptViewMode === 'text' ? (
-            <textarea
-              readOnly
-              className={styles.promptTextarea}
-              value={this.buildTextModeContent()}
-            />
-          ) : (
-            <div className={styles.promptScrollArea}>
-              {this.state.promptData.length === 0 && (
-                <div className={styles.promptEmpty}>{t('ui.noPrompt')}</div>
-              )}
-              {this.state.promptData.map((p, i) => {
-                const ts = p.timestamp ? new Date(p.timestamp).toLocaleString() : t('ui.unknownTime');
-                return (
-                  <div key={i}>
-                    <div className={styles.promptTimestamp}>
-                      {ts}:
-                    </div>
-                    {this.state.promptViewMode === 'original'
-                      ? this.renderOriginalPrompt(p)
-                      : this.renderTextPrompt(p)}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Modal>
         <Drawer
           title={t('ui.settings')}
           placement="left"
@@ -2646,6 +2351,21 @@ class AppHeader extends React.Component {
                     value={this.props.approvalPrefs.planAutoApproveSeconds || 0}
                     onChange={(value) => this.props.onApprovalPrefsChange({ planAutoApproveSeconds: value })}
                     options={autoApproveSelectOptions(PLAN_AUTO_APPROVE_OPTIONS, t)}
+                    style={{ width: 100 }}
+                  />
+                </div>
+                <div className={styles.settingsItem}>
+                  <span className={styles.settingsLabel}>
+                    {t('ui.askAutoAnswer.setting')}
+                    <Tooltip title={t('ui.askAutoAnswer.help')} overlayInnerStyle={{ whiteSpace: 'pre-line' }}>
+                      <QuestionCircleOutlined className={styles.settingsHelpIcon} />
+                    </Tooltip>
+                  </span>
+                  <Select
+                    size="small"
+                    value={askAutoAnswerUiValue(this.props.approvalPrefs.askAutoAnswerMinutes)}
+                    onChange={(value) => this.props.onApprovalPrefsChange({ askAutoAnswerMinutes: askAutoAnswerPrefValue(value) })}
+                    options={askAutoAnswerSelectOptions(t)}
                     style={{ width: 100 }}
                   />
                 </div>
@@ -2954,11 +2674,7 @@ class AppHeader extends React.Component {
           open={this.state.systemTextModalVisible}
           project={this.props.viewProject}
           instance={this.props.viewedInstance}
-          onClose={() => {
-            this.setState({ systemTextModalVisible: false });
-            // 弹窗内保存/删除/清空都会改变激活态 → 关闭时重拉，头部自动入口随即翻转。
-            this.reloadSystemPromptStatus();
-          }}
+          onClose={() => this.setState({ systemTextModalVisible: false })}
         />
         <MessagingModal
           open={this.state.messagingModalVisible}

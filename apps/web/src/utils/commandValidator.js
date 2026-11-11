@@ -2,11 +2,10 @@
  * File and command validation utilities.
  */
 
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'ico', 'icns', 'webp', 'avif']);
+import { getPreviewKind } from './previewKind.js';
 
 export function isImageFile(path) {
-  const ext = (path || '').split('.').pop().toLowerCase();
-  return IMAGE_EXTS.has(ext);
+  return getPreviewKind(path) === 'image';
 }
 
 /**

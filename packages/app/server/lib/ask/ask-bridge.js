@@ -126,7 +126,10 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function postToViewer() {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ questions, toolUseId });
+    // Hook runs in the session's cwd — report it so the server can resolve the
+    // project-forked askAutoAnswerMinutes pref for THIS session's project, not the
+    // server's currently-bound one (workspace mode hosts several projects).
+    const body = JSON.stringify({ questions, toolUseId, cwd: process.cwd() });
     const req = httpClient.request({
       hostname: '127.0.0.1',
       port: Number(port),

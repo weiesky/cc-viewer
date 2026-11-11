@@ -120,11 +120,11 @@ describe('target-scoped file browser boundaries (menu/preview enabled, drag/uplo
     // /api/file-content resolves the navigation root (not the project view root).
     assert.match(browser, /FileContentView filePath=\{previewFile\}.*target=\{target\}.*readOnly=\{false\}/);
     assert.match(viewer, /withTargetParams\('\/api\/file-content', target\)/);
-    assert.match(viewer, /readOnly = false/);
+    assert.match(viewer, /readOnly: readOnlyProp = false/);
   });
 
   it('uses authorized absolute paths for previews and direct download, not OS open', () => {
-    assert.match(browser, /const itemPath = item\.absPath \|\| childPath;\n    const ext = \(item\.name \|\| ''\)\.split\('\.'\)\.pop\(\)\.toLowerCase\(\);\n    if \(ext === 'html'/);
+    assert.match(browser, /const itemPath = item\.absPath \|\| childPath;\n    if \(getPreviewKind\(item\.name\) === 'html'\)/);
     assert.match(browser, /setHtmlPreviewPath\(itemPath\)/);
     assert.match(browser, /isSystemOpenFile\(item\.name\)\) downloadFile\(itemPath/);
     assert.match(browser, /else setPreviewFile\(itemPath\)/);

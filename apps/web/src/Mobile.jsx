@@ -10,7 +10,7 @@ import { sortSkillsDefault } from './utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from './utils/skillModalController';
 import { getEffectiveModel, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from './utils/helpers';
 import { contextSeverityColor } from './utils/formatters';
-import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions } from './utils/autoApproveOptions';
+import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions, askAutoAnswerSelectOptions, askAutoAnswerUiValue, askAutoAnswerPrefValue } from './utils/autoApproveOptions';
 import ChatView from './components/chat/ChatView';
 import TerminalPanel from './components/terminal/TerminalPanel';
 import { TerminalWsProvider } from './components/terminal/TerminalWsContext';
@@ -986,6 +986,8 @@ class Mobile extends AppBase {
                     onAutoApproveChange={this.handleAutoApproveChange}
                     planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
                     onPlanAutoApproveChange={this.handlePlanAutoApproveChange}
+                    askAutoAnswerMinutes={this.state.approvalPrefs?.askAutoAnswerMinutes}
+                    onAskAutoAnswerChange={this.handleAskAutoAnswerChange}
                     ownTabId={this.state.ownTabId}
                     projectName={this.state.projectName}
                     viewedProject={this.state.viewedProject || null}
@@ -1045,6 +1047,8 @@ class Mobile extends AppBase {
                   onAutoApproveChange={this.handleAutoApproveChange}
                   planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
                   onPlanAutoApproveChange={this.handlePlanAutoApproveChange}
+                  askAutoAnswerMinutes={this.state.approvalPrefs?.askAutoAnswerMinutes}
+                  onAskAutoAnswerChange={this.handleAskAutoAnswerChange}
                   viewProject={this.state.viewedProject || this.state.projectName || null}
                   viewInstance={this.state.viewedInstance
                     || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
@@ -1298,6 +1302,23 @@ class Mobile extends AppBase {
                       value={this.state.approvalPrefs.planAutoApproveSeconds || 0}
                       onChange={(value) => this.handleApprovalPrefsChange({ planAutoApproveSeconds: value })}
                       options={autoApproveSelectOptions(PLAN_AUTO_APPROVE_OPTIONS, t)}
+                      style={{ width: 100 }}
+                    />
+                  </div>
+                )}
+                {this.state.approvalPrefs && (
+                  <div className={styles.mobileSettingsRow}>
+                    <span className={styles.mobileSettingsLabel}>
+                      {t('ui.askAutoAnswer.setting')}
+                      <Tooltip title={t('ui.askAutoAnswer.help')} trigger="click" overlayInnerStyle={{ whiteSpace: 'pre-line' }}>
+                        <QuestionCircleOutlined className={styles.mobileSettingsHelpIcon} />
+                      </Tooltip>
+                    </span>
+                    <Select
+                      size="small"
+                      value={askAutoAnswerUiValue(this.state.approvalPrefs.askAutoAnswerMinutes)}
+                      onChange={(value) => this.handleApprovalPrefsChange({ askAutoAnswerMinutes: askAutoAnswerPrefValue(value) })}
+                      options={askAutoAnswerSelectOptions(t)}
                       style={{ width: 100 }}
                     />
                   </div>

@@ -61,7 +61,7 @@ before(async () => {
   fileContentGet = byPath('/api/file-content', 'GET');
   projectMemory = byPath('/api/project-memory', 'GET');
   claudeMd = byPath('/api/claude-md', 'GET');
-  fileRaw = routes.find(r => r.predicate)?.handler;
+  fileRaw = routes.find(r => r.predicate?.('/api/file-raw', 'GET'))?.handler;
   assert.ok(planFile && fileContentGet && projectMemory && claudeMd && fileRaw,
     '五个目标 handler 全部解析到');
 });

@@ -209,9 +209,9 @@ describe('GET /api/target-files', { concurrency: false }, () => {
     }
   });
 
-  it('registers one GET-only route and keeps the original route count plus one', () => {
+  it('registers the target and archive read routes', () => {
     assert.equal(routes.filter(route => route.path === '/api/target-files').length, 1);
     assert.equal(routes.find(route => route.path === '/api/target-files').method, 'GET');
-    assert.equal(routes.length, 8);
+    assert.equal(routes.length, 9);
   });
 });

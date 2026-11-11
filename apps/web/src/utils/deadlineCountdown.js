@@ -13,6 +13,21 @@ export function remainingSeconds(deadlineMs, nowMs = Date.now()) {
 }
 
 /**
+ * Format whole seconds as a countdown clock: `M:SS` below one hour,
+ * `H:MM:SS` at/above it. Shared so minute-scale hosting deadlines
+ * (10/20/30 minutes) never render as a raw seconds count ("600s").
+ */
+export function formatCountdownClock(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds || 0));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  const mm = String(minutes).padStart(hours > 0 ? 2 : 1, '0');
+  const ss = String(secs).padStart(2, '0');
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
  * Start a deadline-driven countdown.
  *  - onTick(remainingSeconds) is called immediately and then ~every second with the
  *    true wall-clock remaining (never a naive decrement).

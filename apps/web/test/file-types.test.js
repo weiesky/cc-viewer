@@ -56,7 +56,7 @@ describe('getFileType', () => {
     assert.equal(getFileType('a.mov', 'file'), 'video');
     assert.equal(getFileType('a.mp3', 'file'), 'audio');
     assert.equal(getFileType('a.flac', 'file'), 'audio');
-    for (const f of ['a.zip', 'a.tar', 'a.gz', 'a.tgz', 'a.bz2', 'a.xz', 'a.7z', 'a.rar']) {
+    for (const f of ['a.zip', 'a.tar', 'a.gz', 'a.tgz', 'a.bz2', 'a.xz', 'a.7z', 'a.rar', 'a.txz', 'a.tbz', 'a.tbz2']) {
       assert.equal(getFileType(f, 'file'), 'archive', f);
     }
     assert.equal(getFileType('a.pdf', 'file'), 'pdf');
@@ -104,6 +104,12 @@ describe('getFileType', () => {
   it('handles paths by taking the basename', () => {
     assert.equal(getFileType('src/components/App.tsx', 'file'), 'code');
     assert.equal(getFileType('docs/guide/README.md', 'file'), 'document');
+  });
+  it('handles POSIX and Windows paths without reading dotted directories as extensions', () => {
+    assert.equal(getFileType('C:\\src\\components\\App.tsx', 'file'), 'code');
+    assert.equal(getFileType('C:\\dir.with.dot\\README', 'file'), 'data');
+    assert.equal(getFileType('//server/share/a.PNG', 'file'), 'image');
+    assert.equal(getFileType('C:\\dir\\.env', 'file'), 'plain');
   });
 });
 

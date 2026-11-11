@@ -418,3 +418,115 @@ describe('AskFlowController — timeout 队列移除 / 生命周期', () => {
     assert.equal(host._state.askQueue.length, 0);
   });
 });
+
+describe('AskFlowController — 问答题自动托管 (ask hosting)', () => {
+  const HOST_META = { startedAt: 1000, timeoutMs: 86400000, autoAnswerAt: 999999, autoAnswerSeconds: 600, autoCancelled: false };
+
+  it('ask-hook-pending: meta 合并(不替换)且带 hosting 字段', () => {
+    const host = makeHost();
+    const c = new AskFlowController(host);
+    host._state.askMetaMap['a1'] = { startedAt: 900, timeoutMs: 100, customKept: true };
+    c.handleWsMessage({ type: 'ask-hook-pending', id: 'a1', questions: Q1, ...HOST_META });
+    const meta = host._state.askMetaMap['a1'];
+    assert.equal(meta.autoAnswerAt, 999999);
+    assert.equal(meta.autoAnswerSeconds, 600);
+    assert.equal(meta.autoCancelled, false);
+    assert.equal(meta.startedAt, 1000);
+    assert.equal(meta.customKept, true, 'merge must not wipe pre-existing meta keys');
+  });
+
+  it('sdk-ask-pending: hosting 字段同样 stamp', () => {
+    const host = makeHost({ sdkMode: true });
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'sdk-ask-pending', id: 's1', questions: Q1, ...HOST_META });
+    assert.equal(host._state.askMetaMap['s1'].autoAnswerAt, 999999);
+  });
+
+  it('非数字 autoAnswerAt 归一为 null(off 显式 stamp)', () => {
+    const host = makeHost();
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'ask-hook-pending', id: 'a1', questions: Q1, startedAt: 1, timeoutMs: 2, autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false });
+    assert.equal(host._state.askMetaMap['a1'].autoAnswerAt, null);
+  });
+
+  it('ask-auto-cancel 入站: meta 置 autoCancelled + autoAnswerAt=null,并记入重断言集合', () => {
+    const host = makeHost();
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'ask-hook-pending', id: 'a1', questions: Q1, ...HOST_META });
+    const handled = c.handleWsMessage({ type: 'ask-auto-cancel', id: 'a1' });
+    assert.equal(handled, true);
+    const meta = host._state.askMetaMap['a1'];
+    assert.equal(meta.autoCancelled, true);
+    assert.equal(meta.autoAnswerAt, null);
+    assert.equal(c._askAutoCancelled.has('a1'), true);
+    assert.equal(host._state.pendingAsk.id, 'a1', 'the ask itself stays pending — only hosting is cancelled');
+  });
+
+  it('ask-auto-cancel 缺 id → 仍 return true 但不改状态', () => {
+    const host = makeHost();
+    const c = new AskFlowController(host);
+    assert.equal(c.handleWsMessage({ type: 'ask-auto-cancel' }), true);
+    assert.deepEqual(host._state.askMetaMap, {});
+  });
+
+  it('重连 replay 不抹掉本地已取消的托管(_askAutoCancelled 重断言)', () => {
+    const host = makeHost();
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'ask-hook-pending', id: 'a1', questions: Q1, ...HOST_META });
+    c.handleAskAutoCancel('a1');
+    // Reconnect replay: server frame WITHOUT autoCancelled (stale) must not resurrect the countdown.
+    c.handleWsMessage({ type: 'ask-hook-pending', id: 'a1', questions: Q1, ...HOST_META });
+    const meta = host._state.askMetaMap['a1'];
+    assert.equal(meta.autoCancelled, true, 'local cancel survives the replay');
+    assert.equal(meta.autoAnswerAt, null, 'deadline stays cleared');
+  });
+
+  it('handleAskAutoCancel: 乐观标记 + 发送 ask-auto-cancel', () => {
+    const host = makeHost();
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'ask-hook-pending', id: 'a1', questions: Q1, ...HOST_META });
+    c.handleAskAutoCancel('a1');
+    const sent = host._sent.filter(m => m.type === 'ask-auto-cancel');
+    assert.deepEqual(sent, [{ type: 'ask-auto-cancel', id: 'a1' }]);
+    const meta = host._state.askMetaMap['a1'];
+    assert.equal(meta.autoCancelled, true);
+    assert.equal(meta.autoAnswerAt, null);
+    assert.equal(host._state.pendingAsk.id, 'a1');
+  });
+
+  it('handleAskAutoCancel: WS 断开 → 缓存,onWsOpen 重发后清空', () => {
+    const host = makeHost({ wsOpen: false });
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'ask-hook-pending', id: 'a1', questions: Q1, ...HOST_META });
+    c.handleAskAutoCancel('a1');
+    assert.equal(c._pendingAutoCancelIds.size, 1);
+    host.setWsOpen(true);
+    c.onWsOpen();
+    const sent = host._sent.filter(m => m.type === 'ask-auto-cancel');
+    assert.deepEqual(sent, [{ type: 'ask-auto-cancel', id: 'a1' }]);
+    assert.equal(c._pendingAutoCancelIds.size, 0);
+  });
+
+  it('onWsOpen: /api/pending-asks 注入透传 hosting 字段', async () => {
+    const host = makeHost();
+    host.fetchPendingAsks = () => Promise.resolve({
+      pendingAsks: [
+        { id: 'toolu_h1', questions: Q1, createdAt: 123, autoAnswerAt: 555, autoAnswerSeconds: 600, autoCancelled: false },
+        { id: 'toolu_h2', questions: Q2, createdAt: 456, autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false },
+      ],
+    });
+    const c = new AskFlowController(host);
+    c.onWsOpen();
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(host._state.askMetaMap['toolu_h1']?.autoAnswerAt, 555, 'memory entry keeps its server deadline');
+    assert.equal(host._state.askMetaMap['toolu_h2']?.autoAnswerAt, null, 'disk-only orphan degrades to manual');
+  });
+
+  it('dispose: 一并清 _pendingAutoCancelIds', () => {
+    const host = makeHost();
+    const c = new AskFlowController(host);
+    c._pendingAutoCancelIds = new Set(['a1']);
+    c.dispose();
+    assert.equal(c._pendingAutoCancelIds.size, 0);
+  });
+});

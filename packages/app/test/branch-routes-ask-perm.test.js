@@ -15,7 +15,7 @@
 // 范式参照 test/api-ask-perm-extra.test.js：import 前 mkdtemp 设隔离 LOG_DIR；
 // req 用 EventEmitter，res 用收集器；deps 按源码注入。src/utils 风格 shim 先注册。
 import './_shims/register.mjs';
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -722,6 +722,209 @@ describe('ask-perm: waiter liveness seeding/refresh', () => {
     for (const set of deps.shortPollListeners.values()) {
       for (const l of set) { l.finished = true; clearTimeout(l.tid); }
     }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// AskUserQuestion hosting ("问答题自动托管") — server-side auto-answer timers.
+// drivePost settles via a real 5ms timeout, so all hosting assertions are driven
+// manually (no waitUntil against fake timers — that combination hangs).
+describe('ask-perm: 问答题自动托管 (ask hosting)', () => {
+  const HOST_QUESTIONS = [{
+    question: 'Which plan?',
+    header: 'Plan',
+    multiSelect: false,
+    options: [
+      { label: 'Plan A', description: '' },
+      { label: 'Plan B (Recommended)', description: '' },
+    ],
+  }];
+  function writeHostingPrefs(minutes) {
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ approvalModal: { askAutoAnswerMinutes: minutes } }));
+  }
+  function clearPrefs() {
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({}));
+  }
+  // A failed test must not leave hosting enabled for the rest of the file: reset the
+  // prefs unconditionally after each case (per-case clearPrefs at the end is not enough —
+  // a mid-test assertion failure would cascade 10-minute timers into later tests).
+  afterEach(() => { try { clearPrefs(); } catch {} });
+  // Fire the hosting timer synchronously (the state keeps the real timer handle).
+  function fireHosting(deps, id) {
+    const entry = deps.pendingAskHooks.get(id);
+    assert.ok(entry?.auto?.timer, `hosting timer armed for ${id}`);
+    const cb = entry.auto.timer._onTimeout;
+    clearTimeout(entry.auto.timer);
+    cb();
+  }
+
+  it('hosting off (no pref): pending frame stamps null hosting fields, no timer armed', async () => {
+    clearPrefs();
+    const deps = makeDeps();
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'host-off' }, { deps });
+    const frame = deps._wss._sent.find((m) => m.type === 'ask-hook-pending' && m.id === 'host-off');
+    assert.deepEqual(
+      { autoAnswerAt: frame.autoAnswerAt, autoAnswerSeconds: frame.autoAnswerSeconds, autoCancelled: frame.autoCancelled },
+      { autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false },
+    );
+    const entry = deps.pendingAskHooks.get('host-off');
+    assert.equal(entry.auto, null);
+    clearTimeout(entry.timer);
+  });
+
+  it('10 minutes: frame carries autoAnswerAt/autoAnswerSeconds; manual fire answers, marks disk, notifies, broadcasts', async () => {
+    writeHostingPrefs(10);
+    const parentNotices = [];
+    const spAnswers = [];
+    const deps = makeDeps({
+      askWaiterLastPoll: new Map(),
+      notifyShortPollAnswer: (id, answers) => spAnswers.push({ id, answers }),
+      notifyParentPending: (m) => parentNotices.push(m),
+    });
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'host-10' },
+      { req: makeReq({ headers: { 'x-ask-poll-mode': 'short' } }), deps });
+    const frame = deps._wss._sent.find((m) => m.type === 'ask-hook-pending' && m.id === 'host-10');
+    assert.equal(frame.autoAnswerSeconds, 600);
+    assert.ok(Math.abs(frame.autoAnswerAt - (Date.now() + 600_000)) < 2000, 'deadline ≈ now + 10min');
+    assert.equal(frame.autoCancelled, false);
+    assert.equal(deps.askWaiterLastPoll.has('host-10'), true);
+    fireHosting(deps, 'host-10');
+    // The fire callback is async (await markAnswered). Wait for the OBSERVABLE end of
+    // the chain (disk row answered + resolved broadcast) — under node:test the runner's
+    // completion check can cut off trailing sync microtasks, so keying on the in-test
+    // spAnswers array is unreliable; the disk row + broadcast are the durable effects.
+    const deleted = await waitUntil(() => !deps.pendingAskHooks.has('host-10'));
+    assert.ok(deleted, 'hosting fire must delete the memory entry (fire callback actually ran)');
+    await waitUntil(() => askStore.loadAskStore()['host-10']?.status === 'answered');
+    assert.deepEqual(askStore.loadAskStore()['host-10'].answers, { 'Which plan?': 'Plan B (Recommended)' });
+    assert.deepEqual(spAnswers, [{ id: 'host-10', answers: { 'Which plan?': 'Plan B (Recommended)' } }], 'short-poll listeners woken with the auto answers');
+    assert.ok(deps._wss._sent.some((m) => m.type === 'ask-hook-resolved' && m.id === 'host-10' && m.reason === 'auto-answered'));
+    assert.ok(parentNotices.some((m) => m.type === 'ask-hook-resolved' && m.id === 'host-10'));
+    assert.equal(deps.askWaiterLastPoll.has('host-10'), false, 'liveness record reaped');
+    clearPrefs();
+  });
+
+  it('long-poll entry: manual fire ends the hanging res with {answers} and persists delete', async () => {
+    writeHostingPrefs(10);
+    const deps = makeDeps();
+    const hookRes = makeRes();
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'host-lp' }, { deps, res: hookRes });
+    assert.equal(hookRes.ended, false, 'long-poll res still hanging before fire');
+    fireHosting(deps, 'host-lp');
+    await waitUntil(() => hookRes.ended);
+    assert.deepEqual(hookRes.json.answers, { 'Which plan?': 'Plan B (Recommended)' });
+    assert.ok(deps._deleted.includes('host-lp'));
+    assert.ok(deps._wss._sent.some((m) => m.type === 'ask-hook-resolved' && m.id === 'host-lp'));
+    clearPrefs();
+  });
+
+  it('first-write-wins: losing the disk race means NO listener notify and NO resolved broadcast', async () => {
+    writeHostingPrefs(10);
+    const spAnswers = [];
+    const deps = makeDeps({ notifyShortPollAnswer: (id, answers) => spAnswers.push({ id, answers }) });
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'host-race' },
+      { req: makeReq({ headers: { 'x-ask-poll-mode': 'short' } }), deps });
+    // A client (or another instance) answers first, durably, on disk.
+    await askStore.setEntry('host-race', { questions: HOST_QUESTIONS, createdAt: Date.now(), status: 'pending' });
+    await askStore.markAnswered('host-race', { 'Which plan?': 'Plan A' });
+    fireHosting(deps, 'host-race');
+    await waitUntil(() => !deps.pendingAskHooks.has('host-race'));
+    assert.deepEqual(spAnswers, [], 'must not wake listeners with answers that disagree with disk');
+    assert.equal(deps._wss._sent.some((m) => m.type === 'ask-hook-resolved' && m.id === 'host-race'), false);
+    assert.deepEqual(askStore.loadAskStore()['host-race'].answers, { 'Which plan?': 'Plan A' }, 'client answer preserved');
+    clearPrefs();
+  });
+
+  it('autoCancelled entry never fires (durable cancel honored at fire time)', async () => {
+    writeHostingPrefs(10);
+    const deps = makeDeps();
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'host-cancel' }, { deps });
+    const entry = deps.pendingAskHooks.get('host-cancel');
+    entry.autoCancelled = true; // as stamped by the ask-auto-cancel WS branch
+    fireHosting(deps, 'host-cancel');
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(deps.pendingAskHooks.has('host-cancel'), true, 'entry survives a cancelled fire');
+    assert.equal(deps._wss._sent.some((m) => m.type === 'ask-hook-resolved' && m.id === 'host-cancel'), false);
+    clearTimeout(entry.timer);
+    clearTimeout(entry.auto.timer);
+    clearPrefs();
+  });
+
+  it('no selectable option (Other only): hosting skipped — null fields, no timer', async () => {
+    writeHostingPrefs(10);
+    const deps = makeDeps();
+    await drivePost(askHookHandler, {
+      questions: [{ question: 'Q?', header: 'h', multiSelect: false, options: [{ label: 'Other', description: '' }] }],
+      toolUseId: 'host-other',
+    }, { deps });
+    const frame = deps._wss._sent.find((m) => m.type === 'ask-hook-pending' && m.id === 'host-other');
+    assert.equal(frame.autoAnswerAt, null);
+    assert.equal(deps.pendingAskHooks.get('host-other').auto, null);
+    clearTimeout(deps.pendingAskHooks.get('host-other').timer);
+    clearPrefs();
+  });
+
+  it('/api/pending-asks exposes hosting fields for memory entries and nulls for disk-only', async () => {
+    writeHostingPrefs(10);
+    const deps = makeDeps();
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'host-pa' }, { deps });
+    await askStore.setEntry('disk-orphan', { questions: [{ question: 'q', options: [{ label: 'x' }] }], createdAt: Date.now(), status: 'pending' });
+    const res = makeRes();
+    pendingAsksHandler({}, res, { pathname: '/api/pending-asks' }, true, deps);
+    const mem = res.json.pendingAsks.find((a) => a.id === 'host-pa');
+    assert.equal(mem.autoAnswerSeconds, 600);
+    assert.ok(typeof mem.autoAnswerAt === 'number');
+    const disk = res.json.pendingAsks.find((a) => a.id === 'disk-orphan');
+    assert.deepEqual(
+      { autoAnswerAt: disk.autoAnswerAt, autoAnswerSeconds: disk.autoAnswerSeconds, autoCancelled: disk.autoCancelled },
+      { autoAnswerAt: null, autoAnswerSeconds: null, autoCancelled: false },
+      'disk-only orphans degrade to manual (timers are memory-only)',
+    );
+    clearTimeout(deps.pendingAskHooks.get('host-pa').timer);
+    clearTimeout(deps.pendingAskHooks.get('host-pa').auto.timer);
+    await askStore.deleteEntry('disk-orphan');
+    clearPrefs();
+  });
+
+  it('duplicate toolUseId slot reuse clears the stale hosting timer', async () => {
+    writeHostingPrefs(10);
+    const deps = makeDeps();
+    // Simulate a dead short-poll entry with an armed hosting timer.
+    const staleRes = makeRes({ writableEnded: true });
+    const staleHostingTimer = setTimeout(() => { throw new Error('stale hosting timer fired'); }, 50);
+    deps.pendingAskHooks.set('reuse1', {
+      questions: HOST_QUESTIONS, res: staleRes, timer: setTimeout(() => {}, 99999),
+      createdAt: Date.now(), shortPoll: true, autoCancelled: false,
+      auto: { autoAnswerAt: Date.now() + 600_000, seconds: 600, minutes: 10, cancelled: false, timer: staleHostingTimer },
+    });
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'reuse1' }, { deps });
+    const entry = deps.pendingAskHooks.get('reuse1');
+    assert.ok(entry, 'slot reused with a fresh entry');
+    assert.equal(staleHostingTimer._destroyed, true, 'stale hosting timer cleared on reuse');
+    clearTimeout(entry.timer);
+    if (entry.auto?.timer) clearTimeout(entry.auto.timer);
+    clearPrefs();
+  });
+
+  it('slot reuse carries a durable per-ask hosting cancel into the re-posted entry (no re-arm, frame stamps cancelled)', async () => {
+    writeHostingPrefs(10);
+    const deps = makeDeps();
+    // Prior incarnation the user already cancelled hosting for.
+    const staleRes = makeRes({ writableEnded: true });
+    deps.pendingAskHooks.set('reuse2', {
+      questions: HOST_QUESTIONS, res: staleRes, timer: setTimeout(() => {}, 99999),
+      createdAt: Date.now(), shortPoll: true, autoCancelled: true,
+      auto: { autoAnswerAt: Date.now() + 600_000, seconds: 600, minutes: 10, cancelled: true, timer: setTimeout(() => {}, 99999) },
+    });
+    await drivePost(askHookHandler, { questions: HOST_QUESTIONS, toolUseId: 'reuse2' }, { deps });
+    const entry = deps.pendingAskHooks.get('reuse2');
+    assert.equal(entry.autoCancelled, true, 'cancel survives the slot reuse');
+    assert.equal(entry.auto, null, 'no fresh hosting timer is armed for a cancelled ask');
+    const frame = deps._wss._sent.find((m) => m.type === 'ask-hook-pending' && m.id === 'reuse2');
+    assert.equal(frame.autoCancelled, true, 'pending frame reports the cancelled hosting');
+    assert.equal(frame.autoAnswerAt, null, 'no deadline advertised for a cancelled hosting');
+    clearTimeout(entry.timer);
+    clearPrefs();
   });
 });
 

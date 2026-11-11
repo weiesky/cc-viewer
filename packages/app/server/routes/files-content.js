@@ -9,6 +9,7 @@ import { projectKeyForCwd } from '../lib/system-prompt-snapshots.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
 import { reportSwallowed } from '../lib/error-report.js';
+import { isBinaryBuffer, getUtf16Encoding } from '../lib/binary-sniff.js';
 import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
@@ -158,10 +159,19 @@ function fileContentGetWithRoot(req, res, parsedUrl, reqPath, cwd) {
       res.end(JSON.stringify({ error: 'File too large' }));
       return;
     }
-    const content = readFileSync(real, 'utf-8');
-    // path 字段回返原始入参,前端用它做路径展示与后续 POST 引用
+    const raw = readFileSync(real);
+    if (isBinaryBuffer(raw)) {
+      res.writeHead(415, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Binary file', reason: 'binary', size: st.size }));
+      return;
+    }
+    const encoding = getUtf16Encoding(raw);
+    const content = encoding === 'utf16le' ? raw.subarray(2).toString('utf16le')
+      : encoding === 'utf16be' ? raw.subarray(2).swap16().toString('utf16le')
+      : raw.toString('utf-8');
+    // Decoded UTF-16 remains read-only: the existing write endpoint emits UTF-8.
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ path: reqPath, content, size: st.size }));
+    res.end(JSON.stringify({ path: reqPath, content, size: st.size, ...(encoding ? { encoding, readOnly: true } : {}) }));
   } catch (err) {
     const status = ERROR_STATUS_MAP[err.code] || 500;
     const message = status === 500 ? `Cannot read file: ${err.message}` : err.message;
@@ -405,7 +415,7 @@ function fileRaw(req, res, parsedUrl) {
   fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method);
 }
 
-function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
+function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method, options = {}) {
   try {
     if (!reqPath) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -417,7 +427,7 @@ function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
 
     // /tmp 原文件不存在时回退到持久化副本(保留原 fallback 语义,但用 policy 守卫)
     let policy = isReadAllowed(absPath);
-    if (!policy.ok && policy.reason === 'realpath-failed' && isAbs) {
+    if (!policy.ok && policy.reason === 'realpath-failed' && isAbs && options.allowPersistedFallback !== false) {
       const pName = _projectName || 'default';
       const persistPrefix = join(getClaudeConfigDir(), 'cc-viewer', pName, 'images');
       const fileName = basename(absPath);
@@ -445,13 +455,14 @@ function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
       res.end(JSON.stringify({ error: 'Not a file' }));
       return;
     }
-    if (stat.size > 10 * 1024 * 1024) {
+    const maxBytes = options.maxBytes ?? 10 * 1024 * 1024;
+    if (stat.size > maxBytes) {
       res.writeHead(413, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'File too large' }));
+      res.end(JSON.stringify({ error: 'File too large', ...(options.archive ? { maxBytes, size: stat.size } : {}) }));
       return;
     }
     const ext = (targetFile.match(/\.[^.]+$/) || [''])[0].toLowerCase();
-    const mime = FILE_RAW_MIME[ext] || 'application/octet-stream';
+    const mime = options.archive ? 'application/octet-stream' : FILE_RAW_MIME[ext] || 'application/octet-stream';
     const data = method === 'HEAD' ? null : readFileSync(targetFile);
     const size = method === 'HEAD' ? stat.size : data.length;
     const headers = { 'Content-Type': mime, 'Content-Length': size };
@@ -472,6 +483,24 @@ function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: message }));
   }
+}
+
+const ARCHIVE_RAW_MAX_BYTES = 32 * 1024 * 1024;
+const ARCHIVE_PREVIEW_EXTENSIONS = new Set(['.zip', '.tar', '.gz', '.tgz']);
+
+function archiveRaw(req, res, parsedUrl) {
+  const reqPath = parsedUrl.searchParams.get('path') || '';
+  const name = basename(reqPath).toLowerCase();
+  if (!reqPath || ![...ARCHIVE_PREVIEW_EXTENSIONS].some(ext => name.endsWith(ext))) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Unsupported archive path' }));
+    return;
+  }
+  const cwd = _viewRootOrReply(req, res, parsedUrl);
+  if (!cwd) return;
+  fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, req.method, {
+    archive: true, maxBytes: ARCHIVE_RAW_MAX_BYTES, allowPersistedFallback: false,
+  });
 }
 
 // Browser download endpoint: unlike fileRaw (inline preview, 10MB cap), this streams
@@ -718,6 +747,14 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
         res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
         return;
       }
+      if (existsSync(targetReal)) {
+        const raw = readFileSync(targetReal);
+        if (getUtf16Encoding(raw) || isBinaryBuffer(raw)) {
+          res.writeHead(415, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File requires read-only preview', reason: 'encoding' }));
+          return;
+        }
+      }
       writeFileSync(targetReal, content, 'utf-8');
       const stat = statSync(targetReal);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -840,6 +877,7 @@ export const filesContentRoutes = [
   { method: 'GET', match: 'exact', path: '/api/project-memory', handler: projectMemory },
   { method: 'GET', match: 'exact', path: '/api/claude-md', handler: claudeMd },
   { predicate: (url, method) => (url === '/api/file-raw' || url.startsWith('/api/file-raw/')) && (method === 'GET' || method === 'HEAD'), handler: fileRaw },
+  { predicate: (url, method) => url === '/api/archive-raw' && (method === 'GET' || method === 'HEAD'), handler: archiveRaw },
   { predicate: (url, method) => url === '/api/download-file' && (method === 'GET' || method === 'HEAD'), handler: fileDownload },
   { method: 'POST', match: 'exact', path: '/api/file-content', handler: fileContentPost },
   { method: 'GET', match: 'exact', path: '/api/target-files', handler: targetFiles },

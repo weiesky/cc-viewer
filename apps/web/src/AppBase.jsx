@@ -9,6 +9,7 @@ import NewProjectModal from './components/dashboard/NewProjectModal';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
 import LogTable from './components/viewers/LogTable';
 import { t, getLang, setLang } from './i18n';
+import { askAutoAnswerPrefValue } from './utils/autoApproveOptions';
 import { SettingsContext } from './contexts/SettingsContext';
 import { formatTokenCount, filterRelevantRequests, isRelevantRequest, visibleRequests, appendCacheLossMap, extractCachedContent } from './utils/helpers';
 import { snapToPreset, stepPreset } from './utils/displayScaleHelper';
@@ -308,6 +309,7 @@ class AppBase extends React.Component {
         soundEnabled: true,
         notifyOnlyWhenHidden: true,
         planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；CLI(PTY) 与 SDK 路径
+        askAutoAnswerMinutes: null, // 「问答题自动托管」分钟数（null=不托管 / 0=立即 / N=N 分钟后服务端自动回答）
         voicePack: {
           enabled: true,
           volume: 0.3,
@@ -503,6 +505,9 @@ class AppBase extends React.Component {
         soundEnabled: data.approvalModal.soundEnabled !== undefined ? !!data.approvalModal.soundEnabled : prevPrefs.soundEnabled,
         notifyOnlyWhenHidden: data.approvalModal.notifyOnlyWhenHidden !== undefined ? !!data.approvalModal.notifyOnlyWhenHidden : prevPrefs.notifyOnlyWhenHidden,
         planAutoApproveSeconds: typeof data.approvalModal.planAutoApproveSeconds === 'number' ? data.approvalModal.planAutoApproveSeconds : prevPrefs.planAutoApproveSeconds,
+        // null-aware: 持久化的 null（不托管）是合法值,不能用 typeof number 判断——
+        // 那会把 null 当"未持久化"而保留内存里的陈旧非 null 值。
+        askAutoAnswerMinutes: data.approvalModal.askAutoAnswerMinutes !== undefined ? data.approvalModal.askAutoAnswerMinutes : prevPrefs.askAutoAnswerMinutes,
         voicePack: mergedVP,
       };
       // 合并开关迁移：server 端 soundEnabled !== voicePack.enabled 时以 soundEnabled 为准强制对齐（幂等回写）。
@@ -4370,6 +4375,12 @@ class AppBase extends React.Component {
     this.handleApprovalPrefsChange({ planAutoApproveSeconds: seconds });
   };
 
+  // 快捷设置菜单「问答题自动托管」档位回调。入参是 UI 档位（含 ASK_AUTO_ANSWER_OFF
+  // sentinel=-1），落盘前经 askAutoAnswerPrefValue 转 null。稳定引用，理由同上。
+  handleAskAutoAnswerChange = (uiValue) => {
+    this.handleApprovalPrefsChange({ askAutoAnswerMinutes: askAutoAnswerPrefValue(uiValue) });
+  };
+
   // ─── Approval modal: ChatView -> AppBase bubbling handlers ───────────────────────
   // Inject projectName from AppBase state so the modal chip / Notification body have
   // human-readable session context. ChatView itself doesn't track project name.
@@ -4974,9 +4985,9 @@ class AppBase extends React.Component {
   };
 
   _onDragOver = (e) => {
-    e.preventDefault();
     if (this._isInternalDrag(e)) return;
-    // 树内文件移动(text/x-internal-move)由 FileExplorer 自己高亮,不点亮任何全局遮罩
+    // Keep internal moves out of external-upload feedback. This does not accept
+    // a drop; the terminal/composer cancel their own dragover when eligible.
     if (e.dataTransfer.types.includes('text/x-internal-move')) {
       this._setDragZone(null);
       if (this.state.isDragging) this.setState({ isDragging: false });
@@ -4984,12 +4995,12 @@ class AppBase extends React.Component {
     }
     // 指针位于 antd 弹层(Modal/Drawer,React 冒泡穿透 portal)上方:全局拖拽整体静默,
     // 由弹层自己(如 FileBrowserModal 的分区拖放)处理
+    e.preventDefault();
     if (isOverModalPortal(e)) {
       this._setDragZone(null);
       if (this.state.isDragging) this.setState({ isDragging: false });
       return;
     }
-    // FileExplorer 区域不显示全屏 overlay，由 FileExplorer 自己处理外部拖入反馈
     const overFileExplorer = e.target.closest && e.target.closest('[data-file-explorer]');
     if (overFileExplorer) {
       this._setDragZone(null);
@@ -5017,8 +5028,11 @@ class AppBase extends React.Component {
   _onDrop = (e) => {
     e.preventDefault();
     if (this._isInternalDrag(e)) return;
-    const dragZone = this.state.dragZone;
     this.setState({ isDragging: false, dragZone: null });
+    // Internal file drops are consumed only by terminal/composer targets.
+    if (e.dataTransfer.types.includes('text/x-internal-move')) return;
+    const dragZone = this.state.dragZone;
+
     // 弹层上方的 drop 由弹层自己消费(或忽略),全局不参与
     if (isOverModalPortal(e)) return;
     // 桌面分区门禁:只有落在响应区(对话+终端)才接受;页眉/请求列表等区域静默拒收

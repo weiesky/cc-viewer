@@ -1025,6 +1025,31 @@
   opacity: 0.8;
 }
 
+/* AskUserQuestion hosting ("问答题自动托管") countdown strip — mirrors the plan
+   auto-approve hint/cancel pair above. */
+.askAutoHostHint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.askAutoHostCancel {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.askAutoHostCancel:hover {
+  opacity: 0.8;
+}
+
 .planApproveBtn {
   padding: 4px 16px;
   border-radius: 4px;
