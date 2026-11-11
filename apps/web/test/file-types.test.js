@@ -56,7 +56,7 @@ describe('getFileType', () => {
     assert.equal(getFileType('a.mov', 'file'), 'video');
     assert.equal(getFileType('a.mp3', 'file'), 'audio');
     assert.equal(getFileType('a.flac', 'file'), 'audio');
-    for (const f of ['a.zip', 'a.tar', 'a.gz', 'a.tgz', 'a.bz2', 'a.xz', 'a.7z', 'a.rar']) {
+    for (const f of ['a.zip', 'a.tar', 'a.gz', 'a.tgz', 'a.bz2', 'a.xz', 'a.7z', 'a.rar', 'a.txz', 'a.tbz', 'a.tbz2']) {
       assert.equal(getFileType(f, 'file'), 'archive', f);
     }
     assert.equal(getFileType('a.pdf', 'file'), 'pdf');

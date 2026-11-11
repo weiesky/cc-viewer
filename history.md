@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web+server): **压缩包支持在线预览** — 全部文件入口支持 ZIP/TAR/GZIP/TGZ 目录树、文本与图片条目预览；7z/RAR/XZ/BZ2 提供说明与下载。Coverage: `archive-preview.test.js`, `archive-preview-wiring.test.js`, `api-files-content.test.js`.
+
 - feat(web): **文件夹支持拖拽到终端或对话** — 终端追加目录路径；对话显示文件夹图标及省略中间层级的路径，发送时保留完整路径。Coverage: `file-drag-drop.test.js`.
 - feat(web): **文件浏览器支持拖拽到终端或对话** — 侧栏文件拖入终端追加转义路径但不发送回车；拖入对话输入框显示附件，发送时拼接文件路径。Coverage: `file-drag-drop.test.js`, `drag-drop-zones.test.js`.
 

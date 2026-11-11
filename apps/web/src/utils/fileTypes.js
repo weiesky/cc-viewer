@@ -36,6 +36,7 @@ const EXT_CATEGORY = {
   // archive
   zip: 'archive', tar: 'archive', gz: 'archive', tgz: 'archive',
   bz2: 'archive', xz: 'archive', '7z': 'archive', rar: 'archive',
+  txz: 'archive', tbz: 'archive', tbz2: 'archive',
   // pdf
   pdf: 'pdf',
   // office

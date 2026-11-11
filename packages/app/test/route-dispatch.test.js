@@ -75,7 +75,7 @@ describe('files-content registry (method-distinguished + predicate routes)', () 
   });
 
   it('file-raw is a predicate route accepting GET and HEAD, exact-or-prefix', () => {
-    const raw = filesContentRoutes.find(r => typeof r.predicate === 'function');
+    const raw = filesContentRoutes.find(r => r.predicate?.('/api/file-raw', 'GET'));
     assert.ok(raw, 'file-raw must be registered as a predicate route');
     assert.equal(raw.predicate('/api/file-raw', 'GET'), true);
     assert.equal(raw.predicate('/api/file-raw/sub/path.png', 'HEAD'), true);

@@ -4,6 +4,7 @@ import { Modal, message } from 'antd';
 import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { useMarkdownExport } from '../../hooks/useMarkdownExport';
 import { detectMdExtensions } from '../../utils/mdExtensionDetect';
+import { getArchivePreviewKind } from '../../utils/archivePreview';
 import { handleStaleChunk } from '../../utils/lazyWithReload';
 import CodeMirror from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
@@ -313,7 +314,15 @@ const highlightStyle = HighlightStyle.define([
 
 const syntaxTheme = syntaxHighlighting(highlightStyle);
 
-export default function FileContentView({
+const ArchivePreview = lazy(() =>
+  import('../viewers/ArchivePreview').catch((err) =>
+    handleStaleChunk('ArchivePreview', err, {
+      onReload: () => message.warning(i18n('ui.chunkOutdatedReloading')),
+    }),
+  ),
+);
+
+function FileContentViewImpl({
   filePath,
   onClose,
   editorSession,
@@ -1041,4 +1050,16 @@ export default function FileContentView({
       </div>
     </div>
   );
+}
+
+// Keep this dispatcher hook-free: callers may replace text and archive paths in place.
+export default function FileContentView(props) {
+  if (getArchivePreviewKind(props.filePath)) {
+    return (
+      <Suspense fallback={<div className={styles.fileContentView}><div className={styles.loading}>{i18n('ui.loading')}</div></div>}>
+        <ArchivePreview key={props.filePath} {...props} />
+      </Suspense>
+    );
+  }
+  return <FileContentViewImpl {...props} />;
 }

@@ -27,7 +27,7 @@ import { EventEmitter } from 'node:events';
 import { Writable } from 'node:stream';
 import {
   mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync,
-  symlinkSync, unlinkSync, existsSync, readFileSync,
+  symlinkSync, unlinkSync, existsSync, readFileSync, truncateSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -106,12 +106,12 @@ function callPost(handler, body, { chunked = false, search = '' } = {}) {
 }
 
 let routes;
-let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost, fileDownload;
+let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost, fileDownload, archiveRaw;
 
 before(async () => {
   const mod = await import('../server/routes/files-content.js');
   routes = mod.filesContentRoutes;
-  assert.ok(Array.isArray(routes) && routes.length === 8, 'expect 8 routes');
+  assert.ok(Array.isArray(routes) && routes.length === 9, 'expect 9 routes');
   const byPath = (p, m) => routes.find(r => r.path === p && r.method === m)?.handler;
   planFile = byPath('/api/plan-file', 'GET');
   fileContentGet = byPath('/api/file-content', 'GET');
@@ -121,8 +121,9 @@ before(async () => {
   // file-raw / download-file 用 predicate，没有 path 字段
   fileRaw = routes.find(r => r.predicate && r.predicate('/api/file-raw', 'GET'))?.handler;
   fileDownload = routes.find(r => r.predicate && r.predicate('/api/download-file', 'GET'))?.handler;
-  assert.ok(planFile && fileContentGet && projectMemory && claudeMd && fileContentPost && fileRaw && fileDownload,
-    'all seven handlers resolved');
+  archiveRaw = routes.find(r => r.predicate && r.predicate('/api/archive-raw', 'GET'))?.handler;
+  assert.ok(planFile && fileContentGet && projectMemory && claudeMd && fileContentPost && fileRaw && fileDownload && archiveRaw,
+    'all eight handlers resolved');
 });
 
 after(() => {
@@ -655,6 +656,57 @@ describe('GET|HEAD /api/download-file', { concurrency: false }, () => {
     const r = await callDownload('path=' + encodeURIComponent(outside));
     assert.equal(r.status, 403);
     assert.equal(JSON.parse(r.body.toString()).error, 'Forbidden');
+  });
+});
+
+describe('GET|HEAD /api/archive-raw', { concurrency: false }, () => {
+  it('serves only supported archive extensions with a bounded body', () => {
+    const p = join(PROJECT, 'sample.ZIP');
+    const content = Buffer.from([0x50, 0x4b, 3, 4, 1]);
+    writeFileSync(p, content);
+    const r = callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(p));
+    assert.equal(r.status, 200);
+    assert.equal(r.headers['Content-Type'], 'application/octet-stream');
+    assert.deepEqual(r.body, content);
+    assert.equal(callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(join(PROJECT, 'sample.txt'))).status, 400);
+    assert.equal(callGet(archiveRaw, '/api/archive-raw').status, 400);
+    assert.equal(routes.find(route => route.handler === archiveRaw).predicate('/api/archive-raw-extra', 'GET'), false);
+    for (const name of ['sample.tar', 'sample.gz', 'sample.tgz', 'sample.tar.gz']) {
+      const archive = join(PROJECT, name);
+      writeFileSync(archive, content);
+      assert.equal(callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(archive)).status, 200, name);
+    }
+    assert.equal(callGet(archiveRaw, '/api/archive-raw', 'path=sample.tar').status, 200);
+  });
+
+  it('supports HEAD and returns a structured limit error for oversized archives', () => {
+    const p = join(PROJECT, 'large.tgz');
+    writeFileSync(p, 'small');
+    const head = callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(p), 'HEAD');
+    assert.equal(head.status, 200);
+    assert.equal(head.body, '');
+    assert.equal(head.headers['Content-Length'], 5);
+    const big = join(PROJECT, 'large.zip');
+    writeFileSync(big, Buffer.alloc(0));
+    truncateSync(big, 32 * 1024 * 1024 + 1);
+    const r = callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(big));
+    assert.equal(r.status, 413);
+    assert.equal(r.json().maxBytes, 32 * 1024 * 1024);
+  });
+
+  it('retains existing read access controls', () => {
+    const outside = join(TMP, 'outside.zip');
+    writeFileSync(outside, Buffer.from([0x50, 0x4b, 3, 4]));
+    assert.equal(callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(outside)).status, 403);
+    assert.equal(callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(join(PROJECT, 'missing.tar'))).status, 404);
+    const directory = join(PROJECT, 'folder.tar');
+    mkdirSync(directory);
+    assert.equal(callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(directory)).status, 400);
+    const persistedDir = join(FAKE_CLAUDE, 'cc-viewer', 'default', 'images');
+    mkdirSync(persistedDir, { recursive: true });
+    writeFileSync(join(persistedDir, 'persisted.zip'), Buffer.from([0x50, 0x4b, 3, 4]));
+    assert.equal(callGet(archiveRaw, '/api/archive-raw', 'path=' + encodeURIComponent(join(tmpdir(), 'persisted.zip'))).status, 404);
+    assert.equal(callGet(fileRaw, '/api/file-raw', 'path=' + encodeURIComponent(join(tmpdir(), 'persisted.zip'))).status, 200);
   });
 });
 

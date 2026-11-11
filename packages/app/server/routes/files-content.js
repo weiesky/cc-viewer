@@ -405,7 +405,7 @@ function fileRaw(req, res, parsedUrl) {
   fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method);
 }
 
-function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
+function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method, options = {}) {
   try {
     if (!reqPath) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -417,7 +417,7 @@ function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
 
     // /tmp 原文件不存在时回退到持久化副本(保留原 fallback 语义,但用 policy 守卫)
     let policy = isReadAllowed(absPath);
-    if (!policy.ok && policy.reason === 'realpath-failed' && isAbs) {
+    if (!policy.ok && policy.reason === 'realpath-failed' && isAbs && options.allowPersistedFallback !== false) {
       const pName = _projectName || 'default';
       const persistPrefix = join(getClaudeConfigDir(), 'cc-viewer', pName, 'images');
       const fileName = basename(absPath);
@@ -445,13 +445,14 @@ function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
       res.end(JSON.stringify({ error: 'Not a file' }));
       return;
     }
-    if (stat.size > 10 * 1024 * 1024) {
+    const maxBytes = options.maxBytes ?? 10 * 1024 * 1024;
+    if (stat.size > maxBytes) {
       res.writeHead(413, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'File too large' }));
+      res.end(JSON.stringify({ error: 'File too large', ...(options.archive ? { maxBytes, size: stat.size } : {}) }));
       return;
     }
     const ext = (targetFile.match(/\.[^.]+$/) || [''])[0].toLowerCase();
-    const mime = FILE_RAW_MIME[ext] || 'application/octet-stream';
+    const mime = options.archive ? 'application/octet-stream' : FILE_RAW_MIME[ext] || 'application/octet-stream';
     const data = method === 'HEAD' ? null : readFileSync(targetFile);
     const size = method === 'HEAD' ? stat.size : data.length;
     const headers = { 'Content-Type': mime, 'Content-Length': size };
@@ -472,6 +473,24 @@ function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: message }));
   }
+}
+
+const ARCHIVE_RAW_MAX_BYTES = 32 * 1024 * 1024;
+const ARCHIVE_PREVIEW_EXTENSIONS = new Set(['.zip', '.tar', '.gz', '.tgz']);
+
+function archiveRaw(req, res, parsedUrl) {
+  const reqPath = parsedUrl.searchParams.get('path') || '';
+  const name = basename(reqPath).toLowerCase();
+  if (!reqPath || ![...ARCHIVE_PREVIEW_EXTENSIONS].some(ext => name.endsWith(ext))) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Unsupported archive path' }));
+    return;
+  }
+  const cwd = _viewRootOrReply(req, res, parsedUrl);
+  if (!cwd) return;
+  fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, req.method, {
+    archive: true, maxBytes: ARCHIVE_RAW_MAX_BYTES, allowPersistedFallback: false,
+  });
 }
 
 // Browser download endpoint: unlike fileRaw (inline preview, 10MB cap), this streams
@@ -840,6 +859,7 @@ export const filesContentRoutes = [
   { method: 'GET', match: 'exact', path: '/api/project-memory', handler: projectMemory },
   { method: 'GET', match: 'exact', path: '/api/claude-md', handler: claudeMd },
   { predicate: (url, method) => (url === '/api/file-raw' || url.startsWith('/api/file-raw/')) && (method === 'GET' || method === 'HEAD'), handler: fileRaw },
+  { predicate: (url, method) => url === '/api/archive-raw' && (method === 'GET' || method === 'HEAD'), handler: archiveRaw },
   { predicate: (url, method) => url === '/api/download-file' && (method === 'GET' || method === 'HEAD'), handler: fileDownload },
   { method: 'POST', match: 'exact', path: '/api/file-content', handler: fileContentPost },
   { method: 'GET', match: 'exact', path: '/api/target-files', handler: targetFiles },
