@@ -1,0 +1,127 @@
+apps/web/src/components/terminal/ScratchTerminal.jsx
+  s_4c3db50dd057ea::t_39a0031da6ac94 129-130
+  s_4c3db50dd057ea::t_4c0cb948f19483 22
+  s_4c3db50dd057ea::t_e5a5e808ea6112 318-322,325-339,342-343,345-349
+  s_4c3db50dd057ea::t_b7ed58545dbfff 74-75
+  s_4c3db50dd057ea::t_aaee900c1787b6 50
+  s_4c3db50dd057ea::t_3eab45f1e99af0 340-341,344
+  s_4c3db50dd057ea::t_c45e24358bd504 323-324
+  s_4c3db50dd057ea::t_fa5d6042168166 566-571
+  s_4c3db50dd057ea::t_4bced7cef4576a 438
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_4c3db50dd057ea::t_a489220283f233 65
+  s_4c3db50dd057ea::t_b838a3122c55e2 314,316,327,334,339-340
+  s_4c3db50dd057ea::t_862552c56f5cbb 95
+  s_4c3db50dd057ea::t_74e874f9e2b053 16
+  s_2b9e798c2c1c5e::t_33367bbf06657e 96-97
+  s_4c3db50dd057ea::t_e5d4fd7d1bb971 99-110
+  s_4c3db50dd057ea::t_2eaa49e7599080 409-414
+  s_4c3db50dd057ea::t_2172095b40723e 5
+  s_4c3db50dd057ea::t_700ddc078e85ad 421
+  s_4c3db50dd057ea::t_ccfd1625985e25 341
+  s_2b9e798c2c1c5e::t_53ba1635756258 315,317-326,328-333,335-338,342-343
+apps/web/src/AppBase.jsx
+  s_4c3db50dd057ea::t_d0250a8165f368 5032
+  s_4c3db50dd057ea::t_dccfa7ba77f039 4998
+  s_2b9e798c2c1c5e::t_c6a70067aec74c 5033
+  s_4c3db50dd057ea::t_5e15ab9b3a1b12 5035
+  s_4c3db50dd057ea::t_304392f47462dc 4989-4990
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_4c3db50dd057ea::t_25922709cf4cac 1770
+  s_4c3db50dd057ea::t_e82ffb7cedfb18 1045-1048,1055,1059,1063,1066,1069-1078
+  s_4c3db50dd057ea::t_2c5852a9abbe02 16
+  s_2b9e798c2c1c5e::t_f74557cb379344 1049,1052-1054,1056-1058,1060-1062,1064-1065,1079-1080
+  s_4c3db50dd057ea::t_fbc7472a16d2ec 1746
+  s_4c3db50dd057ea::t_94361ddb9a875e 655-656
+  s_4c3db50dd057ea::t_00e1ea063dba0c 456-457
+  s_4c3db50dd057ea::t_b5fd4567025e37 860-864
+  s_2b9e798c2c1c5e::t_35457692612279 1747-1749
+  s_4c3db50dd057ea::t_a3e24ec2dd21d9 859
+  s_4c3db50dd057ea::t_4a1338feca51cf 1067-1068
+  s_4c3db50dd057ea::t_d9dce9e00bc987 44
+  s_4c3db50dd057ea::t_3166ae1cfbeaed 1050-1051
+  s_4c3db50dd057ea::t_c5354c2951c459 206
+  s_4c3db50dd057ea::t_993300cabd8ad3 858
+apps/web/src/components/terminal/TerminalPanel.module.css
+  s_4c3db50dd057ea::t_43d35dc8532f68 49
+  s_4c3db50dd057ea::t_b72ac933f8ba85 908-909
+  s_4c3db50dd057ea::t_b0c126b3fb874a 93-96
+  s_4c3db50dd057ea::t_0de348b0b25086 910-912
+  s_2b9e798c2c1c5e::t_baeec4a65b045d 50-52
+  s_4c3db50dd057ea::t_aca39d667dfc69 921-924
+history.md
+  s_4c3db50dd057ea::t_df769f4f7e575c 5
+  s_4c3db50dd057ea::t_36f0fa390e9958 6
+apps/web/src/components/files/FileExplorer.jsx
+  s_4c3db50dd057ea::t_a971baa0a7db09 489
+  s_4c3db50dd057ea::t_a50be8e7b38321 16
+  s_4c3db50dd057ea::t_744076e759b4a2 215,217
+  s_4c3db50dd057ea::t_6f214e0766f71f 214
+  s_4c3db50dd057ea::t_98f6585a41c072 270
+apps/web/src/utils/fileDragDrop.js
+  s_4c3db50dd057ea::t_2e0c815121e253 3-5,7-15,20-22,25-26,34-36,42-46
+  s_4c3db50dd057ea::t_e575e4ca8ff3a7 28
+  s_4c3db50dd057ea::t_2e79a0fb4002aa 30
+  s_4c3db50dd057ea::t_310fa9d6aedfe5 39-41
+  s_4c3db50dd057ea::t_82130ac486e7ea 1-2
+  s_4c3db50dd057ea::t_947d3bf78a357c 6
+  s_4c3db50dd057ea::t_1e30fc5edbf6ca 16-19,23-24,27,29,31-33,37-38
+apps/web/src/components/chat/ChatView.jsx
+  s_4c3db50dd057ea::t_946e61008f95f7 1715
+  s_4c3db50dd057ea::t_a929e739676148 5660
+  s_4c3db50dd057ea::t_aec74af50e0751 37
+apps/web/src/components/chat/ChatInputBar.module.css
+  s_4c3db50dd057ea::t_c24085286af8f0 78
+  s_4c3db50dd057ea::t_0980ad39ba2ecb 77,79
+  s_4c3db50dd057ea::t_6226b63d37aa61 80
+  s_2b9e798c2c1c5e::t_4bd06b5b1c96eb 81-82
+apps/web/test/file-drag-drop.test.js
+  s_4c3db50dd057ea::t_6bc9606177958d 98-103,106-107
+  s_4c3db50dd057ea::t_1611a2b681fd33 73-75
+  s_4c3db50dd057ea::t_deb35acf51bfd0 62
+  s_4c3db50dd057ea::t_4aaf8085cd8e24 80-84
+  s_4c3db50dd057ea::t_aedea0a36db06c 77
+  s_4c3db50dd057ea::t_a8527d7e2258de 38-40,43-47
+  s_4c3db50dd057ea::t_2a27e49e5ccee2 65
+  s_4c3db50dd057ea::t_47f7d5c8c2ba2d 3-4
+  s_4c3db50dd057ea::t_8dd78e9aef1715 105
+  s_4c3db50dd057ea::t_f4af9dbac0917e 41-42
+  s_4c3db50dd057ea::t_3f7c17c30ae458 56-61,63-64,66-72,76,78-79,85-89,91,93,97,108
+  s_4c3db50dd057ea::t_5ee6496bb987ed 104
+  s_4c3db50dd057ea::t_31a56e23738134 51
+  s_4c3db50dd057ea::t_65b88046c87bae 90,92,94-96
+  s_4c3db50dd057ea::t_f50281b777f188 48,53
+  s_4c3db50dd057ea::t_f7ef2dc729bd4a 1-2,5-37,49-50,52,54-55
+.changeset/file-drag-drop.md
+  s_4c3db50dd057ea::t_7392723cb3cd5d 1-5
+apps/web/test/drag-drop-zones.test.js
+  s_4c3db50dd057ea::t_6045b6e40a2aed 92
+  s_4c3db50dd057ea::t_d094713244b131 66-68
+  s_4c3db50dd057ea::t_42aabe43cd5425 63-65,69
+  s_4c3db50dd057ea::t_42b64ded07cde3 93
+  s_4c3db50dd057ea::t_443ba785d2d516 95-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ea995f38833b20201b47ebd2c13ec5e54e24aa95",
+  "prompts": {},
+  "sessions": {
+    "s_2b9e798c2c1c5e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd02cf3d-4320-493b-a901-6881659d9821",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    },
+    "s_4c3db50dd057ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0f560f51-5783-4b23-b016-0faece7151f1",
+        "model": "k3.1-pro"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
