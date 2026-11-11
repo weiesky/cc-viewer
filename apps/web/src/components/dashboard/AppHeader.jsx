@@ -8,14 +8,12 @@ import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modi
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
 import Loading from '../common/Loading';
 import { hasNativeZoom, isMac } from '../../env';
-import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled, PlusOutlined } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, DashboardOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled, PlusOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from '../../utils/helpers';
 import { contextSeverityColor } from '../../utils/formatters';
 import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelectOptions, askAutoAnswerSelectOptions, askAutoAnswerUiValue, askAutoAnswerPrefValue } from '../../utils/autoApproveOptions';
-import { classifyUserContent, isMainAgent, extractDisplayText } from '@ccv/core/contentFilter';
-import { parseImOrigin } from '../../utils/imOrigin';
-import { BLUR_MASK_STYLE } from '../../utils/modalMask';
+import { isMainAgent } from '@ccv/core/contentFilter';
 import { sortSkillsDefault } from '../../utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from '../../utils/skillModalController';
 import { PINNED_KEY, togglePinned, normalizePinnedKeys, resolvePinnedKeys } from '../../utils/pinnedMenu';
@@ -484,7 +482,7 @@ class AppHeader extends React.Component {
 
   constructor(props, context) {
     super(props);
-    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, pluginPanels: [], activePluginPanel: null, pluginPanelAttempt: 0, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
+    this.state = { countdownText: '', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, pluginPanels: [], activePluginPanel: null, pluginPanelAttempt: 0, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
       // 文件系统权威的 skill 列表（/api/skills 返回）；live-tail 下作为 popover chip 和管理弹窗的共享数据源。
       // null=未加载 / false=失败 / [] 或 Array=加载结果。workspace 切换由 componentDidUpdate + seq 控制。
       _fsSkills: null,
@@ -596,7 +594,6 @@ class AppHeader extends React.Component {
       }));
     return [
       { key: 'import-local', icon: <FileTextOutlined />, label: t('ui.importLocalLogs'), onClick: onImportLocalLogs },
-      { key: 'export-prompts', icon: <MessageOutlined />, label: t('ui.exportPrompts'), onClick: this.handleShowPrompts },
       { key: 'plugin-management', icon: <ApiOutlined />, label: t('ui.pluginManagement'), onClick: this.handleShowPlugins },
       ...panelDescriptors,
       { key: 'process-management', icon: <DashboardOutlined />, label: t('ui.processManagement'), onClick: this.handleShowProcesses },
@@ -1361,138 +1358,6 @@ class AppHeader extends React.Component {
     this._countdownTimer = setTimeout(this.updateCountdown, delay);
   }
 
-  // 命令相关的标签集合，已作为独立 prompt 输出，在 segments 中直接丢弃
-  static COMMAND_TAGS = new Set([
-    'command-name', 'command-message', 'command-args',
-    'local-command-caveat', 'local-command-stdout',
-  ]);
-
-  // 将一段文本拆分为普通文本和 XML 标签片段（可折叠）
-  static parseSegments(text) {
-    const segments = [];
-    // 匹配所有成对的 XML 标签: <tag-name ...>...</tag-name>
-    const regex = /<([a-zA-Z_][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
-    let lastIndex = 0;
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      const before = text.slice(lastIndex, match.index).trim();
-      if (before) segments.push({ type: 'text', content: before });
-      const tagName = match[1];
-      lastIndex = match.index + match[0].length;
-      // 命令相关标签直接跳过
-      if (AppHeader.COMMAND_TAGS.has(tagName)) continue;
-      // 提取标签内的内容（去掉外层开闭标签）
-      const innerRegex = new RegExp(`^<${tagName}(?:\\s[^>]*)?>([\\s\\S]*)<\\/${tagName}>$`);
-      const innerMatch = match[0].match(innerRegex);
-      const content = innerMatch ? innerMatch[1].trim() : match[0].trim();
-      segments.push({ type: 'system', content, label: tagName });
-    }
-    const after = text.slice(lastIndex).trim();
-    if (after) segments.push({ type: 'text', content: after });
-    return segments;
-  }
-
-
-  // 从消息列表中提取用户文本
-  static extractUserTexts(messages) {
-    const userMsgs = [];   // 纯用户文本（不含系统标签），用于去重
-    const fullTexts = [];  // 完整文本（含系统标签），用于展示
-    let slashCmd = null;
-    for (const msg of messages) {
-      if (msg.role !== 'user') continue;
-      if (typeof msg.content === 'string') {
-        const text = extractDisplayText(parseImOrigin(msg.content).text);
-        if (!text) continue;
-        if (/Implement the following plan:/i.test(text)) continue;
-        userMsgs.push(text);
-        fullTexts.push(text);
-      } else if (Array.isArray(msg.content)) {
-        const { commands, textBlocks } = classifyUserContent(msg.content);
-        // 取最后一个 slash command（与之前行为一致）
-        if (commands.length > 0) {
-          slashCmd = commands[commands.length - 1];
-        }
-        // 过滤掉 plan prompt
-        const userParts = [];
-        for (const b of textBlocks) {
-          if (/Implement the following plan:/i.test((b.text || '').trim())) continue;
-          userParts.push(b.text.trim());
-        }
-        // 收集完整文本用于 context 视图
-        const allParts = msg.content
-          .filter(b => b.type === 'text' && b.text?.trim())
-          .map(b => b.text.trim());
-        if (userParts.length > 0) {
-          userMsgs.push(userParts.join('\n'));
-          fullTexts.push(allParts.join('\n'));
-        }
-      }
-    }
-    return { userMsgs, fullTexts, slashCmd };
-  }
-
-  extractUserPrompts() {
-    const { requests = [] } = this.props;
-    const prompts = [];
-    const seen = new Set();
-    let prevSlashCmd = null;
-    const mainAgentRequests = requests.filter(r => isMainAgent(r));
-    for (let ri = 0; ri < mainAgentRequests.length; ri++) {
-      const req = mainAgentRequests[ri];
-      const messages = req.body?.messages || [];
-      const timestamp = req.timestamp || '';
-      const { userMsgs, fullTexts, slashCmd } = AppHeader.extractUserTexts(messages);
-
-      // 斜杠命令去重
-      if (slashCmd && slashCmd !== '/compact' && slashCmd !== prevSlashCmd) {
-        prompts.push({ type: 'prompt', segments: [{ type: 'text', content: slashCmd }], timestamp });
-      }
-      prevSlashCmd = slashCmd;
-
-      // 逐条检查用户消息，用内容哈希去重
-      for (let i = 0; i < userMsgs.length; i++) {
-        const key = userMsgs[i];
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const raw = fullTexts[i] || key;
-        prompts.push({ type: 'prompt', segments: AppHeader.parseSegments(raw), timestamp });
-      }
-    }
-    return prompts;
-  }
-
-  handleShowPrompts = () => {
-    this.setState({
-      promptModalVisible: true,
-      promptData: this.extractUserPrompts(),
-    });
-  }
-
-  handleExportPromptsTxt = () => {
-    const prompts = this.state.promptData;
-    if (!prompts || prompts.length === 0) return;
-    const blocks = [];
-    for (const p of prompts) {
-      const lines = [];
-      const ts = p.timestamp ? new Date(p.timestamp).toLocaleString() : '';
-      if (ts) lines.push(`${ts}:\n`);
-      // 只输出纯文本 segments，跳过 system 标签
-      const textParts = (p.segments || [])
-        .filter(seg => seg.type === 'text')
-        .map(seg => seg.content);
-      if (textParts.length > 0) lines.push(textParts.join('\n'));
-      blocks.push(lines.join('\n'));
-    }
-    if (blocks.length === 0) return;
-    const blob = new Blob([blocks.join('\n\n\n\n')], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `user-prompts-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   renderTokenStats(closeParent) {
     const { requests = [] } = this.props;
     const { cacheHighlightIdx, cacheHighlightFading } = this.state;
@@ -1857,58 +1722,6 @@ class AppHeader extends React.Component {
         )}
       </div>
     );
-  }
-
-  renderTextPrompt(p) {
-    return (
-      <div className={styles.textPromptCard}>
-        {p.segments.map((seg, j) => {
-          if (seg.type === 'text') {
-            return (
-              <pre key={j} className={styles.preText}>{seg.content}</pre>
-            );
-          }
-          return (
-            <Collapse
-              key={j}
-              size="small"
-              className={styles.systemCollapse}
-              items={[{
-                key: `sys-${j}`,
-                label: <span className={styles.systemLabel}>{seg.label}</span>,
-                children: (
-                  <pre className={styles.preSys}>{seg.content}</pre>
-                ),
-              }]}
-            />
-          );
-        })}
-      </div>
-    );
-  }
-
-  renderOriginalPrompt(p) {
-    const textSegments = p.segments.filter(seg => seg.type === 'text');
-    if (textSegments.length === 0) return null;
-    return (
-      <div className={styles.textPromptCard}>
-        {textSegments.map((seg, j) => (
-          <pre key={j} className={styles.preText}>{seg.content}</pre>
-        ))}
-      </div>
-    );
-  }
-
-  buildTextModeContent() {
-    const { promptData } = this.state;
-    const blocks = [];
-    for (const p of promptData) {
-      const textParts = (p.segments || [])
-        .filter(seg => seg.type === 'text')
-        .map(seg => seg.content);
-      if (textParts.length > 0) blocks.push(textParts.join('\n'));
-    }
-    return blocks.join('\n\n\n');
   }
 
   handleShowProjectStats = () => {
@@ -2499,56 +2312,6 @@ class AppHeader extends React.Component {
             onClose={this.closeTargetBrowser}
           />
         )}
-        <Modal
-          title={`${t('ui.userPrompt')} (${this.state.promptData.length}${t('ui.promptCountUnit')})`}
-          open={this.state.promptModalVisible}
-          onCancel={() => this.setState({ promptModalVisible: false })}
-          footer={null}
-          width={700}
-          styles={{ mask: BLUR_MASK_STYLE }}
-        >
-          <div className={styles.promptExportBar}>
-            <Button icon={<DownloadOutlined />} onClick={this.handleExportPromptsTxt}>
-              {t('ui.exportPromptsTxt')}
-            </Button>
-          </div>
-          <Tabs
-            activeKey={this.state.promptViewMode}
-            onChange={(key) => this.setState({ promptViewMode: key })}
-            size="small"
-            items={[
-              { key: 'original', label: t('ui.promptModeOriginal') },
-              { key: 'context', label: t('ui.promptModeContext') },
-              { key: 'text', label: t('ui.promptModeText') },
-            ]}
-          />
-          {this.state.promptViewMode === 'text' ? (
-            <textarea
-              readOnly
-              className={styles.promptTextarea}
-              value={this.buildTextModeContent()}
-            />
-          ) : (
-            <div className={styles.promptScrollArea}>
-              {this.state.promptData.length === 0 && (
-                <div className={styles.promptEmpty}>{t('ui.noPrompt')}</div>
-              )}
-              {this.state.promptData.map((p, i) => {
-                const ts = p.timestamp ? new Date(p.timestamp).toLocaleString() : t('ui.unknownTime');
-                return (
-                  <div key={i}>
-                    <div className={styles.promptTimestamp}>
-                      {ts}:
-                    </div>
-                    {this.state.promptViewMode === 'original'
-                      ? this.renderOriginalPrompt(p)
-                      : this.renderTextPrompt(p)}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Modal>
         <Drawer
           title={t('ui.settings')}
           placement="left"

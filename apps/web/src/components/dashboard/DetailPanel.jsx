@@ -11,7 +11,7 @@ import { classifyRequest } from '@ccv/core/requestType';
 import { isMainAgent, isSystemText, extractDisplayText } from '@ccv/core/contentFilter';
 import { restoreSlimmedEntry } from '../../utils/entry-slim.js';
 import { buildRequestExpandNode } from '../../utils/requestExpand.js';
-import AppHeader from './AppHeader';
+import { parsePromptSegments } from '../../utils/promptSegments';
 import ContextTab from './ContextTab';
 import SdkContextUsageTab from './SdkContextUsageTab';
 import SdkMcpStatusTab from './SdkMcpStatusTab';
@@ -602,7 +602,7 @@ class DetailPanel extends React.Component {
                 .map(({ text, msgIdx }) => {
                   const disp = extractDisplayText(text.replace(/^\[user\]\s*/, ''));
                   if (!disp) return { cleaned: '', msgIdx };
-                  const segments = AppHeader.parseSegments(disp);
+                  const segments = parsePromptSegments(disp);
                   const cleaned = segments
                     .filter(s => s.type === 'text')
                     .map(s => s.content.trim())

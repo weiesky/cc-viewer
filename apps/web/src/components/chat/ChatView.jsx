@@ -37,6 +37,7 @@ import { resolveBubbleProducerTs, getSessionStableId } from '../../utils/session
 import { terminalAnchor } from '../../utils/terminalAnchor';
 import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
+import UserPromptsModal from './UserPromptsModal';
 import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
 import ActiveAgentsBar from './ActiveAgentsBar';
@@ -353,6 +354,8 @@ class ChatView extends React.Component {
       activeAgentsBarVisible: false,
       teamModalSession: null,
       workflowModalRun: null,
+      // 用户 Prompt 汇总弹窗（侧栏头像导航气泡「more」入口打开）
+      userPromptsModalOpen: false,
       mdLightboxSrc: null,
       streamingFading: false,
       stopOptimistic: false, // 点「停止」后乐观置 true：按钮/指示器立即切非运行态，真实 isStreaming 翻 false 或兜底超时后清除
@@ -4765,7 +4768,16 @@ class ChatView extends React.Component {
 
     const result = (
       <div className={styles.userPromptNavWrap}>
-        <div className={styles.userPromptNavTitle}>{t('ui.userPromptNav')} ({prompts.length})</div>
+        <div className={styles.userPromptNavTitle}>
+          <span>{t('ui.userPromptNav')} ({prompts.length})</span>
+          <button
+            type="button"
+            className={styles.userPromptNavMore}
+            onClick={() => this.setState({ userPromptsModalOpen: true })}
+          >
+            {t('ui.more')}
+          </button>
+        </div>
         <div className={styles.userPromptNavList}>
           {prompts.map((p, idx) => {
             const timeStr = formatPromptNavTime(p.timestamp);
@@ -5340,6 +5352,7 @@ class ChatView extends React.Component {
         </div>
         <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} isHistoryLog={this._getIsHistoryLog()} lang={this.props.lang} onClose={() => this.setState({ teamModalSession: null })} />
         <WorkflowRunsModal run={this.state.workflowModalRun} onClose={() => this.setState({ workflowModalRun: null })} />
+        <UserPromptsModal open={this.state.userPromptsModalOpen} requests={this.props.requests} onClose={() => this.setState({ userPromptsModalOpen: false })} />
       </>);
     }
 
@@ -5841,6 +5854,7 @@ class ChatView extends React.Component {
       </div>
       <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} isHistoryLog={this._getIsHistoryLog()} lang={this.props.lang} onClose={() => this.setState({ teamModalSession: null })} />
       <WorkflowRunsModal run={this.state.workflowModalRun} onClose={() => this.setState({ workflowModalRun: null })} />
+      <UserPromptsModal open={this.state.userPromptsModalOpen} requests={this.props.requests} onClose={() => this.setState({ userPromptsModalOpen: false })} />
       <PresetModal open={this.state.mobilePresetModalVisible} onClose={() => this.setState({ mobilePresetModalVisible: false })} items={this.state.presetItems} onItemsChange={(items) => this.setState({ presetItems: items })} onSavePresets={(payload) => { if (this.props.onUpdatePreferences) this.props.onUpdatePreferences(payload); }} />
       <ScheduleTaskModal
         open={this.state.scheduleModalVisible}

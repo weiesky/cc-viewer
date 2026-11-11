@@ -1,0 +1,80 @@
+/* 用户 Prompt 汇总弹窗（侧栏导航气泡「more」入口）— 与原 AppHeader prompt modal 同款样式 */
+
+.promptExportBar {
+  margin-bottom: 12px;
+}
+
+.promptScrollArea {
+  max-height: 500px;
+  overflow: auto;
+}
+
+.promptEmpty {
+  color: var(--text-tertiary);
+  padding: 12px;
+}
+
+/* Prompt timestamp */
+.promptTimestamp {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 12px 0 4px;
+  padding-bottom: 6px;
+}
+
+/* Text prompt card */
+.textPromptCard {
+  margin: 4px 0;
+  background: var(--bg-container);
+  border-radius: 6px;
+  border: 1px solid var(--border-secondary);
+  padding: 10px 14px;
+}
+
+/* Pre blocks for text content */
+.preText {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 4px 0;
+}
+
+/* Collapse for system-reminder segments */
+.systemCollapse {
+  margin: 4px 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+}
+
+.systemLabel {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.preSys {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* Text mode textarea */
+.promptTextarea {
+  box-sizing: border-box;
+  background: var(--bg-base-pure);
+  width: 100%;
+  min-height: 400px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  border: none;
+  resize: vertical;
+  padding: 10px 14px;
+  outline: none;
+}
