@@ -1,0 +1,194 @@
+scripts/tarball-baseline.json
+  s_9d0cce9143ac3b::t_58a8d58ce6e052 1336,1400
+apps/web/src/components/common/QuickAutoApproveRows.jsx
+  s_9d0cce9143ac3b::t_2729f10b83beaf 48
+  s_9d0cce9143ac3b::t_4d80a975a406db 2-3,6-10,12-16,20-23,25-27,31-32,36,46-47,49-62,73
+apps/web/src/utils/autoApproveOptions.js
+  s_9d0cce9143ac3b::t_ebf03857b92b95 28-49,51,53-54,57,60
+  s_9d0cce9143ac3b::t_1f5970fb50c829 50,52,55-56,58-59
+apps/web/src/components/chat/controllers/askFlowController.js
+  s_9d0cce9143ac3b::t_0479442d0c8bbc 61-62,65-82
+  s_9d0cce9143ac3b::t_e5110292f49174 881
+  s_9d0cce9143ac3b::t_8b34512c818dec 721-728
+  s_9d0cce9143ac3b::t_4a724a2e9a0c46 87-90
+  s_9d0cce9143ac3b::t_e1c49b41df29d9 669-677
+  s_9d0cce9143ac3b::t_adcefd0e40287f 532-556
+  s_9d0cce9143ac3b::t_c7a631e7671cb1 880
+  s_9d0cce9143ac3b::t_64ca969ed0f6d7 778-790
+  s_9d0cce9143ac3b::t_deb5bc16dd619c 836-844,854-858
+  s_9d0cce9143ac3b::t_04636c326815d6 83
+packages/app/server/lib/ask/ask-reaper.js
+  s_9d0cce9143ac3b::t_4988f0ebe4d1e1 99
+packages/app/test/branch-routes-ask-perm.test.js
+  s_9d0cce9143ac3b::t_371b0b7ce73f1d 18
+  s_9d0cce9143ac3b::t_31a9372b6076df 792-795,800
+  s_9d0cce9143ac3b::t_517d08c9d3cbe2 930
+  s_9d0cce9143ac3b::t_57dc880e364fe0 748-751
+  s_9d0cce9143ac3b::t_7e115b29c0a9d7 728-742,744-745,747,752-755,759-791,798-799,801-907,929
+  s_9d0cce9143ac3b::t_12cb18cc6c7f5d 796-797
+  s_9d0cce9143ac3b::t_b3d91d598fa837 908-928
+  s_9d0cce9143ac3b::t_59c1a4512c9b58 743,746,756-758
+packages/app/server/server.js
+  s_9d0cce9143ac3b::t_632608de74e9de 2336-2342
+  s_9d0cce9143ac3b::t_ac8720b90859fc 2930
+  s_9d0cce9143ac3b::t_4cac7b3f01f2bb 2270-2273
+  s_9d0cce9143ac3b::t_a0d158e83f9909 1747
+  s_9d0cce9143ac3b::t_e9b6436360679e 56
+  s_9d0cce9143ac3b::t_c76a4cccae53ba 3035-3048,3050-3051,3053-3059,3064-3068
+  s_9d0cce9143ac3b::t_63baf4d0538a8c 2782-2784
+  s_9d0cce9143ac3b::t_c1c7f6d7359606 3049,3052,3060-3063
+  s_9d0cce9143ac3b::t_7f27416d3c22cc 764
+apps/web/test/ask-auto-answer-menu.test.js
+  s_9d0cce9143ac3b::t_303030313e3095 1-37,39-117
+  s_9d0cce9143ac3b::t_eb02be172b96e5 38
+packages/app/server/lib/ask-auto-answer.js
+  s_9d0cce9143ac3b::t_a3349534096b43 27-31
+  s_9d0cce9143ac3b::t_f4efc29ab7b637 1-26,32-153
+packages/core/test/ask-auto-answer.test.js
+  s_9d0cce9143ac3b::t_fcbc203d814560 1-18,43-144
+  s_9d0cce9143ac3b::t_1c08f7c0c02a47 19-42
+apps/web/src/components/chat/ChatView.jsx
+  s_9d0cce9143ac3b::t_94788841802b53 2527-2529
+  s_9d0cce9143ac3b::t_363c0ef6995d9c 5701-5702
+  s_9d0cce9143ac3b::t_b312180bce5616 1082-1087
+  s_9d0cce9143ac3b::t_350fcaf57354e7 2598-2602
+  s_9d0cce9143ac3b::t_0a4232d3f31619 3836-3838
+  s_9d0cce9143ac3b::t_95c16d39b7702c 5827-5828
+  s_9d0cce9143ac3b::t_cc1248b37043d8 1090-1092,1095-1097
+  s_9d0cce9143ac3b::t_6abe40b1eebaff 781-782
+  s_9d0cce9143ac3b::t_1800b3c1d6c049 2105,2726
+  s_9d0cce9143ac3b::t_075ff8a084254c 2380-2386
+  s_9d0cce9143ac3b::t_ab80c6a74b0862 2506-2511
+packages/app/test/ask-auto-answer.test.js
+  s_9d0cce9143ac3b::t_939b506a94d803 51-53
+  s_9d0cce9143ac3b::t_e49d2ea310ce71 1-50,54-232
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_9d0cce9143ac3b::t_aa9d5a6c203d91 497,500
+  s_9d0cce9143ac3b::t_0a7d88ae69ff7a 64
+apps/web/src/components/chat/AskQuestionForm.jsx
+  s_9d0cce9143ac3b::t_bb62a9a7702176 6
+  s_9d0cce9143ac3b::t_c2a9f7d9498ae2 256-260
+apps/web/src/components/chat/AskAutoHostCountdown.jsx
+  s_9d0cce9143ac3b::t_99109fcefc63ee 38-41
+  s_9d0cce9143ac3b::t_e34651c931a442 1-37,42-50
+apps/web/src/components/approval/ApprovalModal.jsx
+  s_9d0cce9143ac3b::t_215d0b88add148 359-360,365-366
+  s_9d0cce9143ac3b::t_3fbcd9621f1350 367
+apps/web/src/components/dashboard/AppHeader.jsx
+  s_9d0cce9143ac3b::t_dac42e279c230a 15
+  s_9d0cce9143ac3b::t_a6310a2699840c 2655
+  s_9d0cce9143ac3b::t_eb3d2d4aaa3f56 2654,2656-2666
+  s_9d0cce9143ac3b::t_15e611705eae11 2652-2653
+apps/web/test/ask-flow-controller.test.js
+  s_9d0cce9143ac3b::t_2f793a8dc10594 421-532
+packages/core/src/ask-auto-answer.js
+  s_9d0cce9143ac3b::t_5d9d795bcfca90 41-49,51-62,65-66,72-78
+  s_9d0cce9143ac3b::t_6963f6aca56c3e 50
+  s_9d0cce9143ac3b::t_13b62321531b72 1-40,63-64,67-71,79-122
+apps/web/src/Mobile.jsx
+  s_9d0cce9143ac3b::t_e7525757ea64bf 1050-1051
+  s_9d0cce9143ac3b::t_f6f0dd3b660a37 1309-1312,1314-1325
+  s_9d0cce9143ac3b::t_73ddf4a54146ff 989-990
+  s_9d0cce9143ac3b::t_efa47831275233 13
+  s_9d0cce9143ac3b::t_1060016d2cb1f0 1313
+.changeset/ask-auto-answer.md
+  s_9d0cce9143ac3b::t_210cebb9906f46 1-5
+packages/app/server/lib/sdk-manager.js
+  s_9d0cce9143ac3b::t_5999868495f771 2396-2397,2403-2405,2408,2417,2421
+  s_9d0cce9143ac3b::t_ece6854de7e24e 2410-2412,2414-2416
+  s_9d0cce9143ac3b::t_772a0372435572 46-52
+  s_9d0cce9143ac3b::t_14667e25bbf700 2418
+  s_9d0cce9143ac3b::t_f9ade579877873 3094-3098
+  s_9d0cce9143ac3b::t_ecad267c045ffe 2140-2153,2157-2158
+  s_9d0cce9143ac3b::t_c2aff8bdd07b9e 2384-2389
+  s_9d0cce9143ac3b::t_dc32150cb4ae2b 2282,2318-2324,2326-2331,2334,2336
+apps/web/src/components/settings/PreferencesForm.jsx
+  s_9d0cce9143ac3b::t_0daf2aa0514812 55
+  s_9d0cce9143ac3b::t_b3c0f66fd8a264 56-63
+  s_9d0cce9143ac3b::t_d8337ca6a70a43 14,20
+  s_9d0cce9143ac3b::t_2826f3d43545e1 5
+apps/web/src/components/common/quickMenuIcons.jsx
+  s_9d0cce9143ac3b::t_6722d665df080f 58-68
+packages/app/test/api-ask-perm-extra.test.js
+  s_9d0cce9143ac3b::t_152c617b96d1da 171-203
+apps/web/src/utils/deadlineCountdown.js
+  s_9d0cce9143ac3b::t_ab635bd31d50c5 16-29
+  s_9d0cce9143ac3b::t_5ec4d448b8c47a 15
+apps/web/test/quick-settings-i18n.test.js
+  s_9d0cce9143ac3b::t_d40c3f4468240b 42-49
+packages/app/server/lib/ask/ask-bridge.js
+  s_9d0cce9143ac3b::t_85ed80e0d1921e 129-132
+history.md
+  s_9d0cce9143ac3b::t_c915d6dd29b0b1 5-6
+apps/web/test/deadline-countdown.test.js
+  s_9d0cce9143ac3b::t_4f5f2e59ab54d8 3-30
+packages/app/server/lib/auto-approve.js
+  s_9d0cce9143ac3b::t_919603f8a99e17 22-24
+apps/web/src/components/chat/ChatMessage.jsx
+  s_9d0cce9143ac3b::t_81253db6645bfa 992-993,1002
+  s_9d0cce9143ac3b::t_e93fe609116aa1 1003-1011
+  s_9d0cce9143ac3b::t_493c5cf6dba43c 220
+  s_9d0cce9143ac3b::t_a3e9a404dc4bb3 1012
+packages/core/test/approval-modal-prefs.test.js
+  s_9d0cce9143ac3b::t_4d3b0094232581 104-116
+apps/web/src/AppBase.jsx
+  s_9d0cce9143ac3b::t_a49ec364613bde 12
+  s_9d0cce9143ac3b::t_ede52eb035888e 312
+  s_9d0cce9143ac3b::t_61964e0c0e6a7f 4378-4383
+  s_9d0cce9143ac3b::t_92e4df6e2bea95 508-510
+packages/app/test/sdk-manager-auto-approve.test.js
+  s_9d0cce9143ac3b::t_649f99bf21287b 282-418,443-444
+  s_9d0cce9143ac3b::t_5db115dcf9bb65 446,459-470,473-474
+  s_9d0cce9143ac3b::t_87014fcf782935 419-442
+apps/web/src/i18n.js
+  s_9d0cce9143ac3b::t_6ac08215fe096a 10452-10500,10519
+  s_9d0cce9143ac3b::t_40572876775116 10501-10517
+  s_9d0cce9143ac3b::t_9ac79d608f5263 10518
+packages/app/server/routes/ask-perm.js
+  s_9d0cce9143ac3b::t_737109d168fa35 21-22
+  s_9d0cce9143ac3b::t_fe20a6a9e84c59 208
+  s_9d0cce9143ac3b::t_bf1ebf256e9798 2,12
+  s_9d0cce9143ac3b::t_4e07ed54d2a6aa 31-36
+  s_9d0cce9143ac3b::t_c1b2583f813c0d 252-254,260,273
+  s_9d0cce9143ac3b::t_3410340babb7e3 156
+  s_9d0cce9143ac3b::t_de6f1093b21df5 285
+  s_9d0cce9143ac3b::t_c76e77d5a8e178 118-120
+  s_9d0cce9143ac3b::t_b94aa3bb08720a 157-159
+  s_9d0cce9143ac3b::t_795e04df083a49 229-233,235-237,256-259,261,269-272,274-284,286-305
+  s_9d0cce9143ac3b::t_0fada44940ed87 174
+  s_9d0cce9143ac3b::t_7fdf90070b14d3 160
+  s_9d0cce9143ac3b::t_c0012aa0cb0dcc 234
+  s_9d0cce9143ac3b::t_ae6b94af84b483 425
+  s_9d0cce9143ac3b::t_363874811c7c53 133-136
+  s_9d0cce9143ac3b::t_c5bc56c78769a0 127-130,132
+  s_9d0cce9143ac3b::t_47abf774c3bff9 92
+  s_9d0cce9143ac3b::t_518eee1ef80096 67
+apps/web/src/App.jsx
+  s_9d0cce9143ac3b::t_eb1a1e5d92e814 751
+apps/web/test/auto-approve-options.test.js
+  s_9d0cce9143ac3b::t_3c7e1dc8c1c61d 70-94,97-98,100-102,106-113
+  s_9d0cce9143ac3b::t_7127b1b75b19a0 95-96,99,103-105
+  s_9d0cce9143ac3b::t_c9742876a0e9c9 16-21,26-27
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_9d0cce9143ac3b::t_ffdf6f1d3cb7fa 1798,1801
+packages/app/test/server-ws-branches.test.js
+  s_9d0cce9143ac3b::t_a938793225daf8 437-521
+apps/web/src/components/chat/ChatMessage.module.css
+  s_9d0cce9143ac3b::t_d79eb54efba7d3 1028-1052
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6081b5d01a1ae5a12063cfdc15959c392c5f37ba",
+  "prompts": {},
+  "sessions": {
+    "s_9d0cce9143ac3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cea0022-2e8c-4248-a0fa-0e9788f37a4f",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
