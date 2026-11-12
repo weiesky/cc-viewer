@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(sdk+web): **慢上游提示正确跟随请求生命周期** — 客户端断连和响应转发异常会按 requestId 结束提示；WS 重连或切回视图时恢复仍在等待的提示，已完成的请求不再残留。Coverage: `proxy-slow-upstream.test.js`, `slow-upstream-lifecycle.test.js`, `slow-upstream-replay.test.js`.
+
 - feat(update): **CLI npm 一键更新与重启** — 下载显示真实字节进度并校验安装包，用户确认后安装并后台重启，恢复原工作目录与启动参数；失败时恢复原服务并显示诊断，检测到其他实例时提示先退出。Coverage: `update-job.test.js`, `update-routes.test.js`, `restart-helper.test.js`, `update-instances.test.js`, `update-modal.test.js`.
 
 ## 1.9.24

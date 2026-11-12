@@ -47,6 +47,21 @@ function proxyReq(path, { method = 'POST', body = null, headers = {} } = {}) {
   });
 }
 
+function abortProxyReq(path, { body = null, headers = {} } = {}) {
+  return new Promise((resolve) => {
+    const h = { ...headers };
+    if (body != null) h['content-length'] = Buffer.byteLength(body);
+    const r = request({ hostname: '127.0.0.1', port: proxyPort, path, method: 'POST', headers: h });
+    let clientError = null;
+    r.on('error', (err) => { clientError = err; });
+    r.end(body);
+    resolve(() => {
+      r.destroy();
+      assert.equal(clientError, null, 'unexpected client failure before the intentional abort');
+    });
+  });
+}
+
 const LLM_BODY = JSON.stringify({ model: 'claude-test', messages: [] });
 
 before(async () => {
@@ -106,6 +121,78 @@ describe('proxy.js slow-upstream advisory', () => {
     assert.equal(resolved.length, 1, 'a resolved signal follows once the wait ends');
     assert.equal(resolved[0].cwd, '/work/ws-a');
     assert.equal(resolved[0].requestId, slow[0].requestId, 'resolved clears the same requestId');
+  });
+
+  it('resolves an announced wait when the client disconnects before response headers', async () => {
+    const events = [];
+    proxyMod.__testing.slowUpstreamMs = 40;
+    proxyMod.__testing.emit = (info) => events.push(info);
+    globalThis.fetch = () => new Promise(() => {});
+    const abort = await abortProxyReq('/v1/messages', {
+      body: LLM_BODY,
+      headers: { 'content-type': 'application/json', 'x-ccv-project-dir': '/work/ws-a', 'x-ccv-instance': 'inst-a' },
+    });
+    for (let i = 0; i < 100 && !events.some(e => e.type === 'slow'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const slow = events.find(e => e.type === 'slow');
+    assert.ok(slow, 'the slow advisory is announced before the client leaves');
+    abort();
+    for (let i = 0; i < 100 && !events.some(e => e.type === 'resolved'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const resolved = events.filter(e => e.type === 'resolved');
+    assert.equal(resolved.length, 1, 'disconnect dismisses the announced request exactly once');
+    assert.equal(resolved[0].requestId, slow.requestId);
+    assert.equal(resolved[0].cwd, '/work/ws-a');
+    assert.equal(resolved[0].instanceKey, 'inst-a');
+  });
+
+  it('resolves once when the client leaves a headers-fast, body-stalled stream', async () => {
+    const events = [];
+    proxyMod.__testing.slowUpstreamMs = 40;
+    proxyMod.__testing.emit = (info) => events.push(info);
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'text/event-stream']]),
+      body: new ReadableStream({ start() {} }),
+    });
+    const abort = await abortProxyReq('/v1/messages', {
+      body: LLM_BODY,
+      headers: { 'content-type': 'application/json', 'x-ccv-project-dir': '/work/ws-a', 'x-ccv-instance': 'inst-a' },
+    });
+    for (let i = 0; i < 100 && !events.some(e => e.type === 'slow'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const slow = events.find(e => e.type === 'slow');
+    assert.ok(slow, 'the body stall announces the wait');
+    abort();
+    for (let i = 0; i < 100 && !events.some(e => e.type === 'resolved'); i++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(events.filter(e => e.type === 'resolved').map(e => e.requestId), [slow.requestId]);
+  });
+
+  it('settles a wait when forwarding fails after upstream headers arrive', async () => {
+    const events = [];
+    proxyMod.__testing.slowUpstreamMs = 80;
+    proxyMod.__testing.emit = (info) => events.push(info);
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: new Map([['content-type', 'application/json'], ['x-invalid', 'bad\nvalue']]),
+      body: null,
+      text: async () => '{}',
+    });
+    const response = await proxyReq('/v1/messages', {
+      body: LLM_BODY,
+      headers: { 'content-type': 'application/json', 'x-ccv-project-dir': '/work/ws-a', 'x-ccv-instance': 'inst-a' },
+    });
+    assert.equal(response.status, 502);
+    await new Promise(resolve => setTimeout(resolve, 120));
+    assert.equal(events.filter(e => e.type === 'slow').length, 0, 'a terminal forwarding failure cannot announce a new wait');
+    assert.equal(events.filter(e => e.type === 'resolved').length, 0);
   });
 
   it('does not emit when the request settles before the threshold', async () => {

@@ -3466,6 +3466,10 @@ class ChatView extends React.Component {
 
   _onTerminalWsState = (state) => {
     if (state === 'open') {
+      // open precedes the server's replay messages. Reconcile from its pending
+      // request snapshots instead of retaining requests resolved during a silent
+      // provider disconnect (for example, entering a local-log view).
+      this._clearSlowUpstreamToast();
       this._askFlow.onWsOpen();
       // 断线期间没发出去的取消在重连时补发（服务端计时器需被销毁）。
       this._resendPendingAutoCancels();
@@ -3476,6 +3480,9 @@ class ChatView extends React.Component {
       return;
     }
     if (state !== 'close') return;
+    // A disconnected view cannot receive the request's resolved frame. Clear both
+    // the toast and its tick source; reconnect replays requests that are still waiting.
+    this._clearSlowUpstreamToast();
     if (this.state.pendingPtyPlan?.id) {
       this._resolvedPlanIds.add(this.state.pendingPtyPlan.id);
     }
@@ -4186,6 +4193,7 @@ class ChatView extends React.Component {
     // SDK 模式模型不在 PTY 里，ESC 无效 → 发 sdk-interrupt 让服务端 close 当前 query（保留会话）；
     // CLI/PTY 模式 → ESC 打断 Claude TUI 当前生成。
     if (this.props.sdkMode) {
+      this._clearSlowUpstreamToast();
       this._inputWs.send(JSON.stringify({ type: 'sdk-interrupt', project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
     } else {
       // CLI/PTY 模式：ESC 打断 Claude TUI 当前生成。

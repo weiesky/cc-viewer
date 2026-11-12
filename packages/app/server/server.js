@@ -513,9 +513,27 @@ setProxyStatsListener(notifyProxyStats);
 // terminal WS — decides whether the slow request maps to a live session worth
 // surfacing. The frame carries the request's own cwd/instanceKey and is routed
 // through broadcastWsMessage, so only viewers of that workspace/instance see it.
+const _pendingSlowUpstreams = new Map(); // requestId → the last user-visible slow frame
+
+function _replaySlowUpstreams(ws) {
+  if (!isSdkMode || !ws || ws.readyState !== 1) return;
+  const now = Date.now();
+  for (const frame of _pendingSlowUpstreams.values()) {
+    const project = projectKeyForCwd(frame.cwd);
+    // The initial connection may precede client view hydration. In that case
+    // replay only the bound workspace, never every background workspace.
+    const viewProject = ws._ccvViewProject || _projectName;
+    if (viewProject && project !== viewProject) continue;
+    if (ws._ccvViewInstance && frame.instanceKey !== ws._ccvViewInstance) continue;
+    try {
+      ws.send(JSON.stringify({ ...frame, waitingMs: now - frame.startedAt, ts: now }));
+    } catch (err) { reportSwallowed('server.slow-upstream-replay', err); }
+  }
+}
+
 setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model } = {}) => {
   try {
-    if (!isSdkMode || !_sdkListSessions || !terminalWss) return;
+    if (!isSdkMode || !_sdkListSessions) return;
     // Match the session by the request's real cwd (and instance when present),
     // not the process-wide bound project — concurrent workspaces would otherwise
     // cross-attribute the advisory. No live session → the slow request is not
@@ -531,6 +549,7 @@ setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model }
       ? (sessions.find(s => s.instanceKey === instanceKey) || null)
       : (sessions.find(s => cwd && s.cwd === cwd) || null);
     if (type === 'resolved') {
+      if (requestId) _pendingSlowUpstreams.delete(requestId);
       // The waited-on request settled — tell the UI to dismiss the toast. A
       // request can settle AFTER its session closed (review P2-2): the session
       // lookup then misses and the dismiss would be silently dropped, leaving a
@@ -545,10 +564,13 @@ setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model }
       return;
     }
     if (!sess) return;
-    broadcastWsMessage({
+    const frame = {
       type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
-      instanceKey: sess.instanceKey || null, requestId: requestId || null, waitingMs, model: model || null, ts: Date.now(),
-    });
+      instanceKey: sess.instanceKey || null, requestId: requestId || null, waitingMs, model: model || null,
+      startedAt: Date.now() - Math.max(0, Number(waitingMs) || 0), ts: Date.now(),
+    };
+    if (frame.requestId) _pendingSlowUpstreams.set(frame.requestId, frame);
+    broadcastWsMessage(frame);
   } catch (err) { reportSwallowed('server.slow-upstream-listener', err); }
 });
 
@@ -2371,6 +2393,8 @@ async function setupTerminalWebSocket(httpServer) {
       // ask 类带 startedAt/timeoutMs —— 与 ask-hook replay 同款剩余时间重算。
       if (isSdkMode) replaySdkPendingApprovals();
 
+      _replaySlowUpstreams(ws);
+
       // Replay sdk-init snapshot so a refreshed/reconnected page restores slash-command
       // surface and model info without waiting for the next session.
       if (isSdkMode && _sdkGetInitSnapshot) {
@@ -2615,6 +2639,8 @@ async function setupTerminalWebSocket(httpServer) {
               // The replay helpers already filter by the just-stamped view project+instance,
               // and the frontend dedupes by id, so a full replay never double-opens a modal.)
               replaySdkPendingApprovals();
+              // Restore requests that were still waiting when this view disconnected.
+              _replaySlowUpstreams(ws);
               // Re-announce the just-viewed workspace's turn state so the spinner / Stop
               // button reflects it immediately (otherwise a long-running turn shows idle
               // until the next state change or heartbeat).
