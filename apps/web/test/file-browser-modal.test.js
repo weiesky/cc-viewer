@@ -285,11 +285,14 @@ describe('shared context menu wiring (sidebar tree ≡ modal)', () => {
   it('image cells render lazy thumbnails via /api/file-raw with icon fallback', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('THUMBNAIL_EXTS'),
       'thumbnail extension set missing');
-    for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'ico', 'webp', 'avif']) {
+    for (const ext of ['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'ico', 'webp', 'avif', 'apng', 'jfif']) {
       assert.ok(FILE_BROWSER_MODAL.includes(`'${ext}'`), `thumbnail set must include ${ext}`);
     }
-    assert.ok(!/icns/.test(FILE_BROWSER_MODAL.match(/THUMBNAIL_EXTS = new Set\(\[[^\]]*\]\)/)?.[0] || ''),
-      'icns must NOT be in the thumbnail set (browsers cannot decode it)');
+    const thumbSet = FILE_BROWSER_MODAL.match(/THUMBNAIL_EXTS = new Set\(\[[^\]]*\]\)/)?.[0] || '';
+    for (const nonDecodable of ['icns', 'tif', 'tiff', 'heic', 'heif']) {
+      assert.ok(!thumbSet.includes(`'${nonDecodable}'`),
+        `${nonDecodable} must NOT be in the thumbnail set (browsers cannot decode it)`);
+    }
     assert.ok(FILE_BROWSER_MODAL.includes('loading="lazy"'),
       'thumbnails must lazy-load (large directories)');
     assert.ok(FILE_BROWSER_MODAL.includes('onError={() => setThumbFailed(true)}'),

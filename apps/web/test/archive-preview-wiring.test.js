@@ -45,7 +45,7 @@ describe('archive preview wiring and accessibility', () => {
   });
 
   it('uses only known raster images and read-only entries', () => {
-    assert.ok(source.includes('png|jpe?g|gif|bmp|webp'));
+    assert.ok(source.includes('png|jpe?g|gif|bmp|webp|apng|jfif'));
     assert.ok(!source.includes('image/svg+xml'));
     assert.ok(source.includes('readEntryText'));
   });

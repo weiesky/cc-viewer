@@ -149,6 +149,21 @@ describe('isImageFile', () => {
     assert.equal(isImageFile('animated.webp'), true);
   });
 
+  it('routes browser-decodable added formats to the image viewer', () => {
+    assert.equal(isImageFile('anim.apng'), true);
+    assert.equal(isImageFile('photo.jfif'), true);
+  });
+
+  it('keeps non-decodable formats on the download path', () => {
+    // Classified 'image' for icons but browsers cannot decode them; routing them
+    // to <img> would break views without an onError fallback.
+    assert.equal(isImageFile('photo.tif'), false);
+    assert.equal(isImageFile('photo.tiff'), false);
+    assert.equal(isImageFile('photo.heic'), false);
+    assert.equal(isImageFile('photo.heif'), false);
+    assert.equal(isImageFile('icon.icns'), false);
+  });
+
   it('rejects non-image files', () => {
     assert.equal(isImageFile('readme.md'), false);
     assert.equal(isImageFile('script.js'), false);

@@ -1,6 +1,6 @@
 import { getExt, getFileType } from './fileTypes.js';
 
-const PREVIEW_KINDS = new Set(['archive', 'image', 'audio', 'video', 'font', 'pdf']);
+const PREVIEW_KINDS = new Set(['archive', 'image', 'audio', 'video', 'font', 'pdf', 'subtitle']);
 const DOWNLOAD_ONLY_KINDS = new Set(['video', 'font', 'pdf', 'binary']);
 
 export function getPreviewKind(name, type) {

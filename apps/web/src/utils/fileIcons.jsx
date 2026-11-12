@@ -33,6 +33,7 @@ const CATEGORY_COLORS = {
   code: 'var(--file-icon-code)', markup: 'var(--file-icon-markup)', data: 'var(--file-icon-data)', document: 'var(--file-icon-document)',
   image: 'var(--file-icon-image)', video: 'var(--file-icon-video)', audio: 'var(--file-icon-audio)', archive: 'var(--file-icon-archive)',
   pdf: 'var(--file-icon-pdf)', office: 'var(--file-icon-office)', font: 'var(--file-icon-font)', binary: 'var(--file-icon-binary)',
+  subtitle: 'var(--file-icon-subtitle, var(--file-icon-document))',
   plain: 'var(--file-icon-plain)',
 };
 
@@ -87,6 +88,13 @@ const GLYPH = {
     <>
       <circle cx="9.8" cy="17" r="1.4" />
       <polyline points="11.2 17 11.2 12 15.5 12 15.5 13.5" />
+    </>
+  ),
+  subtitle: (c) => (
+    <>
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="16" x2="13.5" y2="16" />
+      <line x1="8" y1="19" x2="15" y2="19" />
     </>
   ),
   archive: (c) => (

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web): **字幕文件支持在线预览** — SRT/VTT/ASS/SSA 解析时间区间，提供列表/原文双视图，超 1MiB/3000 条截断提示。Coverage: `subtitle-parser.test.js`, `subtitle-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`, `archive-preview.test.js`.
+
+- feat(web+server): **图片预览扩展名补充** — APNG/JFIF 进入预览与缩略图/引用路由；TIFF/HEIC 归类为图片但保持下载回退。Coverage: `file-types.test.js`, `api-files-content.test.js`, `commandValidator.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`, `file-browser-modal.test.js`.
+
 - feat(web+server): **音频文件支持在线预览** — MP3/WAV/OGG/OGA/M4A/AAC/FLAC/Opus 经专用流式路由提供单区间 Range(206/416/304/If-Range)与正确 MIME,前端原生 `<audio>` 播放、可拖动进度,不支持编码或播放失败时提供下载回退。Coverage: `audio-stream.test.js`, `api-audio-stream.test.js`, `audio-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`.
 
 - fix(sdk+web): **慢上游提示正确跟随请求生命周期** — 客户端断连和响应转发异常会按 requestId 结束提示；WS 重连或切回视图时恢复仍在等待的提示，已完成的请求不再残留。Coverage: `proxy-slow-upstream.test.js`, `slow-upstream-lifecycle.test.js`, `slow-upstream-replay.test.js`.

@@ -516,6 +516,12 @@ describe('GET|HEAD /api/file-raw', { concurrency: false }, () => {
     const cases = [
       ['img.bmp', 'image/bmp'],
       ['img.avif', 'image/avif'],
+      ['img.apng', 'image/apng'],
+      ['img.jfif', 'image/jpeg'],
+      ['img.tif', 'image/tiff'],
+      ['img.tiff', 'image/tiff'],
+      ['img.heic', 'image/heic'],
+      ['img.heif', 'image/heif'],
     ];
     for (const [name, mime] of cases) {
       const p = join(PROJECT, name);

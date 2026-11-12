@@ -79,8 +79,25 @@ export function latin1(bytes) {
   return out;
 }
 
-function decodeLegacyText(bytes) {
-  const asGbk = tryDecode('gbk', bytes, true) ?? (truncated ? tryDecode('gbk', bytes, false) : null);
+function decodeLegacyText(bytes, truncated = false) {
+  // When the byte input was cut at an arbitrary offset, a split multi-byte GBK
+  // character makes the strict decode fail; allow a non-fatal retry in that case.
+  const strictGbk = tryDecode('gbk', bytes, true);
+  let asGbk = strictGbk;
+  if (asGbk === null && truncated) {
+    const lossy = tryDecode('gbk', bytes, false);
+    // The lossy retry also "succeeds" on Latin-1/CP1251 bytes (e.g. 0xE9 → a CJK
+    // char), which would mislabel them as GBK. Accept it only when the damage is
+    // confined to the split tail: at most one replacement char, at the very end.
+    if (lossy !== null) {
+      const firstBad = lossy.indexOf('');
+      if (firstBad !== -1 && firstBad < lossy.length - 1) {
+        asGbk = null; // corruption is interior, not a truncation artifact
+      } else {
+        asGbk = lossy;
+      }
+    }
+  }
   const hasCjk = asGbk !== null && [...asGbk].some(char => {
     const code = char.codePointAt(0);
     return code >= 0x4e00 && code <= 0x9fff;
@@ -95,7 +112,7 @@ export function decodeFileName(bytes, { utf8Flag = false } = {}) {
   const asUtf8 = tryDecode('utf-8', b, true);
   if (asUtf8 !== null) return { name: asUtf8, encoding: 'utf-8' };
   if (utf8Flag) return { name: tryDecode('utf-8', b, false) ?? latin1(b), encoding: 'utf-8-lossy' };
-  const legacy = decodeLegacyText(b);
+  const legacy = decodeLegacyText(b, false);
   return { name: legacy.text, encoding: legacy.encoding };
 }
 
@@ -150,18 +167,26 @@ export function decodeTextBytes(input, { maxBytes = 4 * 1024 * 1024, truncated =
   if (b.length >= 2 && b[0] === 0xfe && b[1] === 0xff) {
     return { text: tryDecode('utf-16be', b.subarray(2), false) ?? '', encoding: 'utf-16be' };
   }
-  if (truncated) {
-    let end = b.length;
-    while (end > 0 && (b[end] & 0xc0) === 0x80) end--;
-    if (end > 0 && end < b.length) {
-      const lead = b[end];
-      const expected = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc2 ? 2 : 1;
-      if (b.length - end < expected) b = b.subarray(0, end);
-    }
-  }
   const asUtf8 = tryDecode('utf-8', b, true);
   if (asUtf8 !== null) return { text: asUtf8, encoding: 'utf-8' };
-  return decodeLegacyText(b);
+  if (truncated && b.length > 0) {
+    // A truncation at maxBytes can split a multi-byte UTF-8 character, which makes
+    // the strict decode above fail and the whole buffer fall through to the legacy
+    // path (mojibake for a UTF-8 CJK subtitle). Walk back over trailing continuation
+    // bytes to the candidate lead byte; if that lead expects more continuation bytes
+    // than follow it, the sequence is incomplete — drop it and accept the result only
+    // when the trimmed buffer is strict UTF-8 (so Latin-1/GBK still get their chance).
+    let lead = b.length - 1;
+    while (lead > 0 && (b[lead] & 0xc0) === 0x80) lead--;
+    const leadByte = b[lead];
+    const expected = leadByte >= 0xf0 ? 4 : leadByte >= 0xe0 ? 3 : leadByte >= 0xc2 ? 2 : 1;
+    const available = b.length - lead;
+    if (expected > 1 && available < expected) {
+      const trimmed = tryDecode('utf-8', b.subarray(0, lead), true);
+      if (trimmed !== null) return { text: trimmed, encoding: 'utf-8' };
+    }
+  }
+  return decodeLegacyText(b, truncated);
 }
 
 export function isProbablyText(input) {

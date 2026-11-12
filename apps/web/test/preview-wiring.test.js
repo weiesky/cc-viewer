@@ -19,6 +19,10 @@ describe('download-only preview wiring', () => {
     assert.ok(dispatcher.includes("if (kind === 'archive')"));
     assert.ok(dispatcher.includes("if (kind === 'audio')"));
     assert.ok(dispatcher.includes('<AudioPreview'));
+    assert.ok(dispatcher.includes("kind === 'subtitle'"));
+    assert.ok(dispatcher.includes('<SubtitlePreview'));
+    // Subtitle preview is read-only; an $EDITOR session must keep the editable editor.
+    assert.ok(dispatcher.includes("kind === 'subtitle' && !props.editorSession"));
     assert.ok(dispatcher.includes('isDownloadOnlyPreview(kind)'));
     assert.ok(dispatcher.includes('<UnsupportedFilePreview'));
     assert.ok(!dispatcher.includes('useState'));
@@ -49,10 +53,12 @@ describe('download-only preview wiring', () => {
     assert.ok(browser.includes("getPreviewKind(item.name) === 'html'"));
     assert.ok(explorer.includes("getPreviewKind(childPath) === 'html'"));
     assert.ok(read('src/utils/commandValidator.js').includes("getPreviewKind(path) === 'image'"));
+    assert.ok(read('src/utils/commandValidator.js').includes('NON_DECODABLE_IMAGE_EXTS'),
+      'isImageFile must keep browser-undecodable image exts (tiff/heic/icns) off the <img> route');
   });
 
   it('defines every preview message in all 18 locales', () => {
-    for (const key of ['title', 'download', 'contentBinary', 'utf16ReadOnly', 'kind.audio', 'kind.video', 'kind.font', 'kind.pdf', 'kind.binary', 'kind.unknown', 'audio.hint', 'audio.error']) {
+    for (const key of ['title', 'download', 'contentBinary', 'utf16ReadOnly', 'kind.audio', 'kind.video', 'kind.font', 'kind.pdf', 'kind.binary', 'kind.unknown', 'audio.hint', 'audio.error', 'subtitle.listView', 'subtitle.rawView', 'subtitle.hint', 'subtitle.error', 'subtitle.cueLimit', 'subtitle.byteLimit', 'subtitle.empty', 'subtitle.encoding']) {
       const match = i18n.match(new RegExp(`^  "ui\\.filePreview\\.${key.replace('.', '\\.')}": \\{\\n([\\s\\S]*?)^  \\},`, 'm'));
       assert.ok(match, key);
       for (const locale of LOCALES) assert.ok(match[1].includes(`"${locale}":`), `${key} ${locale}`);

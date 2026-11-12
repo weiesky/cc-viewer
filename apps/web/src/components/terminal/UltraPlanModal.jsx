@@ -266,7 +266,7 @@ export default function UltraPlanModal({
               {files.length > 0 && (
                 <div className={styles.fileList}>
                   {files.map((f, i) => {
-                    const isImage = /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|icns)$/i.test(f.name);
+                    const isImage = /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|apng|jfif)$/i.test(f.name);
                     const src = apiUrl(`/api/file-raw?path=${encodeURIComponent(f.path)}`);
                     return isImage ? (
                       <div key={i} className={styles.imageItem} title={f.name}>

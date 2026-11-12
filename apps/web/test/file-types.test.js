@@ -46,7 +46,7 @@ describe('getFileType', () => {
   });
 
   it('image family (svg is image, not markup)', () => {
-    for (const f of ['a.png', 'a.jpg', 'a.jpeg', 'a.gif', 'a.svg', 'a.bmp', 'a.ico', 'a.icns', 'a.webp', 'a.avif']) {
+    for (const f of ['a.png', 'a.jpg', 'a.jpeg', 'a.gif', 'a.svg', 'a.bmp', 'a.ico', 'a.icns', 'a.webp', 'a.avif', 'a.apng', 'a.jfif', 'a.tif', 'a.tiff', 'a.heic', 'a.heif']) {
       assert.equal(getFileType(f, 'file'), 'image', f);
     }
   });
@@ -56,6 +56,9 @@ describe('getFileType', () => {
     assert.equal(getFileType('a.mov', 'file'), 'video');
     assert.equal(getFileType('a.mp3', 'file'), 'audio');
     assert.equal(getFileType('a.flac', 'file'), 'audio');
+    for (const f of ['a.srt', 'a.vtt', 'a.ass', 'a.ssa', 'a.SRT', 'a.VTT']) {
+      assert.equal(getFileType(f, 'file'), 'subtitle', f);
+    }
     for (const f of ['a.oga', 'a.aac', 'a.opus', 'a.OGG', 'a.M4A', 'a.wav']) {
       assert.equal(getFileType(f, 'file'), 'audio', f);
     }

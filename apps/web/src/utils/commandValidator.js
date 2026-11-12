@@ -3,9 +3,16 @@
  */
 
 import { getPreviewKind } from './previewKind.js';
+import { getExt } from './fileTypes.js';
+
+// Extensions browsers cannot natively decode stay on the download path even
+// though they classify as 'image' for icons (tiff/heic need OS codec support;
+// icns has never been web-decodable). Routing them to <img> would render a
+// broken image in views that lack an onError fallback (GitDiffView, MobileGitDiff).
+const NON_DECODABLE_IMAGE_EXTS = new Set(['tif', 'tiff', 'heic', 'heif', 'icns']);
 
 export function isImageFile(path) {
-  return getPreviewKind(path) === 'image';
+  return getPreviewKind(path) === 'image' && !NON_DECODABLE_IMAGE_EXTS.has(getExt(path));
 }
 
 /**

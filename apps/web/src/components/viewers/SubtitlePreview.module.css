@@ -1,0 +1,67 @@
+.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-base-alt);
+  color: var(--text-secondary);
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-container);
+}
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+}
+.iconButton:hover, .download:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.filePath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.download { display: inline-flex; padding: 7px; color: var(--text-secondary); border-radius: 6px; }
+.toggle { display: inline-flex; flex-shrink: 0; border: 1px solid var(--border-primary); border-radius: 6px; overflow: hidden; }
+.toggleBtn {
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.toggleBtn.toggleActive { background: var(--bg-elevated); color: var(--text-primary); }
+.body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding: 16px 24px; gap: 12px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+.notice { color: var(--text-warning, var(--text-muted)); }
+.status { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; flex: 1; min-height: 0; padding: 24px; }
+.cueList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cue { display: flex; gap: 12px; align-items: baseline; padding: 6px 8px; border-radius: 6px; }
+.cue:nth-child(odd) { background: var(--bg-container); }
+.cueTime { flex-shrink: 0; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.cueText { flex: 1; min-width: 0; font-size: 13px; line-height: 1.5; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
+.raw { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; overflow: auto; }
+.hint { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-muted); text-align: center; flex-shrink: 0; }
+.errorText { margin: 0; max-width: 480px; line-height: 1.6; color: var(--text-muted); text-align: center; }
+.fileIcon { font-size: 36px; color: var(--text-muted); }
+.downloadButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border-primary); border-radius: 6px; background: var(--bg-elevated); color: var(--text-primary); cursor: pointer; text-decoration: none; font-size: 13px; }
+.iconButton:focus-visible, .download:focus-visible, .downloadButton:focus-visible, .toggleBtn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+@media (max-width: 640px) {
+  .header { padding-inline: 8px; }
+  .body { padding: 12px 16px; }
+  .cue { flex-direction: column; gap: 2px; }
+}

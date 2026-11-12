@@ -48,6 +48,8 @@ const FILE_RAW_MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
   '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif',
+  '.apng': 'image/apng', '.jfif': 'image/jpeg',
+  '.tif': 'image/tiff', '.tiff': 'image/tiff', '.heic': 'image/heic', '.heif': 'image/heif',
   '.html': 'text/html', '.htm': 'text/html',
   '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.json': 'application/json', '.map': 'application/json', '.txt': 'text/plain',

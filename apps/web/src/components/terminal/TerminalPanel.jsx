@@ -1767,7 +1767,7 @@ class TerminalPanel extends React.Component {
           <div className={styles.pendingFileStrip}>
             {pendingImages.map((img, i) => {
               const fileName = img.path.split('/').pop() || img.path;
-              const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|icns)$/i.test(fileName);
+              const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|apng|jfif)$/i.test(fileName);
               const src = apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(img.path)}`, { project: this.props.viewProject, instance: this.props.viewInstance }));
               return isImage ? (
                 <div key={img.path} className={styles.pendingImageItem}>
