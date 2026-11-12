@@ -1,0 +1,58 @@
+history.md
+  s_060d418a795127::t_e49b4741264ed8 6
+  s_060d418a795127::t_335320dddd4d62 5
+apps/web/test/slow-upstream-lifecycle.test.js
+  s_060d418a795127::t_fa1d0a3422f279 175
+  s_060d418a795127::t_89295fa4f6a71b 60
+  s_060d418a795127::t_f2397a7038c536 1-59,61-148,150-152,154,157,159-161,163,166,177-178
+  s_060d418a795127::t_23484e9192b027 149,153,155-156,158,162,164-165,167,173-174,176
+  s_060d418a795127::t_d85fe46012e10b 168-172
+packages/app/server/proxy.js
+  s_060d418a795127::t_a0aacfd38268cc 338-340
+  s_060d418a795127::t_594c944be64183 427
+  s_060d418a795127::t_821d30588e0d59 382-391,401
+  s_060d418a795127::t_a6e0a6d1406933 336
+packages/app/test/proxy-slow-upstream.test.js
+  s_060d418a795127::t_0caa2972b59e2a 127-176
+  s_060d418a795127::t_c9cfe69f4be25b 51,55-56,58-61
+  s_060d418a795127::t_64e4a9419b678b 50,52-54,57,62-64
+  s_060d418a795127::t_0bddeace416e99 177-197
+  s_060d418a795127::t_c7f39d54f92a40 126
+packages/app/server/server.js
+  s_060d418a795127::t_3775a637cc2b85 516-522,527-533
+  s_060d418a795127::t_c882cb032e1014 523-526
+  s_060d418a795127::t_f725a22bed0429 552
+  s_060d418a795127::t_7b06796f83c6b2 2396-2397
+  s_060d418a795127::t_4add131c2cb622 2642-2643
+  s_060d418a795127::t_ab0319be1747ec 536
+  s_060d418a795127::t_b1f1a7a7ff390d 567,569-573
+apps/web/src/components/chat/ChatView.jsx
+  s_060d418a795127::t_dc76bffab67f12 3484
+  s_060d418a795127::t_baefc72b05f2ef 3469-3472
+  s_060d418a795127::t_c80e6c220c16dd 3483,3485
+  s_060d418a795127::t_c798c11f9388de 4196
+packages/app/test/slow-upstream-replay.test.js
+  s_060d418a795127::t_0a737b2197cda4 1-62,65-85,88,90-92,95-96,98,101-103
+  s_060d418a795127::t_048db3f6141eaa 63-64
+  s_060d418a795127::t_299199d379cd26 89,97,100
+  s_060d418a795127::t_0979e7ad8cd7f3 86-87,93-94,99
+.changeset/slow-upstream-disconnect.md
+  s_060d418a795127::t_5983429bf0854a 5
+  s_060d418a795127::t_c513a8e26a328b 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "919fded8456a518eb667a105b0550fd6d42cb978",
+  "prompts": {},
+  "sessions": {
+    "s_060d418a795127": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ccf0e326-3624-4893-877d-3bc6d9b3c97f",
+        "model": "k3.1-pro"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
