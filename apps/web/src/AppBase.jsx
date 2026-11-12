@@ -2767,7 +2767,7 @@ class AppBase extends React.Component {
     if (!this._isRenderedChannel(channel)) return;
     try {
       const data = JSON.parse(event.data);
-      if (data?.status && (!data.updatedAt || !this.state.updateJob?.updatedAt || data.updatedAt >= this.state.updateJob.updatedAt)) this.setState({ updateJob: data });
+      this._applyUpdateJob?.(data);
     } catch (e) { reportSwallowed('sse.update_progress', e); }
   }
   _onUpdateMajorAvailable(channel, event) {

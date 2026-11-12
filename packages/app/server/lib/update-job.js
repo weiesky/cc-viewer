@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createWriteStream, readFileSync } from 'node:fs';
-import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { readFileSync, writeFileSync } from 'node:fs';import { mkdir, open, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn, execFile, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
+import { finished } from 'node:stream/promises';
 import { PACKAGE_ROOT } from '../_paths.js';
 import { getClaudeConfigDir, buildNpmRootCommand, parseNpmRootOutput } from '../../findcc.js';
 import { checkAndUpdate, detectHomebrewInstall, detectPnpmGlobalInstall, STABLE_VERSION_RE, isNewer, getCurrentVersion } from './updater.js';
+import { hasOtherNormalInstance } from './update-instances.js';
 import { reportSwallowed } from './error-report.js';
 import { withFileLockAsync } from './async-file-lock.js';
 import { isPidAlive } from './pid-alive.js';
@@ -14,6 +16,11 @@ import { isPidAlive } from './pid-alive.js';
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 export const UPDATE_STATE_FILE = join(getClaudeConfigDir(), 'cc-viewer', 'update-state.json');
+export const RESTART_CONFIG_FILE = join(getClaudeConfigDir(), 'cc-viewer', 'restart-config.json');
+export const RESTART_READY_FILE = join(getClaudeConfigDir(), 'cc-viewer', 'restart-ready.json');
+const CURRENT_CLI_PATH = fileURLToPath(new URL('../../cli.js', import.meta.url));
+function updateError(message, code) { return Object.assign(new Error(message), { code }); }
+export function readRestartConfig(file = RESTART_CONFIG_FILE) { return JSON.parse(readFileSync(file, 'utf8')); }
 const npmRoot = () => new Promise((resolveRoot, reject) => {
   const { cmd, args, windowsVerbatimArguments } = buildNpmRootCommand();
   execFile(cmd, args, { encoding: 'utf8', timeout: 10000, windowsHide: true, windowsVerbatimArguments }, (err, stdout) => {
@@ -25,16 +32,18 @@ const npmRoot = () => new Promise((resolveRoot, reject) => {
 });
 
 function isStableRelease(release, version) {
-  const url = typeof release?.dist?.tarball === 'string' ? new URL(release.dist.tarball) : null;
-  return release?.version === version && STABLE_VERSION_RE.test(version)
-    && url?.protocol === 'https:' && url.hostname === 'registry.npmjs.org'
-    && Boolean(release.dist.integrity || release.dist.shasum);
+  try {
+    const url = typeof release?.dist?.tarball === 'string' ? new URL(release.dist.tarball) : null;
+    return release?.version === version && STABLE_VERSION_RE.test(version)
+      && url?.protocol === 'https:' && url.hostname === 'registry.npmjs.org'
+      && Boolean(release.dist.integrity || release.dist.shasum);
+  } catch { return false; }
 }
 
 export async function resolveNpmInstallRoot({ rootImpl = npmRoot, packageRoot = PACKAGE_ROOT, detectImpl = () => detectHomebrewInstall() || detectPnpmGlobalInstall() } = {}) {
   if (process.versions.electron) throw Object.assign(new Error('Electron uses its installer'), { code: 'unsupported_channel' });
   if (detectImpl()) throw Object.assign(new Error('Use the package manager that installed cc-viewer'), { code: 'unsupported_channel' });
-  const [actualRoot, actualPackage] = await Promise.all([realpath(await rootImpl()), realpath(packageRoot)]);
+  const [actualRoot, actualPackage] = await Promise.all([Promise.resolve(rootImpl()).then(root => realpath(root)), realpath(packageRoot)]);
   if (actualPackage !== resolve(actualRoot, 'cc-viewer')) {
     throw Object.assign(new Error('This is not a direct npm global installation'), { code: 'unsupported_layout' });
   }
@@ -63,36 +72,47 @@ export function verifyDigest(buffer, dist) {
   return false;
 }
 
-export async function downloadRelease({ release, directory, fetchImpl = fetch, onProgress = () => {}, timeoutMs = DOWNLOAD_TIMEOUT_MS }) {
+export async function downloadRelease({ release, directory, fetchImpl = fetch, onProgress = () => {}, timeoutMs = DOWNLOAD_TIMEOUT_MS, uuid = randomUUID, openImpl = open, finishedImpl = finished }) {
   if (!isStableRelease(release, release?.version)) throw Object.assign(new Error('Invalid package download metadata'), { code: 'invalid_release' });
   const url = release.dist.tarball;
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const file = join(directory, `cc-viewer-${randomUUID()}.tgz`);
+  const file = join(directory, `cc-viewer-${uuid()}.tgz`);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let handle;
+  let output;
   let outputError;
   try {
+    handle = await openImpl(file, 'wx', 0o600);
+    output = handle.createWriteStream();
+    output.on('error', (err) => { outputError = err; });
+    const streamDone = finishedImpl(output).catch((err) => { outputError ??= err; });
     const response = await fetchImpl(url, { signal: controller.signal, redirect: 'error' });
     if (!response.ok || !response.body) throw new Error(`Download failed: HTTP ${response.status}`);
     const total = Number(response.headers.get('content-length')) || null;
     let downloaded = 0;
-    const output = createWriteStream(file, { mode: 0o600 });
-    output.on('error', (err) => { outputError = err; });
     try {
       for await (const chunk of response.body) {
         if (outputError) throw outputError;
         downloaded += chunk.length;
-        if (!output.write(chunk)) await once(output, 'drain');
+        if (!output.write(chunk)) await Promise.race([once(output, 'drain'), once(output, 'close').then(() => { throw outputError || new Error('Package output closed'); })]);
         onProgress({ downloaded, total });
       }
       output.end();
-      await once(output, 'finish');
+      await streamDone;
     } catch (err) {
       output.destroy();
       throw err;
     }
     if (!verifyDigest(await readFile(file), release.dist)) throw Object.assign(new Error('Package integrity check failed'), { code: 'integrity_mismatch' });
     return file;
+  } catch (err) {
+    if (output) {
+      output.destroy();
+      await finishedImpl(output).catch(() => {});
+    } else await handle?.close().catch(() => {});
+    await rm(file, { force: true }).catch((rmErr) => reportSwallowed('update-job.download-cleanup', rmErr));
+    throw err;
   } finally { clearTimeout(timeout); }
 }
 
@@ -124,18 +144,23 @@ export function runInstallProcess(command, { spawnImpl = spawn, timeoutMs = INST
   });
 }
 
-export async function installStagedUpdate(config, { installImpl = runInstallProcess, log = console.error, stateFile = UPDATE_STATE_FILE, ownerPid } = {}) {
+export async function installStagedUpdate(config, { installImpl = runInstallProcess, log = console.error, stateFile = UPDATE_STATE_FILE, ownerPid, resolveRootImpl = resolveNpmInstallRoot, cliPath = CURRENT_CLI_PATH, packageRoot = PACKAGE_ROOT } = {}) {
   const file = config?.tarballPath;
   if (!file || typeof config.root !== 'string' || !STABLE_VERSION_RE.test(config.version || '')) throw new Error('Invalid staged update');
   const root = await realpath(config.root);
   const filePath = await realpath(file);
   if (dirname(filePath) !== await realpath(dirname(stateFile))) throw new Error('Staged package is outside the update directory');
-  if (ownerPid !== undefined && config.pid !== ownerPid && isPidAlive(config.pid)) throw new Error('Staged update belongs to a different live process');
-  if (!isNewer(config.version, getCurrentVersion())) throw new Error('Staged update is not newer than the installed version');
+  if (ownerPid !== undefined && config.pid !== ownerPid && isPidAlive(config.pid)) throw updateError('Staged update belongs to a different live process', 'another_instance');
+  if (!isNewer(config.version, getCurrentVersion())) throw updateError('Staged update is not newer than the installed version', 'not_newer');
   const command = buildNpmInstallCommand(filePath, { root });
   let logTail = '';
   await withFileLockAsync(join(dirname(stateFile), 'update-install.lock'), async () => {
     try {
+      const activeRoot = await resolveRootImpl({ packageRoot });
+      if (activeRoot !== root) throw updateError('The active npm global directory has changed; stage the update again', 'unsupported_layout');
+      if (dirname(await realpath(cliPath)) !== resolve(root, 'cc-viewer')) throw updateError('The running CLI does not belong to the staged npm global directory', 'unsupported_layout');
+      if (ownerPid !== undefined && config.pid !== ownerPid && isPidAlive(config.pid)) throw updateError('Staged update belongs to a different live process', 'another_instance');
+      if (!isNewer(config.version, getCurrentVersion())) throw updateError('Staged update is not newer than the installed version', 'not_newer');
       if (!verifyDigest(await readFile(filePath), config.dist)) throw new Error('Staged package integrity check failed');
       await installImpl(command, { onLog: (text) => { logTail = (logTail + text).slice(-12000); } });
       const installed = JSON.parse(await readFile(join(root, 'cc-viewer', 'package.json'), 'utf8'));
@@ -158,8 +183,16 @@ export class UpdateJob {
       try {
         const pending = JSON.parse(readFileSync(UPDATE_STATE_FILE, 'utf8'));
         if (pending.status === 'failed' && pending.error) this.state = { ...this.state, status: 'error', error: pending.error, version: pending.version || null };
-        else if (pending.status !== 'completed' && pending.status !== 'installing' && STABLE_VERSION_RE.test(pending.version || '') && pending.tarballPath && pending.root && isNewer(pending.version, getCurrentVersion())) this.state = { ...this.state, status: 'restart_required', version: pending.version };
-      } catch { /* No staged update exists. */ }
+        else if (!pending.status && STABLE_VERSION_RE.test(pending.version || '') && pending.tarballPath && pending.root && isNewer(pending.version, getCurrentVersion())) {
+          this.state = { ...this.state, status: 'restart_required', version: pending.version };
+          if (pending.pid !== process.pid) {
+            try { writeFileSync(UPDATE_STATE_FILE, JSON.stringify({ ...pending, pid: process.pid }), { mode: 0o600 }); }
+            catch (err) { reportSwallowed('update-job.restore', err); }
+          }
+        }
+      } catch (err) {
+        if (err?.code !== 'ENOENT') reportSwallowed('update-job.restore', err);
+      }
     }
   }
   getState() { const { release, log, ...state } = this.state; return state; }
@@ -169,11 +202,11 @@ export class UpdateJob {
     if (['checking', 'downloading', 'installing', 'restarting', 'restart_required'].includes(this.state.status)) return this.getState();
     this.setState({ status: 'checking', error: null, version: null, release: null });
     try {
-      const result = await (this.options.checkImpl || checkAndUpdate)({ force: true, interactive: true });
+      const result = await (this.options.checkImpl || checkAndUpdate)({ force: true, interactive: true, allowDisabled: true });
       const release = result.release || null;
       if (result.status === 'error') throw new Error(result.error);
       if (result.status === 'disabled') throw Object.assign(new Error('Update checks are disabled by Claude settings'), { code: 'disabled' });
-      this.setState({ status: result.status, currentVersion: result.currentVersion, version: result.status === 'latest' ? null : result.remoteVersion, release, error: null, checkedAt: Date.now() });
+      this.setState({ status: result.status, currentVersion: result.currentVersion, version: result.status === 'latest' ? null : result.remoteVersion, release, error: null, errorCode: null, checkedAt: Date.now() });
     } catch (err) { this.setState({ status: 'error', error: err.message, errorCode: err.code || 'check_failed', version: null, release: null }); }
     return this.getState();
   }
@@ -191,29 +224,33 @@ export class UpdateJob {
       if (state.status !== 'available') return state;
     }
     let { version, release } = this.state;
-    if (!isStableRelease(release, version)) {
-      const state = await this.check();
-      if (state.status !== 'available') return state;
-      ({ version, release } = this.state);
-      if (!isStableRelease(release, version)) return this.getState();
-    }
-    this.setState({ status: 'downloading', error: null, downloaded: 0, total: null });
-    const directory = dirname(UPDATE_STATE_FILE);
-    let file;
-    try {
-      const root = await (this.options.resolveRootImpl || resolveNpmInstallRoot)();
-      const actualRoot = await realpath(root);
-      await withFileLockAsync(join(dirname(UPDATE_STATE_FILE), 'update-install.lock'), async () => {
-        file = await (this.options.downloadImpl || downloadRelease)({ release, directory, fetchImpl: this.options.fetchImpl, onProgress: (p) => {
-        const now = Date.now();
-        if (p.downloaded === p.total || now - this.lastBroadcastAt >= 100) {
-          this.lastBroadcastAt = now;
-          this.setState({ status: 'downloading', ...p });
+      if (!isStableRelease(release, version)) {
+        const state = await this.check();
+        if (state.status !== 'available') return state;
+        ({ version, release } = this.state);
+        if (!isStableRelease(release, version)) {
+          this.setState({ status: 'error', error: 'Invalid package download metadata', errorCode: 'invalid_release' });
+          return this.getState();
         }
-      } });
-      await writeFile(UPDATE_STATE_FILE, JSON.stringify({ version, tarballPath: file, root: actualRoot, pid: process.pid, dist: release.dist }), { mode: 0o600 });
-      this.setState({ status: 'restart_required', error: null, errorCode: null });
-    }, { ensureDir: directory, deadline: DOWNLOAD_TIMEOUT_MS + 30000 });
+      }
+      this.setState({ status: 'downloading', error: null, downloaded: 0, total: null });
+      const directory = dirname(UPDATE_STATE_FILE);
+      let file;
+      try {
+        if (await (this.options.hasOtherInstanceImpl || hasOtherNormalInstance)({ currentPort: this.options.currentPort })) throw updateError('Exit other cc-viewer instances before updating', 'another_instance');
+        const root = await (this.options.resolveRootImpl || resolveNpmInstallRoot)();
+        const actualRoot = await realpath(root);
+        await withFileLockAsync(join(dirname(UPDATE_STATE_FILE), 'update-install.lock'), async () => {
+          file = await (this.options.downloadImpl || downloadRelease)({ release, directory, fetchImpl: this.options.fetchImpl, onProgress: (p) => {
+            const now = Date.now();
+            if (p.downloaded === p.total || now - this.lastBroadcastAt >= 100) {
+              this.lastBroadcastAt = now;
+              this.setState({ status: 'downloading', ...p });
+            }
+          } });
+          await writeFile(UPDATE_STATE_FILE, JSON.stringify({ version, tarballPath: file, root: actualRoot, pid: process.pid, dist: release.dist }), { mode: 0o600 });
+          this.setState({ status: 'restart_required', error: null, errorCode: null });
+        }, { ensureDir: directory, deadline: DOWNLOAD_TIMEOUT_MS + 30000 });
     } catch (err) {
       await rm(file, { force: true }).catch((rmErr) => reportSwallowed('update-job.cleanup', rmErr));
       this.setState({ status: 'error', error: err.message, errorCode: err.code || 'update_failed' });

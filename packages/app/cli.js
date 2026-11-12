@@ -614,8 +614,8 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   serverMod.setRestartHandler(async (version) => {
     const { launchRestart } = await import('./server/lib/restart.js');
-    launchRestart({ ...ccvLaunch, version });
-    cleanup();
+    await launchRestart({ ...ccvLaunch, version });
+    setImmediate(cleanup);
   });
 
   // 4. 自动打开浏览器
@@ -1039,12 +1039,6 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
   await printMigrationBanner();
 
-  serverMod.setRestartHandler(async (version) => {
-    const { launchRestart } = await import('./server/lib/restart.js');
-    launchRestart({ ...ccvLaunch, version });
-    cleanup();
-  });
-
   // 注册退出处理（hardened，与 PTY 模式同款三层防御）
   const cleanup = createHardenedCleanup({
     doCleanup: () => {
@@ -1061,6 +1055,12 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
   installWinKeypressFallback({ onInterrupt: cleanup });
+
+  serverMod.setRestartHandler(async (version) => {
+    const { launchRestart } = await import('./server/lib/restart.js');
+    await launchRestart({ ...ccvLaunch, version });
+    setImmediate(cleanup);
+  });
 }
 
 // === 主逻辑 ===

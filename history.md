@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- feat(update): **CLI npm 一键更新与重启** — 下载显示真实字节进度，校验安装后由用户确认完整重启，恢复原工作目录与启动参数。Coverage: `update-job.test.js`, `update-routes.test.js`, `restart-helper.test.js`, `update-modal.test.js`.
+- feat(update): **CLI npm 一键更新与重启** — 下载显示真实字节进度并校验安装包，用户确认后安装并后台重启，恢复原工作目录与启动参数；失败时恢复原服务并显示诊断，检测到其他实例时提示先退出。Coverage: `update-job.test.js`, `update-routes.test.js`, `restart-helper.test.js`, `update-instances.test.js`, `update-modal.test.js`.
 
 ## 1.9.24
 

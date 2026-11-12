@@ -67,5 +67,8 @@ describe('update routes', () => {
     const res = response();
     await route('/api/update/start').handler({ headers: {} }, res, {}, true, { updateJob: job(), isRuntimeStopping: true });
     assert.equal(res.status, 409);
+    const restarting = response();
+    await route('/api/update/restart').handler({ headers: {} }, restarting, {}, true, { updateJob: job('restart_required'), canRestartProcess: true, isRuntimeStopping: true, restartProcess: async () => { throw new Error('must not restart'); } });
+    assert.equal(restarting.status, 409);
   });
 });

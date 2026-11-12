@@ -1517,6 +1517,7 @@
   "server/lib/terminal-env.js",
   "server/lib/turn-end-bridge.js",
   "server/lib/ultra-agents-api.js",
+  "server/lib/update-instances.js",
   "server/lib/update-job.js",
   "server/lib/updater.js",
   "server/lib/user-profile.js",

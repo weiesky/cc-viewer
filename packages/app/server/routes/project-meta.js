@@ -43,10 +43,11 @@ function _resolveStatsName(projectParam, instanceParam, res) {
 // deps 仅供单测注入；失败安全：detect 抛异常时回落到 npm（不会误导 brew 用户走 npm）。
 export function getInstallMethod({
   electron = process.versions && process.versions.electron,
+  electronTab = process.env.CCV_ELECTRON_TAB === '1',
   detect = detectHomebrewInstall,
   detectPnpm = detectPnpmGlobalInstall,
 } = {}) {
-  if (electron) return 'electron';
+  if (electron || electronTab) return 'electron';
   try { if (detect()) return 'brew'; } catch { }
   try { if (detectPnpm()) return 'pnpm'; } catch { }
   return 'npm';
@@ -70,7 +71,7 @@ function versionInfo(req, res, parsedUrl, isLocal, deps) {
   try {
     const pkg = JSON.parse(readFileSync(PACKAGE_JSON, 'utf-8'));
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ version: pkg.version, installMethod: getInstallMethod(), processId: PROCESS_ID, canRestart: deps?.canRestartProcess === true }));
+    res.end(JSON.stringify({ version: pkg.version, installMethod: getInstallMethod(), processId: PROCESS_ID, canRestart: deps?.canRestartProcess === true, instanceKind: process.env.CCV_IM_PLATFORM ? 'im' : (process.env.CCV_WORKSPACE_MODE ? 'workspace' : 'normal'), instancePort: deps?.actualPort || null }));
   } catch {
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Failed to read version' }));

@@ -28,6 +28,7 @@ import { classifyRequest } from '@ccv/core/requestType';
 import { apiUrl } from './utils/apiUrl';
 import { BLUR_MASK_STYLE } from './utils/modalMask';
 import UpdateModal from './components/update/UpdateModal';
+import { restartPollDecision } from './utils/updateProgress';
 import { isProxyMode } from './utils/isProxyMode';
 
 // 代理重试面板（配置+统计融合）：懒加载
@@ -104,7 +105,7 @@ class App extends AppBase {
 
   // The server owns the release metadata and update job; the client only triggers actions.
   openUpdateModal = async () => {
-    this.setState({ updateModalVisible: true });
+    this.setState({ updateModalVisible: true, installMethod: null, restartError: null });
     try {
       const [infoRes, jobRes] = await Promise.all([fetch(apiUrl('/api/version-info')), fetch(apiUrl('/api/update/status'))]);
       const info = await infoRes.json();
@@ -116,7 +117,9 @@ class App extends AppBase {
   _applyUpdateJob = (data) => {
     if (!data?.status) return;
     if (data.updatedAt && this.state.updateJob?.updatedAt && data.updatedAt < this.state.updateJob.updatedAt) return;
-    this.setState({ updateJob: data });
+    const patch = { updateJob: data };
+    if (data.status === 'latest' || data.status === 'available') patch.updateInfo = data.status === 'latest' ? null : { type: 'major', version: data.version };
+    this.setState(patch);
   };
 
   checkUpdate = async () => {
@@ -124,7 +127,7 @@ class App extends AppBase {
     try {
       const res = await fetch(apiUrl('/api/update/check'), { method: 'POST' });
       const data = await res.json();
-      this.setState({ updateJob: res.ok ? data : { status: 'error', error: data.error || `HTTP ${res.status}` } });
+      this._applyUpdateJob(res.ok ? data : { status: 'error', error: data.error || `HTTP ${res.status}`, errorCode: data.errorCode || data.code });
     } catch (err) { this.setState({ updateJob: { status: 'error', error: err.message } }); }
   };
 
@@ -133,7 +136,7 @@ class App extends AppBase {
     try {
       const res = await fetch(apiUrl('/api/update/start'), { method: 'POST' });
       const data = await res.json();
-      this.setState({ updateJob: res.ok ? data : { status: 'error', error: data.error || `HTTP ${res.status}` } });
+      this._applyUpdateJob(res.ok ? data : { status: 'error', error: data.error || `HTTP ${res.status}`, errorCode: data.errorCode || data.code });
     } catch (err) { this.setState({ updateJob: { status: 'error', error: err.message } }); }
   };
 
@@ -141,17 +144,27 @@ class App extends AppBase {
     this.setState({ restarting: true, restartError: null });
     try {
       const res = await fetch(apiUrl('/api/update/restart'), { method: 'POST' });
-      if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
-      const deadline = Date.now() + 120000;
+      if (!res.ok) {
+        const data = await res.json();
+        this.setState({ restarting: false, restartError: data.error || t('ui.update.restartFailed') });
+        return;
+      }
+      const deadline = Date.now() + 16 * 60 * 1000;
       while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 500));
         try {
-          const info = await fetch(apiUrl('/api/version-info'), { cache: 'no-store' }).then(r => r.ok ? r.json() : null);
-          if (this.state.updateProcessId && info?.version === this.state.updateJob.version && info.processId !== this.state.updateProcessId) { window.location.reload(); return; }
+          const info = await fetch(apiUrl('/api/version-info'), { cache: 'no-store', signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null);
+          const decision = restartPollDecision({ info, previousProcessId: this.state.updateProcessId, targetVersion: this.state.updateJob.version });
+          if (decision === 'reload') { window.location.reload(); return; }
+          if (decision === 'restored') {
+            try {
+              const stateRes = await fetch(apiUrl('/api/update/status'), { signal: AbortSignal.timeout(3000) });
+              if (stateRes.ok) this._applyUpdateJob(await stateRes.json());
+            } catch { /* The fallback process may still be starting. */ }
+            this.setState({ restarting: false, restartError: t('ui.update.restartFailed') });
+            return;
+          }
         } catch { /* Expected while the old process is shutting down. */ }
-      }
-      if (this.state.updateProcessId && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost') {
-        throw new Error(t('ui.update.remoteRestart'));
       }
       throw new Error(t('ui.update.restartTimeout'));
     } catch (err) { this.setState({ restarting: false, restartError: err.message }); }

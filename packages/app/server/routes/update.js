@@ -41,7 +41,8 @@ async function start(req, res, parsedUrl, isLocal, deps) {
 
 async function restart(req, res, parsedUrl, isLocal, deps) {
   if (!allowed(req, res, parsedUrl, isLocal)) return;
-  if (!['restart_required', 'restarting'].includes(deps.updateJob.getState().status)) { json(res, 409, { error: 'No verified update is ready' }); return; }
+  if (deps.isRuntimeStopping) { json(res, 409, { error: 'Server is stopping', code: 'stopping' }); return; }
+  if (!['restart_required', 'restarting'].includes(deps.updateJob.getState().status)) { json(res, 409, { error: 'No verified update is ready', code: 'not_ready' }); return; }
   if (!deps.canRestartProcess) { json(res, 409, { error: 'Restart is unavailable for this launch mode' }); return; }
   try {
     await deps.updateJob.restart(deps.restartProcess);

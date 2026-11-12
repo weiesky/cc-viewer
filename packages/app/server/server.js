@@ -736,7 +736,7 @@ function _ensureImWatch(id) {
   catch (e) { console.warn(`[im-log-watcher] ensure(${id}) failed:`, e?.message || e); }
 }
 
-const updateJob = new UpdateJob();
+const updateJob = new UpdateJob({ get currentPort() { return actualPort; } });
 updateJob.subscribe((state) => {
   sendEventToClients(clients, 'update_progress', state);
 });

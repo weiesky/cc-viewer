@@ -98,7 +98,7 @@ export function isAnyCcvBusy({ currentPid, busy, portRange, lsofImpl } = {}) {
 export async function checkAndUpdate(options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const currentVersion = getCurrentVersion();
-  if (!isAutoUpdateEnabled()) return { status: 'disabled', currentVersion, remoteVersion: null };
+  if (!isAutoUpdateEnabled() && !options.allowDisabled) return { status: 'disabled', currentVersion, remoteVersion: null };
   if (!options.force && !shouldCheck()) return { status: 'skipped', currentVersion, remoteVersion: null };
   if ((process.env.NODE_TEST_CONTEXT || process.env.NODE_ENV === 'test') && !options.fetchImpl) {
     return { status: 'skipped_test_context', currentVersion, remoteVersion: null };
