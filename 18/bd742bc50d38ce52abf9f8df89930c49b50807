@@ -1,0 +1,106 @@
+packages/app/test/api-files-content.test.js
+  s_4b4699b2ec0348::t_e06cb0963424de 519-524
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_4b4699b2ec0348::t_095dea80d96ea4 421
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_4b4699b2ec0348::t_21aa9e93f9325f 1770
+apps/web/src/i18n.js
+  s_4b4699b2ec0348::t_6e68d775e3b9ca 6063
+  s_4b4699b2ec0348::t_8bc55c4c719e8e 6050-6062,6064-6068,6070-6073
+  s_4b4699b2ec0348::t_8b6dd0a7e5cf1d 6069
+apps/web/test/preview-wiring.test.js
+  s_4b4699b2ec0348::t_0e079f7a745991 61
+  s_4b4699b2ec0348::t_e4918c631682c0 22-23
+  s_4b4699b2ec0348::t_094fbf7c6b409b 56-57
+  s_4b4699b2ec0348::t_33af00dec3017d 24-25
+packages/app/server/routes/files-content.js
+  s_4b4699b2ec0348::t_b8f95ac36f5d14 51-52
+apps/web/src/components/files/FileBrowserModal.jsx
+  s_4b4699b2ec0348::t_c093724bd04046 273
+apps/web/src/utils/previewKind.js
+  s_4b4699b2ec0348::t_ae8dfee0fdce97 3
+apps/web/test/archive-preview.test.js
+  s_4b4699b2ec0348::t_43c1a656b86571 268-280
+  s_4b4699b2ec0348::t_d7434ae5c6e119 293-303
+  s_4b4699b2ec0348::t_441e17c0193003 10
+  s_4b4699b2ec0348::t_084d03b6bf2fcc 281-292
+apps/web/test/subtitle-preview.test.js
+  s_4b4699b2ec0348::t_064113753a6b62 26-30
+  s_4b4699b2ec0348::t_2dc8e73fd4cabc 1-25,31-78
+apps/web/src/components/viewers/ArchivePreview.jsx
+  s_4b4699b2ec0348::t_9c2b11a66e03b4 144
+apps/web/test/file-types.test.js
+  s_4b4699b2ec0348::t_b9e6b6aa88c67e 49
+  s_4b4699b2ec0348::t_acbf5e3ae8e610 59-61
+apps/web/src/components/terminal/UltraplanPanel.jsx
+  s_4b4699b2ec0348::t_dc11b4a2205368 288
+apps/web/src/utils/fileIcons.jsx
+  s_4b4699b2ec0348::t_4380d2724ca582 93-99
+  s_4b4699b2ec0348::t_0d8b847f07d32d 36
+apps/web/test/commandValidator.test.js
+  s_4b4699b2ec0348::t_c34b3f3f3c18df 152-166
+apps/web/src/components/terminal/UltraPlanModal.jsx
+  s_4b4699b2ec0348::t_b3952c5c0beec9 269
+apps/web/src/utils/subtitleParser.js
+  s_4b4699b2ec0348::t_efcf4bd218f487 60-66
+  s_4b4699b2ec0348::t_1b8da2d4a572a7 175,177-180,182-184
+  s_4b4699b2ec0348::t_a8f5d3f7ad634e 21-23
+  s_4b4699b2ec0348::t_4f87c46195f05e 134-148
+  s_4b4699b2ec0348::t_a8cf4f0da650f1 1-20,24-59,67-83,87-89,91-114,117-121,123-124,131-133,149-174,176,181,185-221
+  s_4b4699b2ec0348::t_ca2f645b19b99f 84-86,90,115-116,122,125-130
+.changeset/subtitle-image-preview.md
+  s_4b4699b2ec0348::t_db3001e0d63697 1-5
+apps/web/test/file-browser-modal.test.js
+  s_4b4699b2ec0348::t_ad503930ebd4f8 288,291-295
+history.md
+  s_4b4699b2ec0348::t_5e2a3547758dfd 5,7
+  s_4b4699b2ec0348::t_809e7dbaa1d23d 6,8
+apps/web/src/utils/userImageRefs.js
+  s_4b4699b2ec0348::t_473c0996389fb2 12-13,17
+apps/web/src/components/viewers/SubtitlePreview.module.css
+  s_4b4699b2ec0348::t_353e3b42456456 1-67
+apps/web/src/components/viewers/SubtitlePreview.jsx
+  s_4b4699b2ec0348::t_ecd9c8ab7b3855 121
+  s_4b4699b2ec0348::t_8ec69cd9687617 135
+  s_4b4699b2ec0348::t_d0ca94d90c895f 64-71
+  s_4b4699b2ec0348::t_0404bb72162cb1 1-57,61-63,72-84,99-120,122-134,136-167
+  s_4b4699b2ec0348::t_4eadb2e266f56e 58-60,85-98
+apps/web/src/utils/fileTypes.js
+  s_4b4699b2ec0348::t_7bd0c7fd87ca95 9
+  s_4b4699b2ec0348::t_afbf3b80f72372 37
+  s_4b4699b2ec0348::t_81e9f88d2a59eb 47-48
+apps/web/test/archive-preview-wiring.test.js
+  s_4b4699b2ec0348::t_7e29ea019f6778 48
+apps/web/test/preview-kind.test.js
+  s_4b4699b2ec0348::t_a677ed44867676 35,40-41
+  s_4b4699b2ec0348::t_9cd0ff91ce1bba 14
+  s_4b4699b2ec0348::t_acd7991d1ea7e2 46-51
+  s_4b4699b2ec0348::t_5015d11f7abd9f 57-69
+apps/web/test/subtitle-parser.test.js
+  s_4b4699b2ec0348::t_8cc1c698d68078 1-108,116-182,194-225,236-264
+  s_4b4699b2ec0348::t_2aefc249bdd1af 109-115
+  s_4b4699b2ec0348::t_30f73609224e9b 183-193
+  s_4b4699b2ec0348::t_fd6e6e90461265 226-235
+apps/web/src/components/files/FileContentView.jsx
+  s_4b4699b2ec0348::t_72bb1692f62e0f 1116-1118
+  s_4b4699b2ec0348::t_5ea3e98b726964 1119-1124
+  s_4b4699b2ec0348::t_360e82d5d89ad3 335-342
+apps/web/src/utils/commandValidator.js
+  s_4b4699b2ec0348::t_d96129044e1a6c 6-12,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "18bd742bc50d38ce52abf9f8df89930c49b50807",
+  "prompts": {},
+  "sessions": {
+    "s_4b4699b2ec0348": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "243c85cc-a565-431e-8624-65bac5615811",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
