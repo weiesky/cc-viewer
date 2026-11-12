@@ -1,0 +1,251 @@
+scripts/tarball-baseline.json
+  s_37f3077df0d7fb::t_684ef908781862 1482-1483,1520,1586
+packages/app/cli.js
+  s_37f3077df0d7fb::t_27ba686948fb8f 1042-1047
+  s_37f3077df0d7fb::t_886784e88a2f31 615-620
+  s_37f3077df0d7fb::t_28e610a3bc76ba 1069-1070
+packages/app/server/lib/restart-helper.js
+  s_37f3077df0d7fb::t_34762bfe57d4dc 2,5-6
+  s_37f3077df0d7fb::t_1d92fddab426ea 18,21
+  s_37f3077df0d7fb::t_dd9d16434a57ed 1,3,7-9,11,27,29,40
+  s_37f3077df0d7fb::t_b0e676a3bd01a2 16-17
+  s_37f3077df0d7fb::t_9cc999d9b7356a 4
+  s_37f3077df0d7fb::t_f82b64f0a638af 20
+  s_37f3077df0d7fb::t_3f2c565c8dd98c 28
+  s_37f3077df0d7fb::t_e96b9782e6cfe8 19
+  s_37f3077df0d7fb::t_0aee4d3690209f 24
+  s_37f3077df0d7fb::t_0abd420119f04d 10,14-15,25-26
+  s_37f3077df0d7fb::t_d58a2388bfc391 32-33
+  s_37f3077df0d7fb::t_2e23f6909f619c 22-23
+  s_37f3077df0d7fb::t_fcf443a3a2f21d 12-13
+  s_37f3077df0d7fb::t_3e49b19455761e 30-31,34-39
+apps/web/src/AppBase.jsx
+  s_37f3077df0d7fb::t_cabcf436f4538d 2766-2769,2771-2772
+  s_37f3077df0d7fb::t_387fce3a5e075c 2770
+  s_37f3077df0d7fb::t_5cddb8ce5f84a4 82
+packages/app/test/branch-lib-updater.test.js
+  s_37f3077df0d7fb::t_54ea641a9e6279 299
+  s_37f3077df0d7fb::t_e8ec4ce271c0d5 297
+.changeset/warm-eagles-update.md
+  s_37f3077df0d7fb::t_5cad20fbf4060d 1-5
+apps/web/src/components/update/UpdateModal.module.css
+  s_37f3077df0d7fb::t_f0612e8600d298 1-3
+apps/web/src/i18n.js
+  s_37f3077df0d7fb::t_ddacc3d52b5571 9778-9783
+  s_37f3077df0d7fb::t_79f2df1addfc30 9787-9789
+  s_37f3077df0d7fb::t_0d6b22d90a0ce7 9745-9777,9784-9786,9793-9795
+  s_37f3077df0d7fb::t_033e3123ad9a96 9790-9792
+history.md
+  s_37f3077df0d7fb::t_4cc74a08fd880b 3-6
+packages/app/test/updater-pnpm.test.js
+  s_37f3077df0d7fb::t_29ec2443c9c72a 376-377
+  s_37f3077df0d7fb::t_93bc4cf68cd4aa 375,392,408
+  s_37f3077df0d7fb::t_7b6c5243469b27 393,409
+packages/app/server/server.js
+  s_37f3077df0d7fb::t_ab6451bb0e6cf0 955
+  s_37f3077df0d7fb::t_b165ec0d41edc8 4202
+  s_37f3077df0d7fb::t_64aa11d8a0a897 358-359
+  s_37f3077df0d7fb::t_c69ba6a506b7a1 739-743
+  s_37f3077df0d7fb::t_275b64c7c15995 50-51
+  s_37f3077df0d7fb::t_c37eec9c2fa1a8 759,762
+  s_37f3077df0d7fb::t_543ced12497c19 4186
+  s_37f3077df0d7fb::t_49f2833518638a 760-761
+  s_37f3077df0d7fb::t_ff829f85a62bd3 4210
+packages/app/test/update-routes.test.js
+  s_37f3077df0d7fb::t_ffbf68c44c39d0 4
+  s_37f3077df0d7fb::t_c7748624b0552c 1-3,5-26,28-29,31-32,46-55,58,60-61,65-71
+  s_37f3077df0d7fb::t_779808cafc767c 27
+  s_37f3077df0d7fb::t_39e7c19a04d72a 30
+  s_37f3077df0d7fb::t_0a8fb30ae35763 33-45
+  s_37f3077df0d7fb::t_3f16cf084481d4 56-57,59,62-64
+packages/app/test/update-job.test.js
+  s_37f3077df0d7fb::t_68e90f78ad6489 119
+  s_37f3077df0d7fb::t_54f622ecee554c 90-93
+  s_37f3077df0d7fb::t_796ba22f15869d 96-98,100-103,107-108
+  s_37f3077df0d7fb::t_7ec40c62e754a1 6-8
+  s_37f3077df0d7fb::t_25c3202aa4bae7 99
+  s_37f3077df0d7fb::t_bd9db8553d77f1 112
+  s_37f3077df0d7fb::t_6b90c18b1f5f9c 1-2,4,9,11-21,23-60,63-66,68-72,74-76,78,80,82-86,88-89,94-95,109-110,116,134-135,137-139,141,143,145-146,148-155
+  s_37f3077df0d7fb::t_251d8c28ceef53 22
+  s_37f3077df0d7fb::t_04af46e2e647d6 5
+  s_37f3077df0d7fb::t_c4891c5d41837e 77,136,147
+  s_37f3077df0d7fb::t_9ad2417870528d 115
+  s_37f3077df0d7fb::t_01c90a6510b435 114
+  s_37f3077df0d7fb::t_886a5690b26019 126
+  s_37f3077df0d7fb::t_4971fa811195c7 127-133
+  s_37f3077df0d7fb::t_3572dfe4f64199 104-106
+  s_37f3077df0d7fb::t_6b654c1c12ea48 61-62
+  s_37f3077df0d7fb::t_c650dfb335ca61 142
+  s_37f3077df0d7fb::t_3d26f1762f319a 144
+  s_37f3077df0d7fb::t_398460cc81a9d8 3
+  s_37f3077df0d7fb::t_9a5ea33aabaa2b 111,113
+  s_37f3077df0d7fb::t_d775a3c6ffbabe 73
+  s_37f3077df0d7fb::t_768cf418bd8d5d 81
+  s_37f3077df0d7fb::t_04145ee162a332 87
+  s_37f3077df0d7fb::t_a9adbc5a4f7499 67
+  s_37f3077df0d7fb::t_1158f51a9b268f 117-118,120-125
+  s_37f3077df0d7fb::t_6e778df8560b42 10
+  s_37f3077df0d7fb::t_11acc63d6d938e 140
+  s_37f3077df0d7fb::t_35d6593cd5f912 79
+apps/web/src/components/update/UpdateModal.jsx
+  s_37f3077df0d7fb::t_d113764aa805c7 12
+  s_37f3077df0d7fb::t_8d727987e03d99 32
+  s_37f3077df0d7fb::t_70abfecb61a5b2 33
+  s_37f3077df0d7fb::t_a62b304d726363 29
+  s_37f3077df0d7fb::t_0d7d94195c6384 47
+  s_37f3077df0d7fb::t_9b10eaf3912e73 15
+  s_37f3077df0d7fb::t_b2f7d9dfa4479c 11
+  s_37f3077df0d7fb::t_c727fbebcd9ec5 46
+  s_37f3077df0d7fb::t_8bcd3fef3a3488 1-10,13-14,16-28,34-40,42-45,48-52
+  s_37f3077df0d7fb::t_80f757182b7b94 41
+  s_37f3077df0d7fb::t_e482b36bcb21e1 30-31
+packages/app/test/restart-helper.test.js
+  s_37f3077df0d7fb::t_6ef29b55ecbe5f 1-2,4-5,7-8,10-13,16,18-19,21-43,58,63-64
+  s_37f3077df0d7fb::t_6a890f8b172129 9
+  s_37f3077df0d7fb::t_b3eaefbf815411 47-49
+  s_37f3077df0d7fb::t_236da8732be5fc 14
+  s_37f3077df0d7fb::t_bf8ec534a47677 17
+  s_37f3077df0d7fb::t_f23b105cacfcda 44-46,50,59-62
+  s_37f3077df0d7fb::t_6d57a474cbdcc3 51
+  s_37f3077df0d7fb::t_987bd218e898d7 52-56
+  s_37f3077df0d7fb::t_89edb18c7077b7 57
+  s_37f3077df0d7fb::t_277fef701f66dd 20
+  s_37f3077df0d7fb::t_3c0861440caaf6 6
+  s_37f3077df0d7fb::t_ebf51081c199c3 3
+  s_37f3077df0d7fb::t_4ff79c15c42cad 15
+packages/app/server/lib/updater.js
+  s_37f3077df0d7fb::t_e35b27b6de1016 2,9,14,20,26,31,35,38,42,44-45,53-54,65-66,68,74-75,92-94,97,101-102,107,110,113-118
+  s_37f3077df0d7fb::t_afcee0aab6328e 111
+  s_37f3077df0d7fb::t_c39c4ea8d97e05 7
+  s_37f3077df0d7fb::t_8ebaa8c40e0ec4 119-120
+  s_37f3077df0d7fb::t_f83bcc9e29cdd1 123
+packages/app/test/install-method.test.js
+  s_37f3077df0d7fb::t_c9f7e9eca77111 8,17-18,22
+  s_37f3077df0d7fb::t_8a599f1ec83640 21,23
+apps/web/test/sse-connection-gen.test.js
+  s_37f3077df0d7fb::t_9a531464383d0c 128
+packages/app/test/updater.test.js
+  s_37f3077df0d7fb::t_89559b77857c23 541-550
+  s_37f3077df0d7fb::t_56ed9cf936c593 519
+  s_37f3077df0d7fb::t_9278e972d6b7d0 7
+  s_37f3077df0d7fb::t_aa82e73b00a7a4 375-376
+  s_37f3077df0d7fb::t_bb1b6c7fe4fd24 210,374,515,766
+  s_37f3077df0d7fb::t_0cf34965a5dbb0 535
+  s_37f3077df0d7fb::t_fa69dc0ad80586 499
+  s_37f3077df0d7fb::t_d84acf9b253c1d 767
+  s_37f3077df0d7fb::t_5e4e0e991ac559 291
+  s_37f3077df0d7fb::t_7bbcae2e5469c5 306-307
+packages/app/server/lib/restart.js
+  s_37f3077df0d7fb::t_4a7d38c7fb0791 13
+  s_37f3077df0d7fb::t_49d019c9ccafb2 28,30-32
+  s_37f3077df0d7fb::t_30e17f793a5872 3
+  s_37f3077df0d7fb::t_651a929058f86a 2,5-11,14,16-27,29,33-37
+  s_37f3077df0d7fb::t_91f54051240f74 1
+  s_37f3077df0d7fb::t_3ad9dc12f473bd 4
+  s_37f3077df0d7fb::t_03675433d4ecdf 12,15
+packages/app/server/routes/update.js
+  s_37f3077df0d7fb::t_ab630224732a89 3
+  s_37f3077df0d7fb::t_38dacadedb848c 30-33
+  s_37f3077df0d7fb::t_760772f8d80211 34
+  s_37f3077df0d7fb::t_9d89f772c70829 36-37,39
+  s_37f3077df0d7fb::t_55200027efea52 44-45,47,49
+  s_37f3077df0d7fb::t_f8b5785f4663aa 38
+  s_37f3077df0d7fb::t_b55ee1c835e785 35
+  s_37f3077df0d7fb::t_ec78fb59a12a24 1-2,4-29,40-43,46,50-57
+  s_37f3077df0d7fb::t_9a1806577e69a0 48
+apps/web/test/update-modal.test.js
+  s_37f3077df0d7fb::t_711d7325c77d64 1-8,13-23,25-37
+  s_37f3077df0d7fb::t_fa1fdb750e9428 9-12
+  s_37f3077df0d7fb::t_84e5b4d8807006 24
+apps/web/src/App.jsx
+  s_37f3077df0d7fb::t_01bebc4c693bb4 111
+  s_37f3077df0d7fb::t_6cc48255c68159 105-109,122,124-125,128-131,133-134,137-143,146-149,151-152,156-157
+  s_37f3077df0d7fb::t_60be5e09f6a240 814,817-824,826-827
+  s_37f3077df0d7fb::t_221dea4b530a67 123
+  s_37f3077df0d7fb::t_1eb95097477ff3 126-127
+  s_37f3077df0d7fb::t_28ee3aea4c01e7 144
+  s_37f3077df0d7fb::t_a5c731b647c080 153-155
+  s_37f3077df0d7fb::t_7b95a12f2e9ee0 110
+  s_37f3077df0d7fb::t_6b435d85149bdf 119
+  s_37f3077df0d7fb::t_5bd20dfeceb8fb 132
+  s_37f3077df0d7fb::t_d9ba3bf23cdae6 116-118,120-121
+  s_37f3077df0d7fb::t_3cf03a44b9a246 135-136
+  s_37f3077df0d7fb::t_ec3e2efba5e574 145
+  s_37f3077df0d7fb::t_b7ffe8466a52b6 113
+  s_37f3077df0d7fb::t_cca13517a5591d 825
+  s_37f3077df0d7fb::t_244b31e8c5efec 112
+  s_37f3077df0d7fb::t_2c22cf3b676a4d 150
+  s_37f3077df0d7fb::t_eb50462414e52c 30
+  s_37f3077df0d7fb::t_b5c1f510e8531f 73-76
+  s_37f3077df0d7fb::t_5a613f73387bc1 801
+packages/app/server/lib/update-job.js
+  s_37f3077df0d7fb::t_6a923482e2c00e 180,182-186
+  s_37f3077df0d7fb::t_5f728c332a7b6c 17-25
+  s_37f3077df0d7fb::t_069364adddb0ee 195-196
+  s_37f3077df0d7fb::t_c94098af0d89d7 208-213
+  s_37f3077df0d7fb::t_101e003e8adb6c 34,36
+  s_37f3077df0d7fb::t_f972b39aef1d8b 194,199
+  s_37f3077df0d7fb::t_76b6a4d86adcf2 102
+  s_37f3077df0d7fb::t_74d06fc3fc2323 155
+  s_37f3077df0d7fb::t_d6313c6920e947 139
+  s_37f3077df0d7fb::t_67a569193ab4a4 147
+  s_37f3077df0d7fb::t_9e382f75fe360b 57-60
+  s_37f3077df0d7fb::t_cc2352e2085540 172
+  s_37f3077df0d7fb::t_04a50d37174272 10
+  s_37f3077df0d7fb::t_133448c19546b1 4
+  s_37f3077df0d7fb::t_61676436905006 7
+  s_37f3077df0d7fb::t_a30025fb022ec0 37
+  s_37f3077df0d7fb::t_775c08c0918ebd 119-123
+  s_37f3077df0d7fb::t_8c5840e69c39ea 132,137
+  s_37f3077df0d7fb::t_b079cba90f88f7 134
+  s_37f3077df0d7fb::t_e535dd45db1b22 12
+  s_37f3077df0d7fb::t_20f3939f1edd82 202
+  s_37f3077df0d7fb::t_7a943e88f293af 70
+  s_37f3077df0d7fb::t_48e79bf3319eae 27,31-33
+  s_37f3077df0d7fb::t_0fd11cf133da80 214
+  s_37f3077df0d7fb::t_0e9227c95e8eb8 106,108-109,112-113
+  s_37f3077df0d7fb::t_206788c2dcdbe4 2-3
+  s_37f3077df0d7fb::t_779035dad4530a 5
+  s_37f3077df0d7fb::t_91b75e0ed9baa5 11,15-16,28-30,38,66-68,72-73,80,83,99,110-111,125-126,128-131,135-136,138,140-146,148,165,169,174,177,193,197-198,200,215
+  s_37f3077df0d7fb::t_b55bbcf8f4641c 205
+  s_37f3077df0d7fb::t_5d46c7be311cdd 133
+  s_37f3077df0d7fb::t_358a3222cec62d 218
+  s_37f3077df0d7fb::t_2e7b9bb1781967 201
+  s_37f3077df0d7fb::t_bc34acdd0ac668 160-161
+  s_37f3077df0d7fb::t_fe507cadf0533b 216
+  s_37f3077df0d7fb::t_27e2c03b577f2e 1
+  s_37f3077df0d7fb::t_e8d622fb0d31a2 6,13-14,26,35,39-43,45-46,48,50-56,61-65,69,71,74,76-79,81-82,84-93,95-98,100-101,103-105,107,114-118,124,149-154,156,164,166-168,171,173,175,178-179,187,189-192,203-204,217,219-223
+  s_37f3077df0d7fb::t_d4a8600c1179bd 9
+  s_37f3077df0d7fb::t_cefb4fa09c7567 127
+  s_37f3077df0d7fb::t_fea89a6001edc2 176
+  s_37f3077df0d7fb::t_cbb64061b79020 188
+  s_37f3077df0d7fb::t_6f0251e5330bc3 181
+  s_37f3077df0d7fb::t_113a465b833768 157-159,162-163
+  s_37f3077df0d7fb::t_b2c72b48625f53 206-207
+  s_37f3077df0d7fb::t_2882b50319c90c 75
+  s_37f3077df0d7fb::t_b2715a4368727b 94
+  s_37f3077df0d7fb::t_05703e5c1d1c22 8
+  s_37f3077df0d7fb::t_a3592e012b2cd8 170
+  s_37f3077df0d7fb::t_058927ad176581 44,47,49
+packages/app/server/routes/project-meta.js
+  s_37f3077df0d7fb::t_dfb960ce73c9a8 69,73
+  s_37f3077df0d7fb::t_b611f697c558db 47,50-51
+  s_37f3077df0d7fb::t_5d28bf8109ce8e 11
+  s_37f3077df0d7fb::t_f4a021b94a33d4 66-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6e3c93cd7ca52fc096df431957b3df7724f06605",
+  "prompts": {},
+  "sessions": {
+    "s_37f3077df0d7fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8110afcd-f07b-42ee-88b2-758508af8ba3",
+        "model": "k3.1-pro"
+      },
+      "human_author": null
+    }
+  }
+}
