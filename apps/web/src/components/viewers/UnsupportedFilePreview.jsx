@@ -5,7 +5,7 @@ import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { formatSize } from '../../utils/formatters';
 import styles from './UnsupportedFilePreview.module.css';
 
-const DESCRIPTION_KINDS = new Set(['audio', 'video', 'font', 'pdf', 'binary']);
+const DESCRIPTION_KINDS = new Set(['video', 'font', 'pdf', 'binary']);
 
 export default function UnsupportedFilePreview({ filePath, displayPath, kind, contentDetected = false, fileSize, onClose, project, instance }) {
   const downloadName = filePath.split(/[\\/]/).pop() || 'download';

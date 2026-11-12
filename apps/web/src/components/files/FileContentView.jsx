@@ -324,6 +324,14 @@ const ArchivePreview = lazy(() =>
   ),
 );
 
+const AudioPreview = lazy(() =>
+  import('../viewers/AudioPreview').catch((err) =>
+    handleStaleChunk('AudioPreview', err, {
+      onReload: () => message.warning(i18n('ui.chunkOutdatedReloading')),
+    }),
+  ),
+);
+
 function FileContentViewImpl({
   filePath,
   onClose,
@@ -1087,6 +1095,13 @@ export default function FileContentView(props) {
     return (
       <Suspense fallback={<div className={styles.fileContentView}><div className={styles.loading}>{i18n('ui.loading')}</div></div>}>
         <ArchivePreview key={props.filePath} {...props} />
+      </Suspense>
+    );
+  }
+  if (kind === 'audio') {
+    return (
+      <Suspense fallback={<div className={styles.fileContentView}><div className={styles.loading}>{i18n('ui.loading')}</div></div>}>
+        <AudioPreview key={props.filePath} {...props} />
       </Suspense>
     );
   }

@@ -38,6 +38,7 @@ const EXT_CATEGORY = {
   mp4: 'video', mov: 'video', webm: 'video', mkv: 'video', avi: 'video',
   // audio
   mp3: 'audio', wav: 'audio', flac: 'audio', ogg: 'audio', m4a: 'audio',
+  oga: 'audio', aac: 'audio', opus: 'audio',
   // archive
   zip: 'archive', tar: 'archive', gz: 'archive', tgz: 'archive',
   bz2: 'archive', xz: 'archive', '7z': 'archive', rar: 'archive',

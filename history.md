@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web+server): **音频文件支持在线预览** — MP3/WAV/OGG/OGA/M4A/AAC/FLAC/Opus 经专用流式路由提供单区间 Range(206/416/304/If-Range)与正确 MIME,前端原生 `<audio>` 播放、可拖动进度,不支持编码或播放失败时提供下载回退。Coverage: `audio-stream.test.js`, `api-audio-stream.test.js`, `audio-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`.
+
 - fix(sdk+web): **慢上游提示正确跟随请求生命周期** — 客户端断连和响应转发异常会按 requestId 结束提示；WS 重连或切回视图时恢复仍在等待的提示，已完成的请求不再残留。Coverage: `proxy-slow-upstream.test.js`, `slow-upstream-lifecycle.test.js`, `slow-upstream-replay.test.js`.
 
 - feat(update): **CLI npm 一键更新与重启** — 下载显示真实字节进度并校验安装包，用户确认后安装并后台重启，恢复原工作目录与启动参数；失败时恢复原服务并显示诊断，检测到其他实例时提示先退出。Coverage: `update-job.test.js`, `update-routes.test.js`, `restart-helper.test.js`, `update-instances.test.js`, `update-modal.test.js`.

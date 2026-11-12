@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getPreviewKind, isDownloadOnlyPreview, isBinaryContentError } from '../src/utils/previewKind.js';
+import { getPreviewKind, isDownloadOnlyPreview, opensInFileViewer, isBinaryContentError } from '../src/utils/previewKind.js';
 import { isImageFile } from '../src/utils/commandValidator.js';
 
 describe('shared preview kinds', () => {
@@ -9,6 +9,7 @@ describe('shared preview kinds', () => {
       'a.zip': 'archive', 'a.TAR.GZ': 'archive', 'a.tar.bz2': 'archive',
       'a.PNG': 'image', 'a.html': 'html', 'a.HTM': 'html', 'a.xml': 'text',
       'a.md': 'markdown', 'a.markdown': 'markdown', 'a.MP3': 'audio',
+      'a.oga': 'audio', 'a.AAC': 'audio', 'a.opus': 'audio',
       'a.webm': 'video', 'a.WOFF2': 'font', 'a.PDF': 'pdf',
       'a.js': 'text', 'README': 'text', '.env': 'text', 'a.unknown': 'text',
       'a.docx': 'binary', 'a.wasm': 'binary', 'a.zip.txt': 'text',
@@ -29,8 +30,13 @@ describe('shared preview kinds', () => {
   });
 
   it('routes only download-only kinds away from the text editor', () => {
-    for (const kind of ['audio', 'video', 'font', 'pdf', 'binary']) assert.equal(isDownloadOnlyPreview(kind), true);
-    for (const kind of ['archive', 'image', 'html', 'markdown', 'text', null]) assert.equal(isDownloadOnlyPreview(kind), false);
+    for (const kind of ['video', 'font', 'pdf', 'binary']) assert.equal(isDownloadOnlyPreview(kind), true);
+    for (const kind of ['audio', 'archive', 'image', 'html', 'markdown', 'text', null]) assert.equal(isDownloadOnlyPreview(kind), false);
+  });
+
+  it('opens audio and download-only kinds in the file viewer, not the diff', () => {
+    for (const kind of ['audio', 'video', 'font', 'pdf', 'binary']) assert.equal(opensInFileViewer(kind), true);
+    for (const kind of ['archive', 'image', 'html', 'markdown', 'text', null]) assert.equal(opensInFileViewer(kind), false);
   });
 
   it('keeps image classification aligned with preview routing', () => {

@@ -28,7 +28,7 @@ import { resolvePlanAutoApproveTarget, sdkPlanMatchesView } from '../../utils/pl
 import { startDeadlineCountdown } from '../../utils/deadlineCountdown';
 import { reportSwallowed } from '../../utils/errorReport';
 import { isImageFile } from '../../utils/commandValidator';
-import { isDownloadOnlyPreview, getPreviewKind } from '../../utils/previewKind.js';
+import { opensInFileViewer, getPreviewKind } from '../../utils/previewKind.js';
 import { loadExpandedPaths, saveExpandedPaths } from '../../utils/fileExpandedPathsStorage';
 import { createEmptyToolState, appendToolResultMap, cachedBuildToolResultMap, getToolResultCache, setToolResultCache, buildSubAgentResultMap, createEmptyGlobalIndexState, appendToGlobalToolResultIndex } from '../../utils/toolResultBuilder';
 import { refreshCachedItemProp } from '../../utils/refreshCachedItemProp';
@@ -5453,7 +5453,7 @@ class ChatView extends React.Component {
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
                 if (tryOpenWithSystem(resolvedPath, 'git-changes', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
-                if (isDownloadOnlyPreview(getPreviewKind(resolvedPath))) {
+                if (opensInFileViewer(getPreviewKind(resolvedPath))) {
                   this.setState({ currentGitDiff: null, currentFile: resolvedPath });
                   return;
                 }

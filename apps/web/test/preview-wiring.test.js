@@ -17,6 +17,8 @@ describe('download-only preview wiring', () => {
     const dispatcher = wrapper.slice(wrapper.lastIndexOf('export default function FileContentView'));
     assert.ok(dispatcher.includes("const kind = getPreviewKind(props.filePath)"));
     assert.ok(dispatcher.includes("if (kind === 'archive')"));
+    assert.ok(dispatcher.includes("if (kind === 'audio')"));
+    assert.ok(dispatcher.includes('<AudioPreview'));
     assert.ok(dispatcher.includes('isDownloadOnlyPreview(kind)'));
     assert.ok(dispatcher.includes('<UnsupportedFilePreview'));
     assert.ok(!dispatcher.includes('useState'));
@@ -50,7 +52,7 @@ describe('download-only preview wiring', () => {
   });
 
   it('defines every preview message in all 18 locales', () => {
-    for (const key of ['title', 'download', 'contentBinary', 'utf16ReadOnly', 'kind.audio', 'kind.video', 'kind.font', 'kind.pdf', 'kind.binary', 'kind.unknown']) {
+    for (const key of ['title', 'download', 'contentBinary', 'utf16ReadOnly', 'kind.audio', 'kind.video', 'kind.font', 'kind.pdf', 'kind.binary', 'kind.unknown', 'audio.hint', 'audio.error']) {
       const match = i18n.match(new RegExp(`^  "ui\\.filePreview\\.${key.replace('.', '\\.')}": \\{\\n([\\s\\S]*?)^  \\},`, 'm'));
       assert.ok(match, key);
       for (const locale of LOCALES) assert.ok(match[1].includes(`"${locale}":`), `${key} ${locale}`);

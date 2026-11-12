@@ -1407,6 +1407,7 @@
   "server/lib/async-file-lock.js",
   "server/lib/async-write-queue.js",
   "server/lib/attach-buffer.js",
+  "server/lib/audio-stream.js",
   "server/lib/auth.js",
   "server/lib/auto-approve.js",
   "server/lib/base-path.js",
