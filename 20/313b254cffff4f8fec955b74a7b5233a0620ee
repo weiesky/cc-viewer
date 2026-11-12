@@ -1,0 +1,74 @@
+apps/web/test/file-types.test.js
+  s_b90a35a7bf1cd4::t_545db31a50bf82 59-61
+apps/web/src/components/viewers/AudioPreview.jsx
+  s_b90a35a7bf1cd4::t_f86aa819587083 1-50
+apps/web/test/preview-wiring.test.js
+  s_b90a35a7bf1cd4::t_3f7cb117f0f249 20-21
+  s_b90a35a7bf1cd4::t_3221c8bc2dd2c0 55
+apps/web/test/preview-kind.test.js
+  s_b90a35a7bf1cd4::t_85912c0f45717f 33-39
+  s_b90a35a7bf1cd4::t_249d6ab9cad074 3,12
+apps/web/src/i18n.js
+  s_b90a35a7bf1cd4::t_b5e2d5856396d7 6024-6030
+apps/web/src/components/chat/ChatView.jsx
+  s_b90a35a7bf1cd4::t_a27ec732bd5196 5456
+  s_b90a35a7bf1cd4::t_335838fe9e87d5 31
+packages/app/test/api-audio-stream.test.js
+  s_b90a35a7bf1cd4::t_19df47aaff28a4 10-11,22,47,78-83,93-94,101-105,107,112,118,126,128-129,135,148,169-179,189,221,232,236-239,242-245
+  s_b90a35a7bf1cd4::t_10861943343220 1-9,12-21,23-46,48-77,84-92,95-100,106,108-111,113-117,119-125,127,130-134,136-147,149-168,180-188,190-220,222-231,233-235,240-241,246-247
+apps/web/src/components/files/FileContentView.jsx
+  s_b90a35a7bf1cd4::t_bbfd1fcbf2b70b 327-334
+  s_b90a35a7bf1cd4::t_49c0fd0b510fe1 1101-1107
+apps/web/src/utils/previewKind.js
+  s_b90a35a7bf1cd4::t_0a34e44091db99 21-23
+  s_b90a35a7bf1cd4::t_94b1763222f15d 4,24-25
+  s_b90a35a7bf1cd4::t_4bc70a23efa500 26-27
+apps/web/src/components/viewers/AudioPreview.module.css
+  s_b90a35a7bf1cd4::t_72b55aaacbf080 1-49
+apps/web/test/audio-preview.test.js
+  s_b90a35a7bf1cd4::t_e867ca17e43641 21
+  s_b90a35a7bf1cd4::t_008f9bbe581002 1-20,23-39,47-54
+  s_b90a35a7bf1cd4::t_b460d927fb6a0c 22
+  s_b90a35a7bf1cd4::t_8dce5460df8fca 40-46
+apps/web/src/utils/fileTypes.js
+  s_b90a35a7bf1cd4::t_aa76ff8565f022 41
+scripts/tarball-baseline.json
+  s_b90a35a7bf1cd4::t_c15eb1fdca6d91 1410
+packages/app/test/api-files-content.test.js
+  s_b90a35a7bf1cd4::t_4d1ae0b9a16412 109,114,121,125-127
+packages/app/test/api-target-files.test.js
+  s_b90a35a7bf1cd4::t_49a3039195a0a6 215
+.changeset/audio-preview.md
+  s_b90a35a7bf1cd4::t_d46a93e10d7cb4 1-5
+packages/app/test/audio-stream.test.js
+  s_b90a35a7bf1cd4::t_239730795537ed 1-11,13-40,42-45,47-59,61-64,66-71,83-105,109-123
+  s_b90a35a7bf1cd4::t_609cb3cf1ce3e4 12,41,46,60,65,72-82,106-108
+packages/app/server/lib/audio-stream.js
+  s_b90a35a7bf1cd4::t_e7740762198e31 1,3,8,17-21,26-36,38-39,43,46,48-55,59,62-66,68-82,89-93,96-98,100-102,104-108,111-113,115,117-121,125-126,129,132-133,135-141,146-149,153-154,156-163,165-168,172-180,188-189,191-197,201-204,209-212,216-217,219-230,232-239,242-248,251,253,257-267
+  s_b90a35a7bf1cd4::t_127743ee8d9331 2,4-7,9-16,22-25,37,40-42,44-45,47,56-58,60-61,67,83-88,94-95,99,103,109-110,114,116,122-124,127-128,130-131,134,142-145,150-152,155,164,169-171,181-187,190,198-200,205-208,213-215,218,231,240-241,249-250,252,254-256
+packages/app/server/routes/files-content.js
+  s_b90a35a7bf1cd4::t_19af2a7ee00254 13
+  s_b90a35a7bf1cd4::t_42e8e9fcbedb02 875-927,929-935
+  s_b90a35a7bf1cd4::t_d4ec3709f777f8 928
+  s_b90a35a7bf1cd4::t_d3775002f53cac 944
+history.md
+  s_b90a35a7bf1cd4::t_a32235251f27ad 5-6
+apps/web/src/components/viewers/UnsupportedFilePreview.jsx
+  s_b90a35a7bf1cd4::t_1f47bd4c4073cc 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "20313b254cffff4f8fec955b74a7b5233a0620ee",
+  "prompts": {},
+  "sessions": {
+    "s_b90a35a7bf1cd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "436c480f-b9ee-41ef-96ad-53cdb87fa4ae",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
