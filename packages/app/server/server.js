@@ -47,6 +47,8 @@ import { resumeRoutes } from './routes/resume.js';
 import { sdkContextRoutes } from './routes/sdk-context.js';
 import { sdkMcpStatusRoutes } from './routes/sdk-mcp-status.js';
 import { proxyStatsRoutes } from './routes/proxy-stats.js';
+import { updateRoutes } from './routes/update.js';
+import { UpdateJob } from './lib/update-job.js';
 import { setProxyStatsListener, setSlowUpstreamListener } from './lib/proxy/proxy-stats.js';
 import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
@@ -353,6 +355,8 @@ export function setWorkspaceClaudePath(path, isNpm) {
 }
 let _launchCallback = null;
 export function setLaunchCallback(fn) { _launchCallback = fn; }
+let _restartHandler = null;
+export function setRestartHandler(fn) { _restartHandler = fn; }
 export function setWorkspaceLaunched(v) { _workspaceLaunched = v; }
 export function initPostLaunch() {
   startLogWatch();
@@ -732,6 +736,11 @@ function _ensureImWatch(id) {
   catch (e) { console.warn(`[im-log-watcher] ensure(${id}) failed:`, e?.message || e); }
 }
 
+const updateJob = new UpdateJob({ get currentPort() { return actualPort; } });
+updateJob.subscribe((state) => {
+  sendEventToClients(clients, 'update_progress', state);
+});
+
 const deps = {
   // Reassignable runtime state — must stay getters.
   get protocol() { return serverProtocol; },
@@ -747,6 +756,10 @@ const deps = {
   // the live value at request time (e.g. resume.js scope-key resolution).
   get projectName() { return _projectName || ''; },
   get launchCallback() { return _launchCallback; },
+  updateJob,
+  restartProcess: (version) => _restartHandler(version),
+  get canRestartProcess() { return typeof _restartHandler === 'function'; },
+  get isRuntimeStopping() { return _isStopping; },
   get workspaceClaudeArgs() { return _workspaceClaudeArgs; },
   get workspaceClaudePath() { return _workspaceClaudePath; },
   get workspaceIsNpmVersion() { return _workspaceIsNpmVersion; },
@@ -939,6 +952,7 @@ const _routes = [
   ...dingtalkRoutes,
   ...imRoutes,
   ...proxyStatsRoutes,
+  ...updateRoutes,
   ...resumeRoutes,
   ...sdkContextRoutes,
   ...sdkMcpStatusRoutes,
@@ -4169,7 +4183,7 @@ if (!isWorkspaceMode) {
       // 延迟 30 秒异步检查更新。
       // 为什么是 30s 而非 3s：空闲/忙判断的核心是 `clients.length`(SSE 已连) + PTY + SDK。
       // 3s 时大多数 client 还没连上 → busy 恒 false → 升级照打断用户。30s 给"活跃会话"留出进入窗口。
-      // 同大版本直接后台 detached npm install（不阻塞事件循环）；跨大版本 / 忙时 → 仅广播 banner，用户下次启动再升。
+      // Check only; an install is always initiated and confirmed by the user.
       // 句柄必须保存:_doStop 要 clearTimeout(stop/start 循环防泄漏);.unref() 防 keep-alive。
       // 测试侧三重防护:此处 unref + updater.js 的 L5 铁闸 + npm test 脚本 DISABLE_NONESSENTIAL_TRAFFIC。
       _updateCheckTimer = setTimeout(async () => {
@@ -4185,17 +4199,15 @@ if (!isWorkspaceMode) {
           // 共用 update_major_available 事件渲染 banner（前端不区分子类，命令在 i18n 文案里给）。
           // brew_managed / pnpm_managed 走这里至关重要：否则 Electron / GUI 用户看不到升级提示，
           // 仅 stderr 一行 console.error 在桌面模式下不可见。
-          if (result.status === 'major_available' || result.status === 'deferred_busy' || result.status === 'brew_managed' || result.status === 'pnpm_managed') {
+          if (result.remoteVersion && result.status !== 'latest' && result.status !== 'disabled' && result.status !== 'error') {
             // 先缓存：之后新连接的 SSE 客户端会在 events 路由里补推此事件
             pendingMajorUpdate = { version: result.remoteVersion, source: result.status };
             const payload = JSON.stringify(pendingMajorUpdate);
             clients.forEach(client => {
               try { sseWrite(client, `event: update_major_available\ndata: ${payload}\n\n`); } catch { }
             });
-          } else if (result.status === 'upgrading_in_background') {
-            console.error(`[CC Viewer] background upgrade to ${result.remoteVersion} started (active after next launch)`);
           }
-        } catch { /* update check 失败静默 */ }
+        } catch (err) { reportSwallowed('server.update-check', err); }
       }, 30_000);
       _updateCheckTimer.unref();
     }).catch(err => {

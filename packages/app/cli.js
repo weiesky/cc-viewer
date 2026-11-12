@@ -612,6 +612,12 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setWorkspaceClaudeArgs(extraClaudeArgs);
   serverMod.setWorkspaceClaudePath(claudePath, isNpmVersion);
 
+  serverMod.setRestartHandler(async (version) => {
+    const { launchRestart } = await import('./server/lib/restart.js');
+    await launchRestart({ ...ccvLaunch, version });
+    setImmediate(cleanup);
+  });
+
   // 4. 自动打开浏览器
   const protocol = serverMod.getProtocol();
   const _cfg = resolveBaseConfig();
@@ -1049,11 +1055,19 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
   installWinKeypressFallback({ onInterrupt: cleanup });
+
+  serverMod.setRestartHandler(async (version) => {
+    const { launchRestart } = await import('./server/lib/restart.js');
+    await launchRestart({ ...ccvLaunch, version });
+    setImmediate(cleanup);
+  });
 }
 
 // === 主逻辑 ===
 
 const args = process.argv.slice(2);
+// Immutable launch description for the user-confirmed updater's restart helper.
+const ccvLaunch = { args: [...args], cwd: process.cwd(), cliPath: fileURLToPath(import.meta.url) };
 
 // --- CCV 专属参数提取（必须在动态 import 之前） ---
 let noOpen = false;

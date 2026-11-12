@@ -445,6 +445,7 @@ async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath 
   // process (im-process-manager already strips the same for IM workers).
   delete env.CCV_WORKSPACE_MODE;
   delete env.CCV_ELECTRON_MULTITAB;
+  delete env.CCV_ELECTRON_TAB;
   // Claude Code's NO_FLICKER makes the embedded xterm use the alt screen and lose
   // scrollback. cc-viewer strips the inherited value by default; set
   // CCV_KEEP_CLAUDE_CODE_NO_FLICKER=1 explicitly when it is actually needed.

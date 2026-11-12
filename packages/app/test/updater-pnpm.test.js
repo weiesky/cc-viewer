@@ -372,10 +372,9 @@ describe('checkAndUpdate — pnpm_managed', () => {
       spawnImpl: (cmd, args, opts) => { spawnCalled = true; spawnArgs = { cmd, args, opts }; return { unref() {} }; },
       pnpmRoot: null, // explicit "not pnpm-managed", bypasses real detection
     });
-    assert.equal(result.status, 'upgrading_in_background');
-    assert.equal(spawnCalled, true);
-    assert.equal(spawnArgs.cmd, 'npm');
-    assert.deepStrictEqual(spawnArgs.args, ['install', '-g', `cc-viewer@${remote}`, '--no-audit', '--no-fund']);
+    assert.equal(result.status, 'available');
+    assert.equal(spawnCalled, false);
+    assert.equal(spawnArgs, null);
   });
 
   it('pnpmRoot="" (explicit falsy) is treated as not pnpm-managed, like brewPrefix', async () => {
@@ -390,8 +389,8 @@ describe('checkAndUpdate — pnpm_managed', () => {
       spawnImpl: () => { spawnCalled = true; return { unref() {} }; },
       pnpmRoot: '',
     });
-    assert.equal(result.status, 'upgrading_in_background');
-    assert.equal(spawnCalled, true);
+    assert.equal(result.status, 'available');
+    assert.equal(spawnCalled, false);
   });
 
   it('genuine npm installs (no pnpmRoot) keep the npm upgrade path', async () => {
@@ -406,7 +405,7 @@ describe('checkAndUpdate — pnpm_managed', () => {
       spawnImpl: () => { spawnCalled = true; return { unref() {} }; },
     });
     // No pnpmRoot option → real detection ran against this npm-global checkout → null → npm path
-    assert.equal(result.status, 'upgrading_in_background');
-    assert.equal(spawnCalled, true);
+    assert.equal(result.status, 'available');
+    assert.equal(spawnCalled, false);
   });
 });

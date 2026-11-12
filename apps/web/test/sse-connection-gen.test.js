@@ -125,7 +125,7 @@ describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
     const entries = [...tableMatch[1].matchAll(/'([\w-]+)':\s*'(\w+)'/g)].map((m) => [m[1], m[2]]);
     // 必须挂 stale 守卫的命名帧（串扰写视图态的全部入口）。
     const mustGuard = [
-      'stream-progress', 'migrate_prompt', 'update_major_available', 'resume_bypassed',
+      'stream-progress', 'migrate_prompt', 'update_major_available', 'update_progress', 'resume_bypassed',
       'load_start', 'load_chunk', 'sid-not-found', 'load_end', 'full_reload',
       'workspace_started', 'workspace_stopped', 'context_window', 'kv_cache_content',
       'workflow_update', 'task_update', 'proxy_profile', 'retry_config', 'ping',

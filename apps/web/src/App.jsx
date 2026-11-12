@@ -27,6 +27,8 @@ import { isMainAgent } from '@ccv/core/contentFilter';
 import { classifyRequest } from '@ccv/core/requestType';
 import { apiUrl } from './utils/apiUrl';
 import { BLUR_MASK_STYLE } from './utils/modalMask';
+import UpdateModal from './components/update/UpdateModal';
+import { restartPollDecision } from './utils/updateProgress';
 import { isProxyMode } from './utils/isProxyMode';
 
 // 代理重试面板（配置+统计融合）：懒加载
@@ -69,7 +71,10 @@ class App extends AppBase {
       pendingCacheHighlight: null,
       contextBarSlot: null, // DOM slot registered by TerminalPanel toolbar / ChatInputBar bottom button area; AppHeader renders the usage pill bar there via createPortal
       planUsage: null, // Plan usage snapshot (OAuth only): auto-follows the latest response, updates only when requests reference changes and the parsed value differs (see componentDidUpdate)
-      installMethod: null, // 'electron' | 'brew' | 'npm': fetched on demand when opening the version-info modal, for precise upgrade command matching
+      installMethod: null, // 'electron' | 'brew' | 'npm' | 'pnpm'
+      updateJob: { status: 'idle', error: null },
+      restarting: false,
+      restartError: null,
     });
     this.appHeaderRef = React.createRef();
     this._getTokenStatsContent = (closeParent) => this.appHeaderRef.current?.renderTokenStats?.(closeParent) ?? null;
@@ -98,41 +103,71 @@ class App extends AppBase {
     this.setState({ contextBarSlot: el });
   };
 
-  // Render upgrade guidance by install channel: electron uses GitHub Releases steps, brew / npm show the corresponding command.
-  renderUpdateInstructions = (method) => {
-    const codeStyle = { display: 'block', background: 'var(--bg-code)', padding: '8px 12px', borderRadius: 6, fontSize: 13 };
-    if (method === 'electron') {
-      return (<>
-        <p style={{ marginTop: 12 }}><strong>{t('ui.update.electron')}</strong></p>
-        <p style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>{t('ui.update.electronDesc')}</p>
-        <ol style={{ color: 'var(--text-tertiary)', fontSize: 13, paddingLeft: 20, margin: '6px 0' }}>
-          <li>{t('ui.update.step1')}</li>
-          <li>{t('ui.update.step2')}</li>
-          <li>{t('ui.update.step3')}</li>
-        </ol>
-      </>);
-    }
-    if (method === 'brew') {
-      return (<>
-        <p style={{ marginTop: 12 }}><strong>{t('ui.update.brew')}</strong></p>
-        <code style={codeStyle}>brew upgrade cc-viewer</code>
-      </>);
-    }
-    return (<>
-      <p style={{ marginTop: 12 }}><strong>{t('ui.update.npm')}</strong></p>
-      <code style={codeStyle}>npm install -g cc-viewer --registry=https://registry.npmjs.org</code>
-    </>);
+  // The server owns the release metadata and update job; the client only triggers actions.
+  openUpdateModal = async () => {
+    this.setState({ updateModalVisible: true, installMethod: null, restartError: null });
+    try {
+      const [infoRes, jobRes] = await Promise.all([fetch(apiUrl('/api/version-info')), fetch(apiUrl('/api/update/status'))]);
+      const info = await infoRes.json();
+      this.setState({ installMethod: info.installMethod || 'npm', updateProcessId: info.processId, canRestart: info.canRestart === true });
+      if (jobRes.ok) this._applyUpdateJob(await jobRes.json());
+    } catch (err) { reportSwallowed('update.open', err); this.setState({ updateJob: { status: 'error', error: err.message } }); }
   };
 
-  // 打开版本信息弹窗：按需拉取安装渠道（electron / brew / npm），用于精准匹配升级命令。
-  // 渲染端 isElectron 为权威信号；非 electron 时才用后端探测区分 brew / npm。已拉取过则不重复请求。
-  openUpdateModal = () => {
-    this.setState({ updateModalVisible: true });
-    if (this.state.installMethod != null) return;
-    fetch(apiUrl('/api/version-info'))
-      .then(r => r.json())
-      .then(d => { if (d && d.installMethod) this.setState({ installMethod: d.installMethod }); })
-      .catch(() => { /* 拉取失败 → 保持 null，渲染端按 npm 默认兜底 */ });
+  _applyUpdateJob = (data) => {
+    if (!data?.status) return;
+    if (data.updatedAt && this.state.updateJob?.updatedAt && data.updatedAt < this.state.updateJob.updatedAt) return;
+    const patch = { updateJob: data };
+    if (data.status === 'latest' || data.status === 'available') patch.updateInfo = data.status === 'latest' ? null : { type: 'major', version: data.version };
+    this.setState(patch);
+  };
+
+  checkUpdate = async () => {
+    this.setState({ updateJob: { ...this.state.updateJob, status: 'checking', error: null } });
+    try {
+      const res = await fetch(apiUrl('/api/update/check'), { method: 'POST' });
+      const data = await res.json();
+      this._applyUpdateJob(res.ok ? data : { status: 'error', error: data.error || `HTTP ${res.status}`, errorCode: data.errorCode || data.code });
+    } catch (err) { this.setState({ updateJob: { status: 'error', error: err.message } }); }
+  };
+
+  startUpdate = async () => {
+    this.setState({ updateJob: { ...this.state.updateJob, status: this.state.updateJob.version ? 'downloading' : 'checking', error: null } });
+    try {
+      const res = await fetch(apiUrl('/api/update/start'), { method: 'POST' });
+      const data = await res.json();
+      this._applyUpdateJob(res.ok ? data : { status: 'error', error: data.error || `HTTP ${res.status}`, errorCode: data.errorCode || data.code });
+    } catch (err) { this.setState({ updateJob: { status: 'error', error: err.message } }); }
+  };
+
+  restartForUpdate = async () => {
+    this.setState({ restarting: true, restartError: null });
+    try {
+      const res = await fetch(apiUrl('/api/update/restart'), { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        this.setState({ restarting: false, restartError: data.error || t('ui.update.restartFailed') });
+        return;
+      }
+      const deadline = Date.now() + 16 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+          const info = await fetch(apiUrl('/api/version-info'), { cache: 'no-store', signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null);
+          const decision = restartPollDecision({ info, previousProcessId: this.state.updateProcessId, targetVersion: this.state.updateJob.version });
+          if (decision === 'reload') { window.location.reload(); return; }
+          if (decision === 'restored') {
+            try {
+              const stateRes = await fetch(apiUrl('/api/update/status'), { signal: AbortSignal.timeout(3000) });
+              if (stateRes.ok) this._applyUpdateJob(await stateRes.json());
+            } catch { /* The fallback process may still be starting. */ }
+            this.setState({ restarting: false, restartError: t('ui.update.restartFailed') });
+            return;
+          }
+        } catch { /* Expected while the old process is shutting down. */ }
+      }
+      throw new Error(t('ui.update.restartTimeout'));
+    } catch (err) { this.setState({ restarting: false, restartError: err.message }); }
   };
 
   // 套餐用量:额度搭车在常规 Claude 响应头(anthropic-ratelimit-unified-*)上，SSE 已把最新响应
@@ -776,7 +811,7 @@ class App extends AppBase {
                 v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
               </span>
               {this.state.updateInfo && (
-                <Tooltip title={t('ui.update.majorAvailable', { version: this.state.updateInfo.version })} placement="top">
+                <Tooltip title={t('ui.update.newBadge')} placement="top">
                   <span
                     className={styles.newBadgeText}
                     onClick={this.openUpdateModal}
@@ -789,25 +824,20 @@ class App extends AppBase {
           </div>
         </Layout>
 
-        <Modal
-          title={t('ui.update.title')}
+        <UpdateModal
           open={this.state.updateModalVisible}
           onCancel={() => this.setState({ updateModalVisible: false })}
-          footer={null}
-          width={560}
-        >
-          <div style={{ lineHeight: 1.8 }}>
-            <p><strong>{t('ui.update.current')}:</strong> v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}</p>
-            {this.state.updateInfo && <p><strong>{t('ui.update.latest')}:</strong> v{this.state.updateInfo.version}</p>}
-            {/* 安装渠道：renderer 的 isElectron 为权威；否则用后端探测结果，拉取前/失败时按 npm 兜底 */}
-            {this.renderUpdateInstructions(isElectron ? 'electron' : (this.state.installMethod || 'npm'))}
-            <div style={{ marginTop: 16, textAlign: 'right' }}>
-              <Button type="primary" href="https://github.com/weiesky/cc-viewer/releases" target="_blank" rel="noopener noreferrer">
-                {t('ui.update.goReleases')}
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          currentVersion={typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
+          method={isElectron ? 'electron' : (this.state.installMethod || 'npm')}
+          state={this.state.updateJob}
+          updateInfo={this.state.updateInfo}
+          onCheck={this.checkUpdate}
+          onStart={this.startUpdate}
+          onRestart={this.restartForUpdate}
+          restarting={this.state.restarting}
+          canRestart={this.state.canRestart}
+          restartError={this.state.restartError}
+        />
         <Modal
           title={null}
           open={this.state.proxyStatsVisible}

@@ -79,6 +79,7 @@ const CHANNEL_FRAME_HANDLERS = {
   'stream-progress': '_onStreamProgress',
   'migrate_prompt': '_onMigratePrompt',
   'update_major_available': '_onUpdateMajorAvailable',
+  'update_progress': '_onUpdateProgress',
   'resume_bypassed': '_onResumeBypassed',
   'load_start': '_onLoadStart',
   'load_chunk': '_onLoadChunk',
@@ -2761,6 +2762,13 @@ class AppBase extends React.Component {
         this.setState({ migratePromptVisible: true, migratePromptData: data });
       });
     } catch (e) { reportSwallowed('sse.migrate_prompt', e); }
+  }
+  _onUpdateProgress(channel, event) {
+    if (!this._isRenderedChannel(channel)) return;
+    try {
+      const data = JSON.parse(event.data);
+      this._applyUpdateJob?.(data);
+    } catch (e) { reportSwallowed('sse.update_progress', e); }
   }
   _onUpdateMajorAvailable(channel, event) {
     if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only

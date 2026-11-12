@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- feat(update): **CLI npm 一键更新与重启** — 下载显示真实字节进度并校验安装包，用户确认后安装并后台重启，恢复原工作目录与启动参数；失败时恢复原服务并显示诊断，检测到其他实例时提示先退出。Coverage: `update-job.test.js`, `update-routes.test.js`, `restart-helper.test.js`, `update-instances.test.js`, `update-modal.test.js`.
+
 ## 1.9.24
 
 - feat(web+server): **统一文件预览分类与二进制保护** — 跨平台识别归档、图片、HTML、Markdown、音频、视频、字体、PDF、文本和二进制；不支持预览的文件提供只读说明与下载，文本读取增加二进制内容检测，UTF-16 BOM 文本支持只读预览；旧编码文本保持下载回退。Coverage: `preview-kind.test.js`, `preview-wiring.test.js`, `binary-sniff.test.js`, `api-files-content.test.js`.

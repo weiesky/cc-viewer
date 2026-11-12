@@ -578,6 +578,7 @@ function createTab(projectPath, extraArgs = []) {
   delete childEnv.CCV_PROXY_PORT;
   delete childEnv.CCV_PROXY_MODE;
   delete childEnv.CCV_ELECTRON_MULTITAB;
+  childEnv.CCV_ELECTRON_TAB = '1';
   delete childEnv.ANTHROPIC_BASE_URL;
   childEnv.CCV_PROJECT_DIR = realPath;
   // Worker runs under the Electron binary (no external Node on PATH): this env var

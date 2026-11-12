@@ -5,7 +5,8 @@ import { getInstallMethod, projectMetaRoutes } from '../server/routes/project-me
 describe('getInstallMethod', () => {
   it('returns electron when running under Electron (regardless of brew detection)', () => {
     assert.equal(getInstallMethod({ electron: '38.0.0', detect: () => '/opt/homebrew' }), 'electron');
-    assert.equal(getInstallMethod({ electron: '38.0.0', detect: () => null }), 'electron');
+    assert.equal(getInstallMethod({ electron: '38.0.0', detect: () => null, detectPnpm: () => null }), 'electron');
+    assert.equal(getInstallMethod({ electron: undefined, electronTab: true, detect: () => '/opt/homebrew', detectPnpm: () => '/tmp/pnpm' }), 'electron');
   });
 
   it('returns brew when Homebrew install is detected and not electron', () => {
@@ -14,10 +15,13 @@ describe('getInstallMethod', () => {
   });
 
   it('falls back to npm when no brew prefix and not electron', () => {
-    assert.equal(getInstallMethod({ electron: undefined, detect: () => null }), 'npm');
-    assert.equal(getInstallMethod({ electron: '', detect: () => null }), 'npm');
+    assert.equal(getInstallMethod({ electron: undefined, detect: () => null, detectPnpm: () => null }), 'npm');
+    assert.equal(getInstallMethod({ electron: '', detect: () => null, detectPnpm: () => null }), 'npm');
   });
 
+  it('returns pnpm when the virtual store layout is detected', () => {
+    assert.equal(getInstallMethod({ detect: () => null, detectPnpm: () => '/tmp/pnpm' }), 'pnpm');
+  });
   it('is failure-safe: brew detection throwing falls back to npm', () => {
     assert.equal(getInstallMethod({ electron: undefined, detect: () => { throw new Error('realpath boom'); } }), 'npm');
   });
@@ -37,6 +41,8 @@ describe('GET /api/version-info handler', () => {
     assert.equal(statusCode, 200);
     const json = JSON.parse(body);
     assert.match(json.version, /^\d+\.\d+\.\d+$/);
-    assert.ok(['electron', 'brew', 'npm'].includes(json.installMethod), `unexpected installMethod: ${json.installMethod}`);
+    assert.ok(['electron', 'brew', 'npm', 'pnpm'].includes(json.installMethod), `unexpected installMethod: ${json.installMethod}`);
+    assert.match(json.processId, /^\d+-\d+$/);
+    assert.equal(json.canRestart, false);
   });
 });
