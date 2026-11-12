@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.9.25
+
+### Patch Changes
+
+- 6e3c93c: Add explicit npm updates with download progress, verified installation, and an optional CLI restart.
+
 ## 1.9.24
 
 ### Patch Changes
