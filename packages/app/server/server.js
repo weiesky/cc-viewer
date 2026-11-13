@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
 import { isPathContained } from './lib/file-api.js';
 import { sseWrite, isWireV3Enabled } from './lib/wire-compress.js';
+import { attachTerminalWsPing } from './lib/terminal-ws-ping.js';
 import { setEntry as askStoreSetEntry, deleteEntry as askStoreDeleteEntry, pruneStale as askStorePruneStale, markAnswered as askStoreMarkAnswered, markCancelled as askStoreMarkCancelled, loadAskStore as askStoreLoad } from './lib/ask/ask-store.js';
 import { ASK_TIMEOUT_MS, ASK_WAITER_REAP_INTERVAL_MS, ASK_WAITER_LIVENESS_MS } from './lib/ask/ask-constants.js';
 import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from './lib/ask/ask-reaper.js';
@@ -2275,6 +2276,12 @@ async function setupTerminalWebSocket(httpServer) {
     });
 
     wss.on('connection', (ws) => {
+      // Per-connection app-level ping (extracted for tests — see attachTerminalWsPing):
+      // send-only on purpose; a dead connection is skipped (readyState gate) and the
+      // client-side watchdog owns close+reconnect, keeping the historical broadcast
+      // semantics (skip non-OPEN, heal on reconnect) unchanged.
+      attachTerminalWsPing(ws);
+
       // 发送当前 PTY 状态
       const state = getPtyState();
       ws.send(JSON.stringify({ type: 'state', ...state }));
@@ -3998,6 +4005,16 @@ async function _doStop() {
   }
   // Tear down terminal WSS so stop/start cycles never leak a second listener on the same HTTP server.
   if (terminalWss) {
+    // A noServer WebSocketServer's close() does NOT terminate existing upgraded
+    // connections — it only stops accepting new ones. Left alive, a zombie
+    // connection keeps receiving the 25s ping, so the client watchdog never
+    // judges it half-open and never reconnects to the fresh server (the exact
+    // freeze this keepalive was added to fix). Terminate first (mirror
+    // streamMux.close()), which fires each socket's close event and clears its
+    // ping interval.
+    for (const c of terminalWss.clients) {
+      try { c.terminate(); } catch { /* already gone */ }
+    }
     terminalWss.close();
     terminalWss = null;
   }

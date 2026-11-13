@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(sdk+web): **血条（上下文消耗）停滞修复** — SDK 模式下 /ws/terminal 增加应用层 ping（建连即发 + 周期保活）与客户端空闲看门狗（含握手超时），半开断连自动重连；上下文拉取增加 15s 超时；异常未来时间戳可自愈；断连期间已输入的队列在重连后恢复。Coverage: `server-terminal-ws-ping.test.js`, `terminal-ws-watchdog.test.js`, `sdk-context-provider.test.js`, `context-usage-view.test.js`.
+
 - feat(web): **字幕文件支持在线预览** — SRT/VTT/ASS/SSA 解析时间区间，提供列表/原文双视图，超 1MiB/3000 条截断提示。Coverage: `subtitle-parser.test.js`, `subtitle-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`, `archive-preview.test.js`.
 
 - feat(web+server): **图片预览扩展名补充** — APNG/JFIF 进入预览与缩略图/引用路由；TIFF/HEIC 归类为图片但保持下载回退。Coverage: `file-types.test.js`, `api-files-content.test.js`, `commandValidator.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`, `file-browser-modal.test.js`.

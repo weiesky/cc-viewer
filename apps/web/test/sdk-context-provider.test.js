@@ -194,6 +194,17 @@ describe('SdkContextUsageProvider — real hook lifecycle', () => {
     root.unmount();
   });
 
+  it('keeps ignoring frames for OTHER projects even with a rotated instance', async () => {
+    const app = await mount({ enabled: true, viewInstance: 'one' });
+    deferred.shift()();
+    await sleep(10);
+    const fetchesBefore = fetches.length;
+    await app.emit(frame('other', 'two', 99));
+    await sleep(5);
+    assert.equal(fetches.length, fetchesBefore, 'foreign project frames never trigger a fetch');
+    root.unmount();
+  });
+
   it('holds zero after clear until a fresh snapshot, and resets on scope switch', async () => {
     const app = await mount({ enabled: true });
     deferred.shift()();

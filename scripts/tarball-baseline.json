@@ -1516,6 +1516,7 @@
   "server/lib/team-runtime.js",
   "server/lib/term-signals.js",
   "server/lib/terminal-env.js",
+  "server/lib/terminal-ws-ping.js",
   "server/lib/turn-end-bridge.js",
   "server/lib/ultra-agents-api.js",
   "server/lib/update-instances.js",
