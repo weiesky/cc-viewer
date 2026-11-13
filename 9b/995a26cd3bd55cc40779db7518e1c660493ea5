@@ -1,0 +1,89 @@
+apps/web/src/utils/contextUsageView.js
+  s_2e5afdbba48457::t_1891a65c126aa4 269-273,286-287
+  s_2e5afdbba48457::t_6b48cb9879e556 232-239
+  s_2e5afdbba48457::t_0328a53afef411 225-231,240,242-246
+  s_2e5afdbba48457::t_3ddd169b68a0ee 268,274-276,288-291
+apps/web/test/sdk-context-provider.test.js
+  s_2e5afdbba48457::t_d1b67de0dfe350 197-207
+packages/app/test/server-terminal-ws-ping.test.js
+  s_2e5afdbba48457::t_7df8351349cec7 62,65
+  s_2e5afdbba48457::t_906f15ee6d8fd0 1,3-8,11-14,17-23,25-38,40-42,49-50,52-53,55,57-61,64,66-71,73-79,81,83-85,87-88
+  s_2e5afdbba48457::t_a82552b39c5f3c 2,9-10,15,51
+  s_2e5afdbba48457::t_143f18b2e3b218 16,24,39,43,63,80
+  s_2e5afdbba48457::t_72d9caf2e4adfd 44-48,54,56
+  s_2e5afdbba48457::t_b32a7466a7060a 72,82,86
+apps/web/src/components/terminal/TerminalWsContext.jsx
+  s_2e5afdbba48457::t_e9b9f510245f25 245-248
+  s_2e5afdbba48457::t_09cba578979dd1 205-209,221-225,228
+  s_2e5afdbba48457::t_b4bc0e63ccd7e4 227
+  s_2e5afdbba48457::t_1ced35d484c65c 36-37,40-50,54-56
+  s_2e5afdbba48457::t_a5c9fb4a40cbe2 127-133
+  s_2e5afdbba48457::t_d308fb5ef0454f 85-96
+  s_2e5afdbba48457::t_b711ef80b63ead 178-180
+  s_2e5afdbba48457::t_1f55a7d3caa434 226
+  s_2e5afdbba48457::t_652789dfd97788 164-175,181
+  s_2e5afdbba48457::t_c4057183c4ce08 30-35,65,68
+  s_2e5afdbba48457::t_26813cc35dc83c 38-39,66,69
+  s_2e5afdbba48457::t_742d393933ef1c 51-53
+  s_2e5afdbba48457::t_c543004f980cfb 269-273,278-294
+  s_2e5afdbba48457::t_66bd309415d0c2 191-192,197
+  s_2e5afdbba48457::t_2c0c396481de0c 67
+  s_2e5afdbba48457::t_41a5444847ffcc 240-243
+  s_2e5afdbba48457::t_4e24cacd5af2d3 275
+  s_2e5afdbba48457::t_72f714f7f902f6 244,257-268,274,276-277
+  s_2e5afdbba48457::t_9c6cea7b299d49 119-121
+  s_2e5afdbba48457::t_8513b7e70e1184 295
+packages/app/server/server.js
+  s_2e5afdbba48457::t_01ab3740d880ab 2279-2283
+  s_2e5afdbba48457::t_42cf523c43e60c 4008-4017
+  s_2e5afdbba48457::t_3f5b0580c437ea 13
+  s_2e5afdbba48457::t_eb15afc0b3f34e 2284
+history.md
+  s_2e5afdbba48457::t_a6d057620a1a28 5
+  s_2e5afdbba48457::t_c2c87fc7576146 6
+apps/web/test/terminal-ws-watchdog.test.js
+  s_2e5afdbba48457::t_95501377994a30 104
+  s_2e5afdbba48457::t_c73b6ef4456ca0 1-9,14-15,17-29,31-38,40-47,49-53,55-58,81-84,88,106-108,110-113,118,129-131,133-138,145,149,151-152,167-169
+  s_2e5afdbba48457::t_fab2039e127a3a 10-13,16,30,39,48,54,59-80,85-87,89-103,105,109,114-117,119-128,132,139-144,146-148,150,153-166
+packages/app/server/lib/terminal-ws-ping.js
+  s_2e5afdbba48457::t_b4db58f4b05afe 19-20,31-34,42
+  s_2e5afdbba48457::t_0e41d469452ebf 1-18,21-23,30,38-41
+  s_2e5afdbba48457::t_bcb8fb0f8c6b77 24-29,35-37
+scripts/tarball-baseline.json
+  s_2e5afdbba48457::t_da58fd83f6bbcb 1519
+apps/web/src/components/chat/ChatView.jsx
+  s_2e5afdbba48457::t_25c53d93adc654 1390-1391
+  s_2e5afdbba48457::t_70e4c969893d16 3487-3495,3519,3553-3563
+  s_2e5afdbba48457::t_7d1c8c99ff6091 1307-1308
+  s_2e5afdbba48457::t_65b54dc064e56a 468-470
+  s_2e5afdbba48457::t_e11421e69f7501 3496-3518
+apps/web/src/components/dashboard/SdkContextUsageProvider.jsx
+  s_2e5afdbba48457::t_398ad5c69910ec 80
+  s_2e5afdbba48457::t_b31d69a0eea633 85-87,89-90,92
+  s_2e5afdbba48457::t_3ab36e95482fd6 117-119
+  s_2e5afdbba48457::t_22d10ab7361def 133
+  s_2e5afdbba48457::t_09b0cdab723aa4 10-14
+  s_2e5afdbba48457::t_f222771721c2e2 83-84,88,91,137
+.changeset/sdk-context-bar-freeze.md
+  s_2e5afdbba48457::t_d6fb336eef4d51 5
+  s_2e5afdbba48457::t_d0ec5cec5a9ea7 1-4
+apps/web/test/context-usage-view.test.js
+  s_2e5afdbba48457::t_39db63dbcc00ef 296-304,306
+  s_2e5afdbba48457::t_d68a397cf22443 288-295,305,307-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9b995a26cd3bd55cc40779db7518e1c660493ea5",
+  "prompts": {},
+  "sessions": {
+    "s_2e5afdbba48457": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "46037fa3-c010-4ab9-bebd-108abff44c02",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
