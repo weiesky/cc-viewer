@@ -1,0 +1,152 @@
+packages/app/test/branch-routes-ask-perm.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 544-552
+packages/app/test/sdk-manager-query.test.js
+  s_24714ef4ea3d29::t_e57f044ceb6c4f 1057-1060
+  s_24714ef4ea3d29::t_9aa7eefbd144be 680-702
+  s_24714ef4ea3d29::t_b1ed9ecade63b3 1018-1042
+apps/web/src/Mobile.jsx
+  s_24714ef4ea3d29::t_9aa7eefbd144be 95,1281-1286,1292
+  s_24714ef4ea3d29::t_008360d4b8d32d 571-572
+docs/README.da.md
+  s_24714ef4ea3d29::t_abbe1a4a16f3db 84
+apps/web/src/components/common/QuickAutoApproveRows.jsx
+  s_24714ef4ea3d29::t_9e0d648b61ff64 74-79
+  s_24714ef4ea3d29::t_9aa7eefbd144be 9,26,63,71
+  s_24714ef4ea3d29::t_0bc2d1c87fc5ec 24
+  s_24714ef4ea3d29::t_5c31f08d65d300 72-73
+apps/web/test/plan-auto-approve-runtime.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 424-446
+apps/web/src/components/chat/controllers/ptyPromptController.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 23
+docs/README.ar.md
+  s_24714ef4ea3d29::t_5b88edd28707f4 84
+docs/README.es.md
+  s_24714ef4ea3d29::t_73b3a6c03fa39a 84
+docs/README.pl.md
+  s_24714ef4ea3d29::t_8fa18ad157a7f8 84
+docs/README.ja.md
+  s_24714ef4ea3d29::t_0dcbf711544faa 84
+docs/README.ru.md
+  s_24714ef4ea3d29::t_baeec4010e69c3 84
+docs/README.uk.md
+  s_24714ef4ea3d29::t_3c192fe4e2d43c 84
+apps/web/test/full-auto-approve-wiring.test.js
+  s_24714ef4ea3d29::t_3f58171d8d4c1b 86
+  s_24714ef4ea3d29::t_195bc411e80e23 32,35-36,39-40,43,46-47,53,58,61-62,65-66,68-85,87-89,99,105
+  s_24714ef4ea3d29::t_2a2e33c8201386 29-31
+  s_24714ef4ea3d29::t_ad63fb6556b846 33-34
+  s_24714ef4ea3d29::t_0f767275ffcfaa 37-38
+  s_24714ef4ea3d29::t_4d405a1669b96c 41-42
+  s_24714ef4ea3d29::t_e86e1f1a48c9c0 44-45
+  s_24714ef4ea3d29::t_5ed13a20d7c553 48-52
+  s_24714ef4ea3d29::t_df6bc54438894f 54-57
+  s_24714ef4ea3d29::t_b5c4bd36918e55 59-60
+  s_24714ef4ea3d29::t_0d04eb515df917 63-64
+  s_24714ef4ea3d29::t_57c8de01cbbe0b 67
+  s_24714ef4ea3d29::t_7d53f40df0f265 90-92,96-98
+  s_24714ef4ea3d29::t_c5e37bda0e090c 100-104
+  s_24714ef4ea3d29::t_1ed108ca7ce9c0 106
+.changeset/full-auto-approve.md
+  s_24714ef4ea3d29::t_c7ac6427e43cfc 5
+  s_24714ef4ea3d29::t_6155971283b923 2-4
+docs/README.zh.md
+  s_24714ef4ea3d29::t_b3fc064cb06fca 84
+packages/app/server/routes/ask-perm.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 10,540-545,547,680-687
+  s_24714ef4ea3d29::t_2cb4f3444c0766 572
+packages/app/server/lib/auto-approve.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 21-24,36-39,49-50,59,65-77,99,123
+docs/README.no.md
+  s_24714ef4ea3d29::t_a1aa3b4665d1e5 84
+apps/web/test/quick-settings-i18n.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 32-35
+packages/app/test/sdk-manager-auto-approve.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 240-300
+apps/web/src/components/approval/ToolApprovalPanel.jsx
+  s_24714ef4ea3d29::t_9aa7eefbd144be 3,64,69-72
+packages/app/test/api-ask-perm-extra.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 666-687
+docs/README.it.md
+  s_24714ef4ea3d29::t_7111b7356ea91b 84
+apps/web/src/utils/autoApproveOptions.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 6,10-11,14,16,19-24,27-28,30
+docs/README.zh-TW.md
+  s_24714ef4ea3d29::t_94748a5884889d 84
+packages/app/server/server.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 2329-2331
+README.md
+  s_24714ef4ea3d29::t_c3e17796ec0c02 74
+history.md
+  s_24714ef4ea3d29::t_ca1f28b19da31d 7-8
+  s_24714ef4ea3d29::t_9ef0e7c4c1f221 5
+  s_24714ef4ea3d29::t_9aa7eefbd144be 6
+docs/README.ko.md
+  s_24714ef4ea3d29::t_9aeb073122292c 84
+apps/web/src/components/common/sharedChrome.module.css
+  s_24714ef4ea3d29::t_9aa7eefbd144be 317-334
+apps/web/src/utils/helpers.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 392,394
+apps/web/test/helpers-unit-a.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 124-130
+docs/README.pt-BR.md
+  s_24714ef4ea3d29::t_7f36c0e0eace63 84
+packages/app/test/auto-approve.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 44,46,51-56,83-87,128-144
+  s_24714ef4ea3d29::t_7cf14be8edcd11 145-146
+apps/web/src/AppBase.jsx
+  s_24714ef4ea3d29::t_9e1a7171a86746 12
+  s_24714ef4ea3d29::t_aae88ffabbacb8 4376-4399
+  s_24714ef4ea3d29::t_9aa7eefbd144be 236
+  s_24714ef4ea3d29::t_ed9e11a26f5e80 312
+docs/README.tr.md
+  s_24714ef4ea3d29::t_a84b0f275fbc79 84
+docs/README.fr.md
+  s_24714ef4ea3d29::t_797fb01272ed62 84
+docs/README.th.md
+  s_24714ef4ea3d29::t_bfd430369c959c 84
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_24714ef4ea3d29::t_18570a26d5e233 1858-1860
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_24714ef4ea3d29::t_62a12213ed9853 560-561
+apps/web/test/auto-approve-options.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 12-13,32,34,37-38,41,43-53,62-63
+  s_24714ef4ea3d29::t_4031b84d7d0336 64-65
+apps/web/src/components/chat/ChatView.jsx
+  s_24714ef4ea3d29::t_9aa7eefbd144be 12,596,3104-3105,3109
+apps/web/test/ask-auto-answer-menu.test.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 65-70,72-74,76-78
+  s_24714ef4ea3d29::t_3d8cdcf644dd78 71,75
+packages/app/server/lib/sdk-manager.js
+  s_24714ef4ea3d29::t_43c9bd09fadae6 2073-2074
+  s_24714ef4ea3d29::t_9aa7eefbd144be 45-46,944-945,2075,2188,2234-2242
+  s_24714ef4ea3d29::t_a8f66dcdb38d15 2328-2329
+apps/web/src/i18n.js
+  s_24714ef4ea3d29::t_4bc447dd3707f6 10588-10605
+  s_24714ef4ea3d29::t_b14932b6b7d91c 10560-10577
+  s_24714ef4ea3d29::t_9aa7eefbd144be 10543-10544,10546-10550,10578-10587
+  s_24714ef4ea3d29::t_34e73c4226c034 10545
+packages/app/server/lib/approval-policy.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 10,14-17
+docs/README.de.md
+  s_24714ef4ea3d29::t_8b441f0e9e6b5e 84
+packages/app/server/lib/ask/perm-bridge.js
+  s_24714ef4ea3d29::t_69d49277d2cc3b 65-68
+packages/app/server/lib/ask/perm-request-bridge.js
+  s_24714ef4ea3d29::t_9aa7eefbd144be 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "187583787d8b87cbbb558a601ae1e963bbcc21a0",
+  "prompts": {},
+  "sessions": {
+    "s_24714ef4ea3d29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac08ae14-1b4b-48c6-b5d2-28a51f71f65e",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
