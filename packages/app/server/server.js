@@ -4066,6 +4066,28 @@ async function _doStop() {
 // are intentionally no pushSdkEntry/setSdkStreamingState shortcuts anymore.
 
 /** Broadcast a message to all terminal WS clients (for SDK canUseTool). */
+// Approval TERMINAL frames: id-addressed "this pending is over" events. Every client handler
+// clears ONLY the pending whose id matches (an unmatched id is a no-op), so cross-workspace
+// delivery adds no state. Routing these through view-narrowing turns a display-scoping
+// optimization into a correctness dependency: a connection stamp that diverges from the frame's
+// cwd/instanceKey at fire time silently drops the ONLY close signal — the server-side pending
+// entry is already deleted, so no reconnect replay can recover it and the modal hangs forever.
+// Precedents that already deliver these globally: PTY hook frames (routes/ask-perm.js),
+// _broadcastApprovalCloses, and the client-answer relays (server.js:2888+, 2931+, 3123+).
+// `ask-hook-cancelled` is deliberately EXCLUDED (it flushes a user message parked behind the
+// ask). *-auto-cancel and pending/state frames stay narrowed.
+const ID_ADDRESSED_APPROVAL_CLEARS = new Set([
+  'sdk-plan-resolved', 'sdk-ask-resolved', 'perm-hook-resolved',
+  'sdk-ask-timeout', 'perm-hook-timeout',
+  'ask-hook-resolved', 'ask-hook-timeout', // future-proof: currently direct-sent
+]);
+function isIdAddressedApprovalClear(msg) {
+  return !!msg && typeof msg === 'object'
+    && typeof msg.type === 'string'
+    && ID_ADDRESSED_APPROVAL_CLEARS.has(msg.type)
+    && msg.id != null; // raw check: a no-id legacy perm-hook-timeout clears ALL — must stay scoped
+}
+
 export function broadcastWsMessage(msg) {  if (terminalWss) {
     // SDK multi-session (2026-10-12): a cwd-tagged frame belongs to one workspace's session.
     // Route it only to clients viewing that workspace (or the bound view with no ?project=),
@@ -4086,11 +4108,13 @@ export function broadcastWsMessage(msg) {  if (terminalWss) {
     // killing the surviving twin viewer's spinner and queue bubbles). Untagged/cwd-only
     // frames keep the historical project-level behavior.
     const frameInstance = (msg && typeof msg === 'object' && typeof msg.instanceKey === 'string' && msg.instanceKey) ? msg.instanceKey : null;
+    // Id-addressed approval terminal frames bypass the narrowing (see the block above).
+    const clearAcrossViews = isIdAddressedApprovalClear(msg);
     const str = typeof msg === 'string' ? msg : JSON.stringify(msg);
     terminalWss.clients.forEach((c) => {
       if (c.readyState !== 1) return;
-      if (frameProj && c._ccvViewProject && c._ccvViewProject !== frameProj) return; // other workspace's frame
-      if (frameInstance && c._ccvViewInstance && c._ccvViewInstance !== frameInstance) return; // other instance of the same project
+      if (!clearAcrossViews && frameProj && c._ccvViewProject && c._ccvViewProject !== frameProj) return; // other workspace's frame
+      if (!clearAcrossViews && frameInstance && c._ccvViewInstance && c._ccvViewInstance !== frameInstance) return; // other instance of the same project
       try { c.send(str); } catch {}
     });
   }

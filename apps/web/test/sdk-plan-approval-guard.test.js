@@ -204,9 +204,12 @@ describe('SDK mode never activates the PTY plan-approval keystroke surface', () 
   });
 
   it('sdk-plan-resolved clears the panel only for the matching id', () => {
+    // The clear is a FUNCTIONAL setState guarded on the latest pendingPlanApproval id:
+    // an instant-tier auto-approve emits pending+resolved in the same tick, so an imperative
+    // `this.state` read could miss the uncommitted pending and leave the modal stuck.
     assert.ok(
-      /msg\.type === 'sdk-plan-resolved'\) \{[\s\S]{0,200}?pendingPlanApproval\?\.id === msg\.id[\s\S]{0,200}?pendingPlanApproval: null/.test(CHATVIEW),
-      'sdk-plan-resolved must clear pendingPlanApproval by matching id (otherwise the card wedges)',
+      /msg\.type === 'sdk-plan-resolved'\) \{[\s\S]{0,900}?String\(state\.pendingPlanApproval\.id\) === planId[\s\S]{0,300}?pendingPlanApproval: null/.test(CHATVIEW),
+      'sdk-plan-resolved must clear pendingPlanApproval by matching id inside a functional update (otherwise the card wedges)',
     );
   });
 
