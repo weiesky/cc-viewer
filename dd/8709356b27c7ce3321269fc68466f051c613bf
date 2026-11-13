@@ -1,0 +1,42 @@
+apps/web/src/components/chat/ChatView.jsx
+  s_4c399acf553438::t_5bb550c44bdfb1 3082,3120,3130,3144-3153,3155,3159-3160,3163-3167,3169,3173-3174,3182-3195
+apps/web/test/sdk-plan-approval-guard.test.js
+  s_4c399acf553438::t_7565b667e49b3c 211
+  s_4c399acf553438::t_87363b03267d80 207-209,212
+history.md
+  s_4c399acf553438::t_d140101c78bea4 5-6
+apps/web/test/ask-flow-controller.test.js
+  s_4c399acf553438::t_5059e4c3cd7b8a 440-468
+  s_4c399acf553438::t_9ac2cce11e5da8 420-439,469-477
+apps/web/src/components/chat/controllers/askFlowController.js
+  s_4c399acf553438::t_89a5fadde1441b 802,810-811,817-818
+  s_4c399acf553438::t_fc4caa760b6078 523-527,536-557
+  s_4c399acf553438::t_01a901c3e6a6f2 103,113-122,134-140,147,149,151-164,169
+  s_4c399acf553438::t_e864f6b04e84f1 756-757,763
+  s_4c399acf553438::t_71c9c17da28e0b 99-102,123-125,133,141-146,148,150,165-168
+.changeset/approval-modal-auto-close.md
+  s_4c399acf553438::t_08e3c9dd238c22 1-5
+packages/app/test/ws-instance-isolation.test.js
+  s_4c399acf553438::t_2fcc57ed67ec1d 90-154
+apps/web/test/plan-auto-approve-runtime.test.js
+  s_4c399acf553438::t_4f74bd8438dbd7 344-385
+  s_4c399acf553438::t_cce586424f870f 506-579
+packages/app/server/server.js
+  s_4c399acf553438::t_e8b8021d529794 4069-4090,4111-4112,4116-4117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd8709356b27c7ce3321269fc68466f051c613bf",
+  "prompts": {},
+  "sessions": {
+    "s_4c399acf553438": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f65a6e6e-527a-4404-957d-01248fdd2f84",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
