@@ -314,3 +314,21 @@ button.quickMenuRow:hover {
   color: var(--color-primary);
   font-weight: 500;
 }
+
+/* 完全免审批 (-2): danger tint — this tier also lifts the npm-publish hard gate.
+   需要双类选择器压过上面 active 规则的 primary 色（同为 0,2,0 时后定义者胜）。 */
+.quickMenuOption.quickMenuOptionDanger {
+  color: var(--color-error);
+}
+
+.quickMenuOption.quickMenuOptionDanger:hover {
+  background: var(--color-error-bg-light);
+}
+
+.quickMenuOptionActive.quickMenuOptionDanger {
+  color: var(--color-error);
+}
+
+.quickMenuValueDanger {
+  color: var(--color-error);
+}

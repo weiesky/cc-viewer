@@ -6,7 +6,7 @@
  * fileIcons.jsx, which consumes these categories to pick a glyph + color.
  *
  * Categories: directory | code | markup | data | document | image | video |
- * audio | archive | pdf | office | font | binary | plain
+ * audio | archive | pdf | office | font | binary | subtitle | plain
  */
 
 function basename(name) {
@@ -34,14 +34,18 @@ const EXT_CATEGORY = {
   // image
   png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', svg: 'image',
   bmp: 'image', ico: 'image', icns: 'image', webp: 'image', avif: 'image',
+  apng: 'image', jfif: 'image', tif: 'image', tiff: 'image', heic: 'image', heif: 'image',
   // video
   mp4: 'video', mov: 'video', webm: 'video', mkv: 'video', avi: 'video',
   // audio
   mp3: 'audio', wav: 'audio', flac: 'audio', ogg: 'audio', m4a: 'audio',
+  oga: 'audio', aac: 'audio', opus: 'audio',
   // archive
   zip: 'archive', tar: 'archive', gz: 'archive', tgz: 'archive',
   bz2: 'archive', xz: 'archive', '7z': 'archive', rar: 'archive',
   txz: 'archive', tbz: 'archive', tbz2: 'archive',
+  // subtitle
+  srt: 'subtitle', vtt: 'subtitle', ass: 'subtitle', ssa: 'subtitle',
   // pdf
   pdf: 'pdf',
   // office

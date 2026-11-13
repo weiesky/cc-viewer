@@ -10,6 +10,7 @@ import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
 import { reportSwallowed } from '../lib/error-report.js';
 import { isBinaryBuffer, getUtf16Encoding } from '../lib/binary-sniff.js';
+import { AUDIO_EXTENSIONS, audioExtOf, serveAudioStream } from '../lib/audio-stream.js';
 import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
@@ -47,6 +48,8 @@ const FILE_RAW_MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
   '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif',
+  '.apng': 'image/apng', '.jfif': 'image/jpeg',
+  '.tif': 'image/tiff', '.tiff': 'image/tiff', '.heic': 'image/heic', '.heif': 'image/heif',
   '.html': 'text/html', '.htm': 'text/html',
   '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.json': 'application/json', '.map': 'application/json', '.txt': 'text/plain',
@@ -871,6 +874,67 @@ function targetFiles(req, res, parsedUrl, isLocal, deps) {
   }
 }
 
+// Audio preview endpoint: streams audio with single-range 206/416/304 support so
+// browsers (esp. Safari, which probes with Range: bytes=0-1) can seek. Unlike fileRaw
+// it never buffers the whole file (multi-GB audio), and unlike fileDownload it serves
+// inline with a real audio/* MIME. Shares the same permission/path contract as fileDownload.
+function audioStream(req, res, parsedUrl) {
+  try {
+    const reqPath = parsedUrl.searchParams.get('path');
+    if (!reqPath) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid path' }));
+      return;
+    }
+    // Same path contract as fileDownloadWithRoot: relative paths with .. are rejected.
+    const isAbs = /^([a-zA-Z]:[\\/]|[\\/])/.test(reqPath);
+    if (!isAbs && reqPath.includes('..')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid path' }));
+      return;
+    }
+    const cwd = _viewRootOrReply(req, res, parsedUrl);
+    if (!cwd) return;
+    const absPath = isAbs ? reqPath : resolve(cwd, reqPath);
+    const policy = isReadAllowed(absPath);
+    if (!policy.ok) {
+      const status = reasonToStatus(policy.reason);
+      const errLabel = status === 404 ? 'File not found'
+        : status === 400 ? 'Invalid path'
+        : 'Forbidden';
+      const body = { error: errLabel, reason: policy.reason };
+      if (policy.allowedRoots) body.allowedRoots = policy.allowedRoots;
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(body));
+      return;
+    }
+    const targetFile = policy.real;
+    const stat = statSync(targetFile);
+    if (!stat.isFile()) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not a file' }));
+      return;
+    }
+    // Extension is derived from the real path (not the caller's name) so case and
+    // symlink-renamed files classify consistently; reject non-audio before sniffing.
+    const ext = audioExtOf(targetFile);
+    if (!AUDIO_EXTENSIONS.has(ext)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unsupported audio path' }));
+      return;
+    }
+    serveAudioStream(req, res, { filePath: targetFile, stat, ext });
+  } catch (err) {
+    // A throw here (EACCES stat race, null-byte path, sniff read error) must not
+    // become an unhandled rejection that kills the process (server.js:985).
+    if (res.headersSent) { reportSwallowed('audioStream.headersSent', err); res.destroy(); return; }
+    const status = ERROR_STATUS_MAP[err.code] || 500;
+    const message = status === 500 ? `Cannot read file: ${err.message}` : err.message;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: message }));
+  }
+}
+
 export const filesContentRoutes = [
   { method: 'GET', match: 'exact', path: '/api/plan-file', handler: planFile },
   { method: 'GET', match: 'exact', path: '/api/file-content', handler: fileContentGet },
@@ -879,6 +943,7 @@ export const filesContentRoutes = [
   { predicate: (url, method) => (url === '/api/file-raw' || url.startsWith('/api/file-raw/')) && (method === 'GET' || method === 'HEAD'), handler: fileRaw },
   { predicate: (url, method) => url === '/api/archive-raw' && (method === 'GET' || method === 'HEAD'), handler: archiveRaw },
   { predicate: (url, method) => url === '/api/download-file' && (method === 'GET' || method === 'HEAD'), handler: fileDownload },
+  { predicate: (url, method) => url === '/api/audio-stream' && (method === 'GET' || method === 'HEAD'), handler: audioStream },
   { method: 'POST', match: 'exact', path: '/api/file-content', handler: fileContentPost },
   { method: 'GET', match: 'exact', path: '/api/target-files', handler: targetFiles },
 ];

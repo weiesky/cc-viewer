@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 
 import {
   AUTO_APPROVE_INSTANT,
+  AUTO_APPROVE_FULL,
+  isInstantAutoApproveValue,
   PERM_AUTO_APPROVE_OPTIONS,
   PLAN_AUTO_APPROVE_OPTIONS,
   autoApproveValueLabel,
@@ -27,22 +29,38 @@ const t = (key) => key;
 const tp = (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key);
 
 describe('auto-approve option sets', () => {
-  it('AUTO_APPROVE_INSTANT is -1', () => {
+  it('AUTO_APPROVE_INSTANT is -1, AUTO_APPROVE_FULL is -2', () => {
     assert.equal(AUTO_APPROVE_INSTANT, -1);
+    assert.equal(AUTO_APPROVE_FULL, -2);
   });
 
-  it('permission options: off/3/5/10/instant (no 30s)', () => {
-    assert.deepEqual(PERM_AUTO_APPROVE_OPTIONS, [0, 3, 5, 10, AUTO_APPROVE_INSTANT]);
+  it('permission options: off/3/5/10/instant/full (no 30s)', () => {
+    assert.deepEqual(PERM_AUTO_APPROVE_OPTIONS, [0, 3, 5, 10, AUTO_APPROVE_INSTANT, AUTO_APPROVE_FULL]);
   });
 
-  it('plan options: off/10/30/60/instant (no 3s/5s)', () => {
+  it('plan options: off/10/30/60/instant (no 3s/5s, no full tier)', () => {
     assert.deepEqual(PLAN_AUTO_APPROVE_OPTIONS, [0, 10, 30, 60, AUTO_APPROVE_INSTANT]);
+    assert.equal(PLAN_AUTO_APPROVE_OPTIONS.includes(AUTO_APPROVE_FULL), false);
+  });
+});
+
+describe('isInstantAutoApproveValue', () => {
+  it('both instant tiers (-1/-2) are instant; countdown/off/invalid are not', () => {
+    assert.equal(isInstantAutoApproveValue(-1), true);
+    assert.equal(isInstantAutoApproveValue(-2), true);
+    assert.equal(isInstantAutoApproveValue(0), false);
+    assert.equal(isInstantAutoApproveValue(3), false);
+    assert.equal(isInstantAutoApproveValue(undefined), false);
   });
 });
 
 describe('autoApproveValueLabel', () => {
   it('maps -1 to instant i18n key', () => {
     assert.equal(autoApproveValueLabel(AUTO_APPROVE_INSTANT, t), 'ui.permission.autoApprove.instant');
+  });
+
+  it('maps -2 to fullInstant i18n key', () => {
+    assert.equal(autoApproveValueLabel(AUTO_APPROVE_FULL, t), 'ui.permission.autoApprove.fullInstant');
   });
 
   it('maps 0 and undefined to off i18n key', () => {

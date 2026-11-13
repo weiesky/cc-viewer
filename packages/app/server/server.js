@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
 import { isPathContained } from './lib/file-api.js';
 import { sseWrite, isWireV3Enabled } from './lib/wire-compress.js';
+import { attachTerminalWsPing } from './lib/terminal-ws-ping.js';
 import { setEntry as askStoreSetEntry, deleteEntry as askStoreDeleteEntry, pruneStale as askStorePruneStale, markAnswered as askStoreMarkAnswered, markCancelled as askStoreMarkCancelled, loadAskStore as askStoreLoad } from './lib/ask/ask-store.js';
 import { ASK_TIMEOUT_MS, ASK_WAITER_REAP_INTERVAL_MS, ASK_WAITER_LIVENESS_MS } from './lib/ask/ask-constants.js';
 import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from './lib/ask/ask-reaper.js';
@@ -513,9 +514,27 @@ setProxyStatsListener(notifyProxyStats);
 // terminal WS — decides whether the slow request maps to a live session worth
 // surfacing. The frame carries the request's own cwd/instanceKey and is routed
 // through broadcastWsMessage, so only viewers of that workspace/instance see it.
+const _pendingSlowUpstreams = new Map(); // requestId → the last user-visible slow frame
+
+function _replaySlowUpstreams(ws) {
+  if (!isSdkMode || !ws || ws.readyState !== 1) return;
+  const now = Date.now();
+  for (const frame of _pendingSlowUpstreams.values()) {
+    const project = projectKeyForCwd(frame.cwd);
+    // The initial connection may precede client view hydration. In that case
+    // replay only the bound workspace, never every background workspace.
+    const viewProject = ws._ccvViewProject || _projectName;
+    if (viewProject && project !== viewProject) continue;
+    if (ws._ccvViewInstance && frame.instanceKey !== ws._ccvViewInstance) continue;
+    try {
+      ws.send(JSON.stringify({ ...frame, waitingMs: now - frame.startedAt, ts: now }));
+    } catch (err) { reportSwallowed('server.slow-upstream-replay', err); }
+  }
+}
+
 setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model } = {}) => {
   try {
-    if (!isSdkMode || !_sdkListSessions || !terminalWss) return;
+    if (!isSdkMode || !_sdkListSessions) return;
     // Match the session by the request's real cwd (and instance when present),
     // not the process-wide bound project — concurrent workspaces would otherwise
     // cross-attribute the advisory. No live session → the slow request is not
@@ -531,6 +550,7 @@ setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model }
       ? (sessions.find(s => s.instanceKey === instanceKey) || null)
       : (sessions.find(s => cwd && s.cwd === cwd) || null);
     if (type === 'resolved') {
+      if (requestId) _pendingSlowUpstreams.delete(requestId);
       // The waited-on request settled — tell the UI to dismiss the toast. A
       // request can settle AFTER its session closed (review P2-2): the session
       // lookup then misses and the dismiss would be silently dropped, leaving a
@@ -545,10 +565,13 @@ setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model }
       return;
     }
     if (!sess) return;
-    broadcastWsMessage({
+    const frame = {
       type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
-      instanceKey: sess.instanceKey || null, requestId: requestId || null, waitingMs, model: model || null, ts: Date.now(),
-    });
+      instanceKey: sess.instanceKey || null, requestId: requestId || null, waitingMs, model: model || null,
+      startedAt: Date.now() - Math.max(0, Number(waitingMs) || 0), ts: Date.now(),
+    };
+    if (frame.requestId) _pendingSlowUpstreams.set(frame.requestId, frame);
+    broadcastWsMessage(frame);
   } catch (err) { reportSwallowed('server.slow-upstream-listener', err); }
 });
 
@@ -2253,6 +2276,12 @@ async function setupTerminalWebSocket(httpServer) {
     });
 
     wss.on('connection', (ws) => {
+      // Per-connection app-level ping (extracted for tests — see attachTerminalWsPing):
+      // send-only on purpose; a dead connection is skipped (readyState gate) and the
+      // client-side watchdog owns close+reconnect, keeping the historical broadcast
+      // semantics (skip non-OPEN, heal on reconnect) unchanged.
+      attachTerminalWsPing(ws);
+
       // 发送当前 PTY 状态
       const state = getPtyState();
       ws.send(JSON.stringify({ type: 'state', ...state }));
@@ -2297,8 +2326,9 @@ async function setupTerminalWebSocket(httpServer) {
           ws.send(JSON.stringify({
             type: 'perm-hook-pending', id, toolName: entry.toolName, input: entry.input,
             autoApproveAt: entry.autoCancelled ? null : (entry.auto?.autoApproveAt ?? null),
-            // 0 = server says OFF (fork-off / npm publish floor): never let a reconnecting
-            // client fall back to its local pref and re-arm a countdown the server disabled.
+            // 0 = server says OFF (fork-off / npm publish floor — the floor applies at
+            // every tier except full auto-approve -2): never let a reconnecting client
+            // fall back to its local pref and re-arm a countdown the server disabled.
             autoApproveSeconds: entry.auto?.seconds ?? 0,
             autoCancelled: entry.autoCancelled === true,
           }));
@@ -2370,6 +2400,8 @@ async function setupTerminalWebSocket(httpServer) {
       // 与上面 perm-hook 同理,但快照来自 sdk-manager(_pendingApprovals)。
       // ask 类带 startedAt/timeoutMs —— 与 ask-hook replay 同款剩余时间重算。
       if (isSdkMode) replaySdkPendingApprovals();
+
+      _replaySlowUpstreams(ws);
 
       // Replay sdk-init snapshot so a refreshed/reconnected page restores slash-command
       // surface and model info without waiting for the next session.
@@ -2615,6 +2647,8 @@ async function setupTerminalWebSocket(httpServer) {
               // The replay helpers already filter by the just-stamped view project+instance,
               // and the frontend dedupes by id, so a full replay never double-opens a modal.)
               replaySdkPendingApprovals();
+              // Restore requests that were still waiting when this view disconnected.
+              _replaySlowUpstreams(ws);
               // Re-announce the just-viewed workspace's turn state so the spinner / Stop
               // button reflects it immediately (otherwise a long-running turn shows idle
               // until the next state change or heartbeat).
@@ -3972,6 +4006,16 @@ async function _doStop() {
   }
   // Tear down terminal WSS so stop/start cycles never leak a second listener on the same HTTP server.
   if (terminalWss) {
+    // A noServer WebSocketServer's close() does NOT terminate existing upgraded
+    // connections — it only stops accepting new ones. Left alive, a zombie
+    // connection keeps receiving the 25s ping, so the client watchdog never
+    // judges it half-open and never reconnects to the fresh server (the exact
+    // freeze this keepalive was added to fix). Terminate first (mirror
+    // streamMux.close()), which fires each socket's close event and clears its
+    // ping interval.
+    for (const c of terminalWss.clients) {
+      try { c.terminate(); } catch { /* already gone */ }
+    }
     terminalWss.close();
     terminalWss = null;
   }

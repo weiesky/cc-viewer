@@ -212,6 +212,6 @@ describe('GET /api/target-files', { concurrency: false }, () => {
   it('registers the target and archive read routes', () => {
     assert.equal(routes.filter(route => route.path === '/api/target-files').length, 1);
     assert.equal(routes.find(route => route.path === '/api/target-files').method, 'GET');
-    assert.equal(routes.length, 9);
+    assert.equal(routes.length, 10);
   });
 });

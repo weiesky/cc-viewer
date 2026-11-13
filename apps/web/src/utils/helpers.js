@@ -389,9 +389,9 @@ export function getModelInfo(modelName) {
   return info;
 }
 
-// 自动审批三态语义与档位的唯一事实源迁至 ./autoApproveOptions.js（node 可直接测试，
+// 自动审批档位语义与档位的唯一事实源迁至 ./autoApproveOptions.js（node 可直接测试，
 // 无 Vite 专属依赖）；这里 re-export 维持既有 import 路径不变。
-export { AUTO_APPROVE_INSTANT } from './autoApproveOptions.js';
+export { AUTO_APPROVE_INSTANT, AUTO_APPROVE_FULL, isInstantAutoApproveValue } from './autoApproveOptions.js';
 
 export function getSvgAvatar(type) {
   if (type === 'user') {

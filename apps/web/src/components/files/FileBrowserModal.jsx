@@ -270,7 +270,7 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
 
 // Grid thumbnails: previewable images supported by /api/file-raw. icns is
 // excluded because browsers cannot decode it; SVG stays in passive <img> context.
-const THUMBNAIL_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'ico', 'webp', 'avif']);
+const THUMBNAIL_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'bmp', 'ico', 'webp', 'avif', 'apng', 'jfif']);
 
 function isThumbnailFile(name) {
   const ext = (name || '').split('.').pop().toLowerCase();

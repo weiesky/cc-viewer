@@ -418,7 +418,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
             <div className={styles.imagePreviewStrip}>
               {pendingImages.map((img, i) => {
                 const fileName = img.path.split('/').pop() || img.path;
-                const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|icns)$/i.test(fileName);
+                const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|apng|jfif)$/i.test(fileName);
                 const src = apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(img.path)}`, { project: viewProject }));
                 return isImage ? (
                   <div key={img.path} className={styles.imagePreviewItem}>
@@ -557,6 +557,8 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       onToggle={setQuickExpanded}
                       onHoverEnter={qmHover.enter}
                       onHoverLeave={qmHover.leave}
+                      // 选「完全免审批」时整个菜单关闭，避免确认弹窗出现时菜单仍开着。
+                      onRequestClose={closePlusMenu}
                       middle={
                         <ResumeSessionsRow
                           expanded={quickExpanded === 'history'}

@@ -222,9 +222,28 @@ function panelDetail(snapshot) {
   };
 }
 
-function snapshotIsStale(prev, snapshot) {
+// A recorded baseline ts this far AHEAD of the wall clock is corrupt (host clock
+// stepped backward, a frame relayed from another machine with a fast clock, etc.).
+// Accepting newer frames again is the only self-heal: the strict monotone rule below
+// would otherwise reject every subsequent WS frame AND HTTP snapshot until a page
+// reload (lastTs only resets on scope change/remount), freezing the blood bar.
+const FUTURE_TS_TOLERANCE_MS = 2 * 60 * 1000;
+
+// Returns true when the recorded baseline is corrupt-future — the caller must then
+// CLAMP the watermark down to the accepted frame's ts (not Math.max), otherwise the
+// poisoned baseline persists: the guard stays bypassed (any old frame clobbers newer
+// detail) until the clock passes the baseline, then re-freezes for the slack.
+function hasCorruptFutureBaseline(prev, now = Date.now()) {
+  return Math.max(prev.lastTs || 0, prev.detail?.ts || 0) - now > FUTURE_TS_TOLERANCE_MS;
+}
+
+function snapshotIsStale(prev, snapshot, now = Date.now()) {
   const ts = typeof snapshot?.ts === 'number' ? snapshot.ts : 0;
-  return ts < Math.max(prev.lastTs || 0, prev.detail?.ts || 0);
+  const baseline = Math.max(prev.lastTs || 0, prev.detail?.ts || 0);
+  if (ts >= baseline) return false;
+  // Corrupt-future baseline: accept the frame so the panel recovers without a reload.
+  if (baseline - now > FUTURE_TS_TOLERANCE_MS) return false;
+  return true;
 }
 
 /**
@@ -246,7 +265,15 @@ export function nextPanelState(prev, event) {
   if (event.kind === 'ws') {
     const frame = event.frame;
     if (!frame || typeof frame !== 'object' || snapshotIsStale(p, frame)) return p;
-    const lastTs = Math.max(p.lastTs || 0, typeof frame.ts === 'number' ? frame.ts : 0);
+    // A healed corrupt-future baseline is clamped to the frame's ts so the guard
+    // re-engages immediately (keeps rejecting ordinary out-of-order frames). Share one
+    // `now` between the staleness check and the heal probe so they can't disagree at
+    // the tolerance boundary.
+    const now = Date.now();
+    const healed = hasCorruptFutureBaseline(p, now);
+    const lastTs = healed
+      ? (typeof frame.ts === 'number' ? frame.ts : 0)
+      : Math.max(p.lastTs || 0, typeof frame.ts === 'number' ? frame.ts : 0);
     if (!frame.usage) return { detail: null, status: 'inactive', lastTs }; // clear frame
     return { detail: panelDetail(frame), status: 'ready', lastTs };
   }
@@ -256,7 +283,12 @@ export function nextPanelState(prev, event) {
     if (body && body.ok && body.snapshot && body.snapshot.usage) {
       const s = body.snapshot;
       if (snapshotIsStale(p, s)) return p;
-      return { detail: panelDetail(s), status: 'ready', lastTs: Math.max(p.lastTs || 0, typeof s.ts === 'number' ? s.ts : 0) };
+      const now = Date.now();
+      const healed = hasCorruptFutureBaseline(p, now);
+      const lastTs = healed
+        ? (typeof s.ts === 'number' ? s.ts : 0)
+        : Math.max(p.lastTs || 0, typeof s.ts === 'number' ? s.ts : 0);
+      return { detail: panelDetail(s), status: 'ready', lastTs };
     }
     if (body && body.reason === 'session-inactive') {
       if (p.detail && typeof event.startedAt === 'number' && event.startedAt < (p.detail.receivedAt || 0)) return p;

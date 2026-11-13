@@ -81,7 +81,7 @@ ccv --sdk -c             # kontynuuj ostatnią sesję
 ccv --sdk --model sonnet # wybierz model
 ```
 
-Zapytania o uprawnienia (Bash/Edit/Write/WebFetch/…) pojawiają się w przeglądarce z opcjami allow / deny / allow-for-session, a `AskUserQuestion`/prośby planu wyświetlane są jako modale. `npm publish` zawsze wymaga wyraźnego zatwierdzenia — nawet przy `--d`. Wymaga pakietu `@anthropic-ai/claude-agent-sdk` (dołączonego do cc-viewer); jeśli jest niedostępny, używany jest tryb terminala.
+Zapytania o uprawnienia (Bash/Edit/Write/WebFetch/…) pojawiają się w przeglądarce z opcjami allow / deny / allow-for-session, a `AskUserQuestion`/prośby planu wyświetlane są jako modale. Ryzykowne polecenia jak `rm -rf` (usuwa pliki) i `npm publish` są domyślnie blokowane — nawet przy `--d`; tylko jawny poziom uprawnień **Pełna auto-akceptacja** zdejmuje tę blokadę (przeznaczony dla izolowanych kontenerów). Wymaga pakietu `@anthropic-ai/claude-agent-sdk` (dołączonego do cc-viewer); jeśli jest niedostępny, używany jest tryb terminala.
 
 ### Aktualizacja do 1.7.0 (format logów v2)
 

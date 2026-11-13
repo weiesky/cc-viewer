@@ -7,7 +7,7 @@ import JSZip from 'jszip';
 const { listArchive, readEntry, readEntryText, buildTree, resetBudget } = await import('../src/vendor/archive/index.js');
 const { parseZip } = await import('../src/vendor/archive/zip.js');
 const { parseTar } = await import('../src/vendor/archive/tar.js');
-const { classifyContent, decodeTextBytes, normalizeEntryPath } = await import('../src/vendor/archive/util.js');
+const { classifyContent, decodeTextBytes, decodeFileName, normalizeEntryPath } = await import('../src/vendor/archive/util.js');
 const { detect } = await import('../src/vendor/archive/detect.js');
 const { getArchivePreviewKind, flattenArchiveTree, archiveEntryStatus, isArchiveEntrySelected, shouldShowArchiveNotices } = await import('../src/utils/archivePreview.js');
 
@@ -264,5 +264,41 @@ describe('hostile metadata, decoding and tree bounds', () => {
     assert.equal(result.encoding, 'gbk');
     assert.ok(!result.text.includes(String.fromCodePoint(0xfffd)));
     assert.ok(result.text.startsWith('中文内容'));
+  });
+
+  // Regression: decodeLegacyText referenced an out-of-scope `truncated` identifier,
+  // so any input that was neither valid UTF-8 nor valid GBK threw ReferenceError.
+  it('falls back to Latin-1 for non-UTF-8 non-GBK bytes instead of throwing', () => {
+    // 0xe9 = 'é' in Latin-1, an invalid standalone UTF-8/GBK byte here.
+    const latin1Bytes = new Uint8Array([0x63, 0x61, 0x66, 0xe9]); // "café"
+    const decoded = decodeTextBytes(latin1Bytes);
+    assert.equal(decoded.encoding, 'latin1');
+    assert.equal(decoded.text, 'café');
+    const named = decodeFileName(latin1Bytes);
+    assert.equal(named.encoding, 'latin1');
+    assert.equal(named.name, 'café');
+  });
+
+  it('trims a UTF-8 multi-byte character split at the byte cap instead of misreading as GBK', () => {
+    // A CJK UTF-8 subtitle cut at an arbitrary byte: the strict decode fails on the
+    // partial tail, and without the trim the non-fatal GBK retry would mojibake it.
+    const full = bytes('中文字幕内容'.repeat(1000));
+    const cutPoint = full.length - (full.length % 3) - 1; // land mid-character
+    const cut = full.subarray(0, cutPoint);
+    const result = decodeTextBytes(cut, { maxBytes: cut.length, truncated: true });
+    assert.equal(result.encoding, 'utf-8');
+    assert.ok(result.text.startsWith('中文字幕内容'));
+    assert.ok(!result.text.includes('涓')); // the GBK-mojibake tell
+  });
+
+  it('does not mislabel Latin-1 bytes as GBK when truncated', () => {
+    // True single-byte Latin-1 ("café résumé"): the lossy GBK retry can decode these
+    // to CJK, but interior U+FFFDs betray that it is not a truncation artifact.
+    const lat1 = Uint8Array.from([0x63, 0x61, 0x66, 0xe9, 0x20, 0x72, 0xe9, 0x73, 0x75, 0x6d, 0xe9]);
+    assert.equal(decodeTextBytes(lat1, { truncated: true }).encoding, 'latin1');
+    assert.equal(decodeTextBytes(lat1, { truncated: false }).encoding, 'latin1');
+    // Clean GBK still wins under the truncated flag.
+    const gbk = Uint8Array.from([0xd6, 0xd0, 0xce, 0xc4]); // 中文
+    assert.equal(decodeTextBytes(gbk, { truncated: true }).encoding, 'gbk');
   });
 });

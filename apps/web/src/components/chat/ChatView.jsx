@@ -9,7 +9,7 @@ import ImageLightbox from '../common/ImageLightbox';
 import GitChanges from '../git/GitChanges';
 import GitDiffView from '../git/GitDiffView';
 import ToolApprovalPanel from '../approval/ToolApprovalPanel';
-import { getModelInfo, getEffectiveModel, resolveProducerModelInfo, AUTO_APPROVE_INSTANT } from '../../utils/helpers';
+import { getModelInfo, getEffectiveModel, resolveProducerModelInfo, AUTO_APPROVE_INSTANT, isInstantAutoApproveValue } from '../../utils/helpers';
 import { formatPromptNavTime, formatHms } from '../../utils/formatters';
 import { buildPromptNavItems } from '../../utils/promptNav';
 import { getTeammateAvatar } from '../../utils/teammateAvatars';
@@ -28,7 +28,7 @@ import { resolvePlanAutoApproveTarget, sdkPlanMatchesView } from '../../utils/pl
 import { startDeadlineCountdown } from '../../utils/deadlineCountdown';
 import { reportSwallowed } from '../../utils/errorReport';
 import { isImageFile } from '../../utils/commandValidator';
-import { isDownloadOnlyPreview, getPreviewKind } from '../../utils/previewKind.js';
+import { opensInFileViewer, getPreviewKind } from '../../utils/previewKind.js';
 import { loadExpandedPaths, saveExpandedPaths } from '../../utils/fileExpandedPathsStorage';
 import { createEmptyToolState, appendToolResultMap, cachedBuildToolResultMap, getToolResultCache, setToolResultCache, buildSubAgentResultMap, createEmptyGlobalIndexState, appendToGlobalToolResultIndex } from '../../utils/toolResultBuilder';
 import { refreshCachedItemProp } from '../../utils/refreshCachedItemProp';
@@ -465,6 +465,9 @@ class ChatView extends React.Component {
     // WS 断开时被清掉的 pending 快照（仅留 id/auto 字段）——open 时据此补发用户已点过
     // 但断线没能送达的取消（否则服务端兜底计时器仍会在到点自动批准）。
     this._prunedPendings = { plan: null, perm: null };
+    // Queued-but-unsent composer text parked by a transient ws close; restored on
+    // reopen. Shape {queued, optimistic} (mirrors the two state keys), null when empty.
+    this._parkedQueuedMessages = null;
     // Plan V2 文件型 plan 的异步内容缓存（input.planFilePath → 文件正文）
     this._planFileFetches = new Set();
     this._streamSpinnerUrl = props.isStreaming
@@ -590,7 +593,7 @@ class ChatView extends React.Component {
     this._ptyPrompt = new PtyPromptController({
       getState: () => this.state,
       setState: (update, cb) => this.setState(update, cb),
-      isInstantAutoApprove: () => this.props.autoApproveSeconds === AUTO_APPROVE_INSTANT,
+      isInstantAutoApprove: () => isInstantAutoApproveValue(this.props.autoApproveSeconds),
       isAskSubmitting: () => this._askFlow._askSubmitting,
       permissionAutoAllow: (perm) => this._permission.autoAllow(perm),
       scrollToBottom: () => this.scrollToBottom(),
@@ -1301,6 +1304,8 @@ class ChatView extends React.Component {
       || prevProps.attachedSid !== this.props.attachedSid) {
       this.setState({ optimisticQueueMessages: [] });
       this._clearOptimisticQueueSweepTimer();
+      // A parked transient-close queue belongs to the old view's conversation.
+      this._parkedQueuedMessages = null;
       // Composer attachments belong to the old view's conversation. Reuse the
       // viewSwitched predicate from above so a null→real async instance init
       // does not count as a switch. attachedSid changes are user-driven or a
@@ -1382,6 +1387,8 @@ class ChatView extends React.Component {
               this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: prevProps.viewProject || prevProps.projectName, instanceKey: prevProps.viewInstance || null }));
             }
           }
+          // The parked transient-close queue belongs to the old session too.
+          this._parkedQueuedMessages = null;
         }
         this._prevSessions = this.props.mainAgentSessions;
       }
@@ -3094,10 +3101,12 @@ class ChatView extends React.Component {
           // 服务器 stamp 的档位（含 0=off / npm publish 硬闸 / fork 语义）优先于本地
           // 全局偏好——loopback 客户端的 /api/preferences 不做 fork 解析，本地 prop 可能与
           // 服务器为该请求实际计算的档位不一致；以服务器为准才能守住 publish 硬闸与 fork-off。
+          // -1/-2 两个即时档都在这里直放；publish 只有在服务端判定为 -2 时才会带着
+          // 即时档 stamp 到达（其余档位下 stamp 为 0，走正常面板）。
           const effAutoSeconds = (msg.autoApproveSeconds != null) ? msg.autoApproveSeconds : this.props.autoApproveSeconds;
           const instantAllowed = msg.autoCancelled !== true
             && !this._permAutoCancelled.has(msg.id)
-            && effAutoSeconds === AUTO_APPROVE_INSTANT
+            && isInstantAutoApproveValue(effAutoSeconds)
             && this._permission.autoAllow({ id: msg.id });
           if (!instantAllowed) {
             // Queue support: if a permission panel is already showing, queue the new one
@@ -3466,6 +3475,10 @@ class ChatView extends React.Component {
 
   _onTerminalWsState = (state) => {
     if (state === 'open') {
+      // open precedes the server's replay messages. Reconcile from its pending
+      // request snapshots instead of retaining requests resolved during a silent
+      // provider disconnect (for example, entering a local-log view).
+      this._clearSlowUpstreamToast();
       this._askFlow.onWsOpen();
       // 断线期间没发出去的取消在重连时补发（服务端计时器需被销毁）。
       this._resendPendingAutoCancels();
@@ -3473,9 +3486,45 @@ class ChatView extends React.Component {
       // 放弃且无重试（偶发"不自动审批"的来源之一）。服务端的 autoApproveAt 会随
       // 重放帧到达并覆盖；这里用 state 里已有的字段武装一次兜底。
       this._rearmPlanAutoApproveOnOpen();
+      // Recover what the close below only PARKED: the user's typed-but-unsent queue
+      // survives a transient reconnect (half-open watchdog, sleep/wake); a terminal
+      // teardown (session-ended / stop) still clears it via the flows that never
+      // reopen the socket. Approval/permission modals stay cleared on close — the
+      // server re-asks after its own timeout, and resurfacing a live countdown for a
+      // dead modal would be more dangerous than re-asking.
+      if (this._parkedQueuedMessages) {
+        const parked = this._parkedQueuedMessages;
+        this._parkedQueuedMessages = null;
+        // Dedup by id: a live queue-state frame replayed during the gap already
+        // re-seeded the state, so a parked entry the server still holds must not be
+        // re-added. The dominant safety net, though, is the server-authoritative
+        // queue-state snapshot that follows and replaces the list wholesale — this
+        // restore only bridges the render flicker before that frame lands.
+        this.setState((prev) => {
+          const restoredQueued = parked.queued.filter(
+            (m) => !prev.queuedMessages.some((live) => live.id === m.id),
+          );
+          const restoredOptimistic = parked.optimistic.filter(
+            (m) => !prev.optimisticQueueMessages.some((live) => live.id === m.id),
+          );
+          if (!restoredQueued.length && !restoredOptimistic.length) return null;
+          return {
+            queuedMessages: [...prev.queuedMessages, ...restoredQueued],
+            optimisticQueueMessages: [...prev.optimisticQueueMessages, ...restoredOptimistic],
+          };
+        }, () => {
+          // Re-arm the expiry sweep: without it a restored "sending" bubble whose
+          // queue-state echo never arrives would linger forever (the sweep's only
+          // other arm point is the send path, which does not run on reconnect).
+          if (this.state.optimisticQueueMessages.length > 0) this._scheduleOptimisticQueueSweep();
+        });
+      }
       return;
     }
     if (state !== 'close') return;
+    // A disconnected view cannot receive the request's resolved frame. Clear both
+    // the toast and its tick source; reconnect replays requests that are still waiting.
+    this._clearSlowUpstreamToast();
     if (this.state.pendingPtyPlan?.id) {
       this._resolvedPlanIds.add(this.state.pendingPtyPlan.id);
     }
@@ -3503,6 +3552,17 @@ class ChatView extends React.Component {
         plan: plan?.id ? { id: plan.id, cwd: plan.cwd || null, project: plan.project || null, instanceKey: plan.instanceKey || null } : null,
         perm: perm?.id && perm.source !== 'pty' ? { id: perm.id } : null,
       };
+      // Park (not drop) the typed-but-unsent queue: a transient watchdog reconnect
+      // restores it on 'open'. Deliberately NOT parked: pendingPermission /
+      // pendingPlanApproval / pendingAsk / askQueue — the server holds an independent
+      // timeout for those and re-asks, while a resurrected modal would carry a stale
+      // client-side countdown (see _prunedPendings + _resendPendingAutoCancels).
+      if (this.state.queuedMessages?.length || this.state.optimisticQueueMessages?.length) {
+        this._parkedQueuedMessages = {
+          queued: this.state.queuedMessages,
+          optimistic: this.state.optimisticQueueMessages,
+        };
+      }
       this.setState({ pendingPermission: null, permissionQueue: [], pendingPlanApproval: null, pendingAsk: null, askQueue: [], askMetaMap: {}, pendingPtyPlan: null, queuedMessages: [], optimisticQueueMessages: [] });
       this._clearOptimisticQueueSweepTimer();
     }
@@ -4186,6 +4246,7 @@ class ChatView extends React.Component {
     // SDK 模式模型不在 PTY 里，ESC 无效 → 发 sdk-interrupt 让服务端 close 当前 query（保留会话）；
     // CLI/PTY 模式 → ESC 打断 Claude TUI 当前生成。
     if (this.props.sdkMode) {
+      this._clearSlowUpstreamToast();
       this._inputWs.send(JSON.stringify({ type: 'sdk-interrupt', project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
     } else {
       // CLI/PTY 模式：ESC 打断 Claude TUI 当前生成。
@@ -5445,7 +5506,7 @@ class ChatView extends React.Component {
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
                 if (tryOpenWithSystem(resolvedPath, 'git-changes', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
-                if (isDownloadOnlyPreview(getPreviewKind(resolvedPath))) {
+                if (opensInFileViewer(getPreviewKind(resolvedPath))) {
                   this.setState({ currentGitDiff: null, currentFile: resolvedPath });
                   return;
                 }

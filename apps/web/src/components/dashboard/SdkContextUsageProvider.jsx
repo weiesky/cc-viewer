@@ -7,6 +7,11 @@ import {
 } from '../../utils/contextUsageView';
 import { projectKeyFromCwd } from '../../utils/projectKeyFromCwd';
 
+// Hard ceiling for one HTTP pull — a blackholed/hung GET must not hold the
+// requestRef gate forever (every later refresh would only queue, and the panel
+// would freeze until a page reload).
+const FETCH_DEADLINE_MS = 15000;
+
 const SdkContextUsageContext = createContext(SDK_CONTEXT_DISABLED);
 
 export function useSdkContextUsage() {
@@ -72,9 +77,19 @@ export function SdkContextUsageProvider({
       return requestRef.current.promise;
     }
     const controller = new AbortController();
-    const request = { controller, startedAt: Date.now(), scope, promise: null };
+    const request = { controller, startedAt: Date.now(), scope, promise: null, timedOut: false };
     requestRef.current = request;
     setRefreshing(true);
+    // Hard deadline: a blackholed/hung GET (browser or proxy stalls the response)
+    // would otherwise hold the requestRef gate forever — every later refresh only
+    // queues, and the panel freezes until a page reload. The deadline abort is
+    // reported (diagnosable) and the finally below releases the gate, so the next
+    // turn-end frame / WS open retries cleanly.
+    const deadline = setTimeout(() => {
+      if (requestRef.current !== request) return;
+      request.timedOut = true;
+      controller.abort(new Error('sdk-context-usage timeout'));
+    }, FETCH_DEADLINE_MS);
     request.promise = (async () => {
       try {
         const res = await fetch(apiUrl(sdkContextPath(scope.viewProject, scope.viewInstance)), { signal: controller.signal });
@@ -99,8 +114,9 @@ export function SdkContextUsageProvider({
           resetClearHold();
         } else if (body?.reason === 'session-inactive' && !scope.explicitInstance && scope.viewInstance) {
           // A learned instance can die while the project remains live (relaunch/restart).
-          // Drop only the inferred identity and re-resolve by project; an explicit pin never
-          // falls through to another instance.
+          // Drop only the inferred identity and re-resolve by project. Asymmetry with
+          // the WS branch is intentional: a session-inactive RESPONSE says nothing about
+          // a replacement, while a stamped FRAME proves one exists (see the WS handler).
           confirmedInstanceRef.current = null;
           scopeRef.current.viewInstance = null;
           queuedRefreshRef.current = { retry: true, scope: { ...scopeRef.current } };
@@ -114,10 +130,11 @@ export function SdkContextUsageProvider({
           refresh({ retry: true });
         }
       } catch (err) {
-        if (requestRef.current !== request || controller.signal.aborted) return;
+        if (requestRef.current !== request || (controller.signal.aborted && !request.timedOut)) return;
         reportSwallowed('sdk-context-usage.fetch', err);
         dispatch({ kind: 'http-error' });
       } finally {
+        clearTimeout(deadline);
         if (requestRef.current === request) {
           requestRef.current = null;
           setRefreshing(false);

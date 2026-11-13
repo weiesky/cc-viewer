@@ -3,19 +3,31 @@
 //   2. ChatInputBar 对话输入框四芒星快捷菜单（隐藏终端时,同款两行）
 //   3. AppHeader 设置抽屉的权限/Plan 两个 Select
 //   4. Mobile 设置面板的权限/Plan 两个 Select
-// 三态语义(持久化于 preferences.autoApproveSeconds / approvalModal.planAutoApproveSeconds):
+// 四态语义(持久化于 preferences.autoApproveSeconds / approvalModal.planAutoApproveSeconds):
 //   0   = 关闭(手动审批)
 //   > 0 = 倒计时该秒数后自动批准
 //   -1  = 免审批(AUTO_APPROVE_INSTANT):请求到达即放行,从源头绕过审批面板
+//   -2  = 完全免审批(AUTO_APPROVE_FULL):同 -1 即时放行,且额外解除 npm publish 硬闸
+//         (仅权限档;Plan 不提供该档,服务端对手改的 plan -2 按关闭处理)
 // 本模块不依赖 helpers.js(它带 .svg?raw 等 Vite 专属 import),保持 node --test 可直接引用。
 export const AUTO_APPROVE_INSTANT = -1;
+export const AUTO_APPROVE_FULL = -2;
 
-export const PERM_AUTO_APPROVE_OPTIONS = [0, 3, 5, 10, AUTO_APPROVE_INSTANT];
+export const PERM_AUTO_APPROVE_OPTIONS = [0, 3, 5, 10, AUTO_APPROVE_INSTANT, AUTO_APPROVE_FULL];
 export const PLAN_AUTO_APPROVE_OPTIONS = [0, 10, 30, 60, AUTO_APPROVE_INSTANT];
+
+// 两个即时档(-1/-2)都满足"到达即放行";倒计时/面板/屏幕检测等只关心是否即时的消费点
+// 一律走这个判断,不要各自再写 === AUTO_APPROVE_INSTANT。
+export function isInstantAutoApproveValue(v) {
+  return v === AUTO_APPROVE_INSTANT || v === AUTO_APPROVE_FULL;
+}
 
 // 单个档位值 -> 显示文案;t 由调用方注入,避免本模块依赖前端 i18n。
 // 档位之外的历史值(如 Plan 旧 3/5)同样落在 `${v}s` 分支正常显示。
+// 注:plan 档位数组不含 -2,但本函数被 perm/plan 共用 —— 手改 planAutoApproveSeconds=-2
+// 会显示「完全免审批」文案而服务端实际按关闭处理,属于可接受的脏数据展示。
 export function autoApproveValueLabel(v, t) {
+  if (v === AUTO_APPROVE_FULL) return t('ui.permission.autoApprove.fullInstant');
   if (v === AUTO_APPROVE_INSTANT) return t('ui.permission.autoApprove.instant');
   if (!v) return t('ui.permission.autoApprove.off');
   return `${v}s`;

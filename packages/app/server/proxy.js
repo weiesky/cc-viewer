@@ -333,7 +333,11 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   // maxRetryDurationMs. res 'close' before the response is finished means the
   // client is gone → abort every in-flight/queued attempt via the engine.
   const clientAbort = new AbortController();
+  let settleSlowUpstream = () => {};
   res.on('close', () => {
+    // close also follows an error response ended by the outer catch. Always settle
+    // the advisory; only an unfinished response needs to abort upstream work.
+    settleSlowUpstream();
     if (!res.writableEnded) {
       try { clientAbort.abort(); } catch { /* best effort */ }
     }
@@ -375,7 +379,16 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     if (slowTimer.unref) slowTimer.unref();
   }
   const clearSlowTimer = () => { if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; } };
-  clientAbort.signal.addEventListener('abort', clearSlowTimer, { once: true });
+  let slowResolved = false;
+  settleSlowUpstream = () => {
+    if (slowResolved) return;
+    slowResolved = true;
+    clearSlowTimer();
+    if (slowFired) {
+      __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
+    }
+  };
+  clientAbort.signal.addEventListener('abort', settleSlowUpstream, { once: true });
   // The timer measures time-to-HEADERS (fetch resolves at headers). Keep it armed
   // until the first BODY chunk so a headers-fast-then-stalled stream still counts
   // as slow (review P1-2). markFirstByte is the real settle point: it disarms the
@@ -385,10 +398,7 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   const markFirstByte = () => {
     if (slowFirstByteSeen) return;
     slowFirstByteSeen = true;
-    clearSlowTimer();
-    if (slowFired) {
-      __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
-    }
+    settleSlowUpstream();
   };
 
   // 执行带重试的请求
@@ -414,10 +424,7 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     // (markFirstByte). Clear+resolve only when no usable response came back
     // (network error / aborted / no response object) so the advisory never leaks.
     if (slowFirstByteSeen || !result || !result.response) {
-      clearSlowTimer();
-      if (slowFired) {
-        __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
-      }
+      settleSlowUpstream();
     }
   }
 

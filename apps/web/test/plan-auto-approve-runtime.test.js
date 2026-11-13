@@ -421,6 +421,29 @@ describe('perm-hook-pending instant interception honors the server-stamped level
     assert.equal(view.state.pendingPermission, null);
   });
 
+  it('server stamps -2 (完全免审批) → instant-allowed even if local pref is 3', () => {
+    const view = makeView(0);
+    view.props = { ...view.props, autoApproveSeconds: 3 };
+    receivePerm(view, { autoApproveSeconds: -2 });
+    assert.deepEqual(sent, [{ type: 'perm-hook-answer', id: 'perm-1', decision: 'allow' }]);
+    assert.equal(view.state.pendingPermission, null);
+  });
+
+  it('legacy frame without the stamp falls back to the local pref (-2 → instant)', () => {
+    const view = makeView(0);
+    view.props = { ...view.props, autoApproveSeconds: -2 };
+    receivePerm(view, {}); // 无 autoApproveSeconds 字段（老服务器）
+    assert.deepEqual(sent, [{ type: 'perm-hook-answer', id: 'perm-1', decision: 'allow' }]);
+  });
+
+  it('server stamps 0 (publish gate) + client pref -2 → NOT instant-allowed', () => {
+    const view = makeView(0);
+    view.props = { ...view.props, autoApproveSeconds: -2 }; // 客户端全局完全免审批
+    receivePerm(view, { autoApproveSeconds: 0 });            // 服务器仍说关（例如 stamp 生成时档位不是 -2）
+    assert.equal(sent.some((m) => m.type === 'perm-hook-answer'), false, 'server-stamped off must win over the local -2');
+    assert.equal(view.state.pendingPermission?.id, 'perm-1', 'request stays pending for a manual decision');
+  });
+
   it('legacy frame without the stamp falls back to the local pref (-1 → instant)', () => {
     const view = makeView(0);
     view.props = { ...view.props, autoApproveSeconds: -1 };

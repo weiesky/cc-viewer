@@ -41,11 +41,17 @@ describe('effectiveAutoApproveSeconds', () => {
     assert.equal(auto.effectiveAutoApproveSeconds('perm', { autoApproveSeconds: -1 }), -1);
   });
 
-  it('非法值 = 关闭（"abc" / -2 / NaN）', () => {
+  it('非法值 = 关闭（"abc" / -3 / NaN）', () => {
     assert.equal(auto.effectiveAutoApproveSeconds('perm', { autoApproveSeconds: 'abc' }), null);
-    assert.equal(auto.effectiveAutoApproveSeconds('perm', { autoApproveSeconds: -2 }), null);
+    assert.equal(auto.effectiveAutoApproveSeconds('perm', { autoApproveSeconds: -3 }), null);
     assert.equal(auto.effectiveAutoApproveSeconds('perm', { autoApproveSeconds: NaN }), null);
     assert.equal(auto.effectiveAutoApproveSeconds('plan', { approvalModal: { planAutoApproveSeconds: 'x' } }), null);
+  });
+
+  it('-2 = 完全免审批：仅 perm 生效；plan 手改 -2 按关闭处理', () => {
+    assert.equal(auto.effectiveAutoApproveSeconds('perm', { autoApproveSeconds: -2 }), -2);
+    assert.equal(auto.effectiveAutoApproveSeconds('perm', { autoApproveSeconds: '-2' }), -2); // 字符串脏数据归一
+    assert.equal(auto.effectiveAutoApproveSeconds('plan', { approvalModal: { planAutoApproveSeconds: -2 } }), null);
   });
 
   it('超过 MAX_AUTO_APPROVE_SECONDS(300) 的值 = 关闭（不得超过 5min 审批硬超时）', () => {
@@ -72,6 +78,11 @@ describe('computeAutoApprove', () => {
   it('-1 即时档：autoApproveAt = now', () => {
     const r = auto.computeAutoApprove('perm', '/p', { now: 1000, readPrefs: readPrefs({ autoApproveSeconds: -1 }) });
     assert.deepEqual(r, { enabled: true, instant: true, seconds: -1, autoApproveAt: 1000 });
+  });
+
+  it('-2 完全免审批档：同为即时（instant, autoApproveAt = now）', () => {
+    const r = auto.computeAutoApprove('perm', '/p', { now: 1000, readPrefs: readPrefs({ autoApproveSeconds: -2 }) });
+    assert.deepEqual(r, { enabled: true, instant: true, seconds: -2, autoApproveAt: 1000 });
   });
 
   it('项目 fork 覆盖全局；无 fork 键回退全局', () => {
@@ -111,6 +122,25 @@ describe('computeAutoApprove', () => {
       readPrefs: () => { throw new Error('boom'); },
     });
     assert.deepEqual(r, { enabled: false });
+  });
+});
+
+describe('isAutoApproveEnabledValue', () => {
+  it('两个即时档与正数倒计时 = 已开启', () => {
+    assert.equal(auto.isAutoApproveEnabledValue(-1), true);
+    assert.equal(auto.isAutoApproveEnabledValue(-2), true);
+    assert.equal(auto.isAutoApproveEnabledValue(3), true);
+    assert.equal(auto.isAutoApproveEnabledValue('5'), true);   // 字符串脏数据归一
+    assert.equal(auto.isAutoApproveEnabledValue('-2'), true);
+  });
+
+  it('关闭/非法值 = 未开启', () => {
+    assert.equal(auto.isAutoApproveEnabledValue(0), false);
+    assert.equal(auto.isAutoApproveEnabledValue(null), false);
+    assert.equal(auto.isAutoApproveEnabledValue(undefined), false);
+    assert.equal(auto.isAutoApproveEnabledValue('abc'), false);
+    assert.equal(auto.isAutoApproveEnabledValue(NaN), false);
+    assert.equal(auto.isAutoApproveEnabledValue(-3), false);
   });
 });
 

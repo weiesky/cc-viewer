@@ -141,7 +141,7 @@ export default function ArchivePreview({ filePath, displayPath, onClose, project
       setDetail({ status: 'error', message: t('ui.archive.error.ENCRYPTED') });
       return undefined;
     }
-    const imageCandidate = /\.(png|jpe?g|gif|bmp|webp)$/i.test(selected.path);
+    const imageCandidate = /\.(png|jpe?g|gif|bmp|webp|apng|jfif)$/i.test(selected.path);
     const task = imageCandidate
       ? readEntry(data, selected, { maxEntryBytes: ARCHIVE_IMAGE_MAX_BYTES })
       : readEntryText(data, selected, { textMaxBytes: ARCHIVE_TEXT_MAX_BYTES });

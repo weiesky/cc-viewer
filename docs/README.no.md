@@ -81,7 +81,7 @@ ccv --sdk -c             # fortsett den siste økten
 ccv --sdk --model sonnet # velg en modell
 ```
 
-Godkjenninger (Bash/Edit/Write/WebFetch/…) dukker opp i nettleseren med allow / deny / allow-for-session, og `AskUserQuestion`/plan-forespørsler vises som modaler. `npm publish` krever alltid en eksplisitt godkjenning — selv med `--d`. Krever pakken `@anthropic-ai/claude-agent-sdk` (bundlet med cc-viewer); faller tilbake til terminalmodus hvis den ikke er tilgjengelig.
+Godkjenninger (Bash/Edit/Write/WebFetch/…) dukker opp i nettleseren med allow / deny / allow-for-session, og `AskUserQuestion`/plan-forespørsler vises som modaler. Høyrisikokommandoer som `rm -rf` (sletter filer) og `npm publish` er sperret som standard — selv med `--d`; kun det eksplisitte tillatelsesnivået **Full auto-godkjenning** opphever denne sperren (ment for isolerte containere). Krever pakken `@anthropic-ai/claude-agent-sdk` (bundlet med cc-viewer); faller tilbake til terminalmodus hvis den ikke er tilgjengelig.
 
 ### Oppgradering til 1.7.0 (loggformat v2)
 

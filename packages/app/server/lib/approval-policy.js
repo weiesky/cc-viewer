@@ -7,11 +7,14 @@
  *     sdk-manager.js).
  *   - isPublishCommand: the npm-publish hard gate. `npm publish` is the one
  *     irreversible outward-facing command (commits can be rewritten, pushes
- *     force-pushed back) — it must NEVER be auto-allowed, even under
+ *     force-pushed back) — by default it is NEVER auto-allowed, even under
  *     --dangerously-skip-permissions. Both consumers force it through the Web UI
  *     approval modal: perm-bridge.js exempts it from the CCV_BYPASS_PERMISSIONS
  *     auto-allow; sdk-manager.js routes it into the perm approval branch even in
- *     bypassPermissions mode.
+ *     bypassPermissions mode. The single exception is the explicit full
+ *     auto-approve tier (autoApproveSeconds = -2, 完全免审批), which opts into
+ *     letting high-risk commands through for isolated containers (enforced in
+ *     ask-perm.js / sdk-manager.js, not here).
  *   - isOverTrustDir: shared guard against over-broad session directory grants
  *     (used by both the PTY PermissionRequest bridge and the SDK canUseTool path).
  *

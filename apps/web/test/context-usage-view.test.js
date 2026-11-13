@@ -285,6 +285,30 @@ describe('contextUsageView — nextPanelState 面板状态机', () => {
     const staleInactive = nextPanelState({ ...newer, detail: { ...newer.detail, receivedAt: 1000 } }, { kind: 'http', body: { ok: false, reason: 'session-inactive' }, startedAt: 50 });
     assert.equal(staleInactive.detail.ts, 150, 'old inactive response cannot wipe newer WS data');
   });
+
+  it('corrupt-future baseline self-heals: frames resume without a page reload', () => {
+    // A baseline ts far ahead of the wall clock (host clock stepped backward / a frame
+    // relayed from a machine with a fast clock) must NOT reject every subsequent frame
+    // forever — that froze the blood bar until a refresh reset lastTs.
+    const future = Date.now() + 10 * 60 * 1000; // baseline 10 minutes ahead of now
+    const poisoned = nextPanelState({ detail: null, status: 'loading' }, { kind: 'ws', frame: SNAP(future) });
+    assert.equal(poisoned.detail.ts, future);
+    const nowTs = Date.now();
+    const healedWs = nextPanelState(poisoned, { kind: 'ws', frame: SNAP(nowTs) });
+    assert.notEqual(healedWs.detail.ts, future, 'a now-ts WS frame replaces the poisoned baseline');
+    // The watermark must be CLAMPED to the accepted frame, not Math.max'ed — otherwise
+    // the guard stays bypassed while the baseline is >2min ahead, then re-freezes.
+    assert.equal(healedWs.lastTs, nowTs, 'heal re-anchors the watermark');
+    const stillRejected = nextPanelState(healedWs, { kind: 'ws', frame: SNAP(nowTs - 1000) });
+    assert.equal(stillRejected.detail.ts, nowTs, 'after healing, ordinary older frames are rejected again');
+    const healedHttp = nextPanelState(poisoned, { kind: 'http', body: { ok: true, snapshot: SNAP(nowTs) } });
+    assert.equal(healedHttp.status, 'ready', 'a now-ts HTTP snapshot is accepted too');
+    assert.equal(healedHttp.lastTs, nowTs, 'HTTP path clamps the watermark as well');
+    // …but normal in-order replay rejection still works when the baseline is sane.
+    const sane = { detail: { usage: { totalTokens: 10 }, ts: Date.now(), receivedAt: Date.now(), trigger: 'turn-end' }, status: 'ready' };
+    const stale = nextPanelState(sane, { kind: 'ws', frame: SNAP(Date.now() - 60 * 1000) });
+    assert.equal(stale.detail.ts, sane.detail.ts, 'ordinary older frame still rejected');
+  });
 });
 
 describe('contextUsageView — SDK blood-bar merge', () => {

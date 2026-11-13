@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useEffect, useCallback, useState, useLayoutEffect } from 'react';
 import { t } from '../../i18n';
-import { AUTO_APPROVE_INSTANT } from '../../utils/helpers';
+import { isInstantAutoApproveValue } from '../../utils/helpers';
 import { startDeadlineCountdown } from '../../utils/deadlineCountdown';
 import styles from './ToolApprovalPanel.module.css';
 
@@ -61,15 +61,15 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
     // 例外：用户刚把偏好改开/改大（local 与服务器快照不一致且 local 更激进）时以本地为准
     // 重武装——否则"刚点开免审批却没反应"体感像坏了。0=off 永远以服务器为准（硬闸/fork-off）。
     const serverOff = autoApproveSecondsServer === 0;
-    const localWantsMore = autoApproveSeconds === AUTO_APPROVE_INSTANT
+    const localWantsMore = isInstantAutoApproveValue(autoApproveSeconds)
       || (autoApproveSeconds > 0 && (autoApproveSecondsServer == null || autoApproveSeconds < autoApproveSecondsServer || autoApproveSecondsServer === 0));
     const effSeconds = serverOff ? 0
       : (localWantsMore ? autoApproveSeconds
         : (autoApproveSecondsServer != null ? autoApproveSecondsServer : autoApproveSeconds));
-    if (effSeconds === AUTO_APPROVE_INSTANT && !(autoApproveAt > 0)) {
-      // 免审批（兜底路径）：仅用于「面板已挂载后用户切到免审批」——正常的新请求已在 ChatView
-      // 源头被 autoAllow 直放、不会走到这里。归零触发立即批准（复用下方 countdown===0 → onAllow
-      // 路径，不新增调用点）。
+    if (isInstantAutoApproveValue(effSeconds) && !(autoApproveAt > 0)) {
+      // 免审批/完全免审批（兜底路径）：仅用于「面板已挂载后用户切到即时档」——正常的新请求
+      // 已在 ChatView 源头被 autoAllow 直放、不会走到这里。归零触发立即批准（复用下方
+      // countdown===0 → onAllow 路径，不新增调用点）。
       deniedRef.current = false;
       autoFiredRef.current = false;
       setCountdown(0);

@@ -92,7 +92,7 @@ class Mobile extends AppBase {
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       // SDK plan 审批复用 ApprovalModal 的 planModeBox 卡片（onPendingPtyPlan 通道），
       // 不再有独立的计划审批浮层。
-      autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批）
+      autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批 / -2=完全免审批）
       hasGit: true,
       terminalPendingImages: [],  // 终端面板独立的 pending 图片/文件
       // ─── 血条 popover/抽屉用的状态（与 AppHeader 同语义）─────────
@@ -568,10 +568,8 @@ class Mobile extends AppBase {
 
   handlePendingPermission = (data) => { this.setState({ globalPermission: data }); };
 
-  handleAutoApproveChange = (seconds) => {
-    this.setState({ autoApproveSeconds: seconds });
-    this.context.updatePreferences({ autoApproveSeconds: seconds });
-  };
+  // handleAutoApproveChange 继承自 AppBase：基类版本在选「完全免审批」(-2) 时统一弹
+  // danger 确认（覆盖快捷菜单与各设置 Select 的全部入口），Mobile 不再重复实现。
 
   // 拖拽上传逻辑已上提到 AppBase；Mobile 仅 override 两个分发钩子：终端可见时落入
   // terminalPendingImages（图片队列），否则落入 pendingUploadPaths。toTerminal 在 drop
@@ -1280,13 +1278,18 @@ class Mobile extends AppBase {
               <div className={styles.mobileSettingsGroup}>
                 <div className={styles.mobileSettingsSectionTitle}>{t('ui.chatDisplay')}</div>
                 <div className={styles.mobileSettingsRow}>
-                  <span className={styles.mobileSettingsLabel}>{t('ui.permission.autoApprove.setting')}</span>
+                  <span className={styles.mobileSettingsLabel}>
+                    {t('ui.permission.autoApprove.setting')}
+                    <Tooltip title={t('ui.permission.autoApprove.help')} trigger="click">
+                      <QuestionCircleOutlined className={styles.mobileSettingsHelpIcon} />
+                    </Tooltip>
+                  </span>
                   <Select
                     size="small"
                     value={this.state.autoApproveSeconds || 0}
                     onChange={this.handleAutoApproveChange}
                     options={autoApproveSelectOptions(PERM_AUTO_APPROVE_OPTIONS, t)}
-                    style={{ width: 100 }}
+                    style={{ width: 110 }}
                   />
                 </div>
                 {this.state.approvalPrefs && (

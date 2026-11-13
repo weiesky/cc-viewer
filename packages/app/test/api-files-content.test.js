@@ -106,24 +106,25 @@ function callPost(handler, body, { chunked = false, search = '' } = {}) {
 }
 
 let routes;
-let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost, fileDownload, archiveRaw;
+let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost, fileDownload, archiveRaw, audioStream;
 
 before(async () => {
   const mod = await import('../server/routes/files-content.js');
   routes = mod.filesContentRoutes;
-  assert.ok(Array.isArray(routes) && routes.length === 9, 'expect 9 routes');
+  assert.ok(Array.isArray(routes) && routes.length === 10, 'expect 10 routes');
   const byPath = (p, m) => routes.find(r => r.path === p && r.method === m)?.handler;
   planFile = byPath('/api/plan-file', 'GET');
   fileContentGet = byPath('/api/file-content', 'GET');
   projectMemory = byPath('/api/project-memory', 'GET');
   claudeMd = byPath('/api/claude-md', 'GET');
   fileContentPost = byPath('/api/file-content', 'POST');
-  // file-raw / download-file 用 predicate，没有 path 字段
+  // file-raw / download-file / archive-raw / audio-stream 用 predicate，没有 path 字段
   fileRaw = routes.find(r => r.predicate && r.predicate('/api/file-raw', 'GET'))?.handler;
   fileDownload = routes.find(r => r.predicate && r.predicate('/api/download-file', 'GET'))?.handler;
   archiveRaw = routes.find(r => r.predicate && r.predicate('/api/archive-raw', 'GET'))?.handler;
-  assert.ok(planFile && fileContentGet && projectMemory && claudeMd && fileContentPost && fileRaw && fileDownload && archiveRaw,
-    'all eight handlers resolved');
+  audioStream = routes.find(r => r.predicate && r.predicate('/api/audio-stream', 'GET'))?.handler;
+  assert.ok(planFile && fileContentGet && projectMemory && claudeMd && fileContentPost && fileRaw && fileDownload && archiveRaw && audioStream,
+    'all nine handlers resolved');
 });
 
 after(() => {
@@ -515,6 +516,12 @@ describe('GET|HEAD /api/file-raw', { concurrency: false }, () => {
     const cases = [
       ['img.bmp', 'image/bmp'],
       ['img.avif', 'image/avif'],
+      ['img.apng', 'image/apng'],
+      ['img.jfif', 'image/jpeg'],
+      ['img.tif', 'image/tiff'],
+      ['img.tiff', 'image/tiff'],
+      ['img.heic', 'image/heic'],
+      ['img.heif', 'image/heif'],
     ];
     for (const [name, mime] of cases) {
       const p = join(PROJECT, name);

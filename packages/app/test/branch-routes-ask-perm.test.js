@@ -541,6 +541,15 @@ describe('ask-perm 分支补洞: permRequestHook', () => {
     assert.equal(res.json.decision, 'allow');
   });
 
+  it('autoApproveSeconds=-2（完全免审批）→ allow', async () => {
+    const deps = makeDeps();
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -2 }));
+    const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } }, { deps });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'allow');
+  });
+
   it('autoApproveSeconds=3 → allow（倒计时也视为自动审批）', async () => {
     const deps = makeDeps();
     const { writeFileSync } = await import('node:fs');

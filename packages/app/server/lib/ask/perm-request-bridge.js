@@ -13,7 +13,7 @@
  *   - Query the cc-viewer server for the current project's autoApproveSeconds.
  *   - Only Read/Glob/Grep are eligible for silent allow; all other tools return
  *     { continue: true } so the normal prompt appears.
- *   - If auto-approve is enabled (instant -1 or countdown >0), return an allow
+ *   - If auto-approve is enabled (instant -1/-2 or countdown >0), return an allow
  *     decision plus updatedPermissions.addDirectories for the target directory.
  *   - Otherwise return { continue: true } so the normal terminal prompt appears.
  *

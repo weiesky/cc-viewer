@@ -81,7 +81,7 @@ ccv --sdk -c             # 直近のセッションを継続
 ccv --sdk --model sonnet # モデルを選択
 ```
 
-承認(Bash/Edit/Write/WebFetch/…)は、許可 / 拒否 / セッション中許可 の形式でブラウザに表示され、`AskUserQuestion` / プランのプロンプトはモーダルとして表示されます。`npm publish` は常に明示的な承認が必要です — `--d` でも同じです。`@anthropic-ai/claude-agent-sdk` パッケージが必要です(cc-viewer に同梱); 利用できない場合はターミナルモードにフォールバックします。
+承認(Bash/Edit/Write/WebFetch/…)は、許可 / 拒否 / セッション中許可 の形式でブラウザに表示され、`AskUserQuestion` / プランのプロンプトはモーダルとして表示されます。`rm -rf`（ファイル削除）や `npm publish` などの高リスクコマンドは既定でハードブロックされます — `--d` でも同じです。このゲートを解除するのは、明示的な権限レベル「完全自動承認」のみです（隔離コンテナ向け）。`@anthropic-ai/claude-agent-sdk` パッケージが必要です(cc-viewer に同梱); 利用できない場合はターミナルモードにフォールバックします。
 
 ### 1.7.0 へのアップグレード（ログ形式 v2）
 

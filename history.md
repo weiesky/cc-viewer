@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- feat(web+server): **新增「完全免审批」权限自动审批档位（-2）** — 到达即放行且解除 `npm publish` 硬闸（含 bypassPermissions 模式），仅建议隔离容器使用；任意入口选择该档统一弹 danger 确认（默认聚焦取消），快捷菜单权限行补 (?) 帮助说明两档差异并红色标注；Plan 自动审批不提供该档。Coverage: `auto-approve.test.js`, `sdk-manager-auto-approve.test.js`, `sdk-manager-query.test.js`, `api-ask-perm-extra.test.js`, `branch-routes-ask-perm.test.js`, `auto-approve-options.test.js`, `plan-auto-approve-runtime.test.js`, `ask-auto-answer-menu.test.js`, `quick-settings-i18n.test.js`, `full-auto-approve-wiring.test.js`.
+
+- fix(web): **完全免审批帮助与确认文案改用 `rm -rf`（删除文件）作示例** — 相比 `npm publish` 更直观传达高危命令放行的含义（18 语言同步）。
+
+- fix(sdk+web): **血条（上下文消耗）停滞修复** — SDK 模式下 /ws/terminal 增加应用层 ping（建连即发 + 周期保活）与客户端空闲看门狗（含握手超时），半开断连自动重连；上下文拉取增加 15s 超时；异常未来时间戳可自愈；断连期间已输入的队列在重连后恢复。Coverage: `server-terminal-ws-ping.test.js`, `terminal-ws-watchdog.test.js`, `sdk-context-provider.test.js`, `context-usage-view.test.js`.
+
+- feat(web): **字幕文件支持在线预览** — SRT/VTT/ASS/SSA 解析时间区间，提供列表/原文双视图，超 1MiB/3000 条截断提示。Coverage: `subtitle-parser.test.js`, `subtitle-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`, `archive-preview.test.js`.
+
+- feat(web+server): **图片预览扩展名补充** — APNG/JFIF 进入预览与缩略图/引用路由；TIFF/HEIC 归类为图片但保持下载回退。Coverage: `file-types.test.js`, `api-files-content.test.js`, `commandValidator.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`, `file-browser-modal.test.js`.
+
+- feat(web+server): **音频文件支持在线预览** — MP3/WAV/OGG/OGA/M4A/AAC/FLAC/Opus 经专用流式路由提供单区间 Range(206/416/304/If-Range)与正确 MIME,前端原生 `<audio>` 播放、可拖动进度,不支持编码或播放失败时提供下载回退。Coverage: `audio-stream.test.js`, `api-audio-stream.test.js`, `audio-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`.
+
+- fix(sdk+web): **慢上游提示正确跟随请求生命周期** — 客户端断连和响应转发异常会按 requestId 结束提示；WS 重连或切回视图时恢复仍在等待的提示，已完成的请求不再残留。Coverage: `proxy-slow-upstream.test.js`, `slow-upstream-lifecycle.test.js`, `slow-upstream-replay.test.js`.
+
 - feat(update): **CLI npm 一键更新与重启** — 下载显示真实字节进度并校验安装包，用户确认后安装并后台重启，恢复原工作目录与启动参数；失败时恢复原服务并显示诊断，检测到其他实例时提示先退出。Coverage: `update-job.test.js`, `update-routes.test.js`, `restart-helper.test.js`, `update-instances.test.js`, `update-modal.test.js`.
 
 ## 1.9.24
