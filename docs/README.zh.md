@@ -81,7 +81,7 @@ ccv --sdk -c             # 继续最近的会话
 ccv --sdk --model sonnet # 选择模型
 ```
 
-审批（Bash/Edit/Write/WebFetch/…）会以 允许 / 拒绝 / 本次会话允许 的形式在浏览器中弹出，`AskUserQuestion` / 计划提示则以模态框出现。`npm publish` 始终要求显式审批——即使带 `--d` 也是如此。需要 `@anthropic-ai/claude-agent-sdk` 包（随 cc-viewer 一起打包）；若不可用则回退到终端模式。
+审批（Bash/Edit/Write/WebFetch/…）会以 允许 / 拒绝 / 本次会话允许 的形式在浏览器中弹出，`AskUserQuestion` / 计划提示则以模态框出现。`rm -rf`（删除文件）、`npm publish` 等高危命令默认硬拦截——即使带 `--d` 也是如此；仅当权限自动审批选择「完全免审批」档位时才解除该硬闸（仅建议用于隔离容器）。需要 `@anthropic-ai/claude-agent-sdk` 包（随 cc-viewer 一起打包）；若不可用则回退到终端模式。
 
 ### 选择 Claude 可执行文件
 

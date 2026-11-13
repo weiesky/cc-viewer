@@ -62,6 +62,10 @@ if (!toolName || !toolInput) {
 // 这是安全底线，不受 --dangerously-skip-permissions 影响
 // 注：git commit / git push 不在硬拦截范围内 —— 提交可重写、push 可 force-push 回退,
 // 真正不可撤销的对外发布(npm publish)才走硬闸。谓词共享自 approval-policy.js(SDK 链路同用)。
+// Single exception: the full auto-approve tier (autoApproveSeconds=-2) — publish is
+// not allowed by this bridge under bypass either; it falls through to
+// /api/perm-hook, where the server resolves -2 and instantly auto-approves
+// (see ask-perm.js).
 const isPublishCmd = isPublishCommand(toolName, toolInput);
 
 // IM worker (skip-permissions) 硬拦截 —— 必须在下面的 bypass auto-allow 之前求值，

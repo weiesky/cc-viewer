@@ -81,7 +81,7 @@ ccv --sdk -c             # continua la sessione più recente
 ccv --sdk --model sonnet # scegli un modello
 ```
 
-Le approvazioni (Bash/Edit/Write/WebFetch/…) compaiono nel browser con consenti / nega / consenti per la sessione, e le richieste `AskUserQuestion` / di piano appaiono come modali. `npm publish` richiede sempre un'approvazione esplicita — anche con `--d`. Richiede il pacchetto `@anthropic-ai/claude-agent-sdk` (incluso con cc-viewer); in caso contrario, ripiega sulla modalità terminale.
+Le approvazioni (Bash/Edit/Write/WebFetch/…) compaiono nel browser con consenti / nega / consenti per la sessione, e le richieste `AskUserQuestion` / di piano appaiono come modali. I comandi ad alto rischio come `rm -rf` (elimina file) e `npm publish` sono bloccati per impostazione predefinita — anche con `--d`; solo il livello di permesso esplicito **Auto-approvazione totale** rimuove questo blocco (pensato per container isolati). Richiede il pacchetto `@anthropic-ai/claude-agent-sdk` (incluso con cc-viewer); in caso contrario, ripiega sulla modalità terminale.
 
 ### Aggiornamento a 1.7.0 (formato log v2)
 

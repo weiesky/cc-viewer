@@ -18,7 +18,10 @@
 // Semantics of the settings (shared with the client):
 //   plan: prefs.approvalModal.planAutoApproveSeconds (default 0 = off)
 //   perm: prefs.autoApproveSeconds                  (default 3 when unset)
-//   0/off, N>0 = N seconds, -1 = instant (resolve immediately, no buffer).
+//   0/off, N>0 = N seconds, -1 = instant (resolve immediately, no buffer),
+//   -2 = full auto-approve (完全免审批): instant like -1, and the npm-publish
+//        hard gate (approval-policy.js isPublishCommand) is lifted — perm only;
+//        a hand-edited plan -2 is treated as off.
 // AskUserQuestion hosting ("问答题自动托管") is a separate feature with minute
 // semantics and lives in ./ask-auto-answer.js — it is not routed through this module
 // (the 300s cap would silently disable its 10/20/30-minute tiers).
@@ -30,6 +33,10 @@ import { reportSwallowed } from './error-report.js';
 export const AUTO_APPROVE_BUFFER_MS = 1000;
 export const DEFAULT_PERM_AUTO_APPROVE_SECONDS = 3;
 export const AUTO_APPROVE_INSTANT = -1;
+// 完全免审批 (full auto-approve): instant like -1, and additionally lifts the
+// npm-publish hard gate (approval-policy.js isPublishCommand). Deliberately
+// permission-only — a hand-edited planAutoApproveSeconds: -2 is treated as off.
+export const AUTO_APPROVE_FULL = -2;
 // A hand-edited preferences.json can hold an absurdly large value. Besides being
 // pointless, a value above the 5-minute hard approval timeout would advertise an
 // autoApproveAt the deny timeout always beats (a lying countdown); and beyond
@@ -39,8 +46,8 @@ export const MAX_AUTO_APPROVE_SECONDS = 300;
 
 /**
  * Extract the configured seconds for a kind ('plan' | 'perm') from an effective
- * prefs object. Returns null when disabled (0 / invalid / negative other than -1 /
- * absurdly large).
+ * prefs object. Returns null when disabled (0 / invalid / negative other than
+ * -1 (and -2 for perm) / absurdly large).
  */
 export function effectiveAutoApproveSeconds(kind, prefs) {
   const raw = kind === 'plan'
@@ -49,9 +56,23 @@ export function effectiveAutoApproveSeconds(kind, prefs) {
   const seconds = Number(raw);
   if (!Number.isFinite(seconds)) return null;
   if (seconds === AUTO_APPROVE_INSTANT) return AUTO_APPROVE_INSTANT;
+  if (kind === 'perm' && seconds === AUTO_APPROVE_FULL) return AUTO_APPROVE_FULL;
   if (seconds <= 0) return null;
   if (seconds > MAX_AUTO_APPROVE_SECONDS) return null;
   return seconds;
+}
+
+/**
+ * Whether a raw prefs value opts into automatic approval at all (instant tiers
+ * -1/-2, or a positive countdown). Used where only the opt-in matters, not the
+ * tier: the Read/Glob/Grep outside-cwd directory-grant paths and the
+ * PermissionRequest hook's silent-allow decision. Number()-normalizes so a
+ * hand-edited string value ("-1") keeps working like before.
+ */
+export function isAutoApproveEnabledValue(raw) {
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds)) return false;
+  return seconds === AUTO_APPROVE_INSTANT || seconds === AUTO_APPROVE_FULL || seconds > 0;
 }
 
 /**
@@ -75,7 +96,7 @@ export function computeAutoApprove(kind, projectKey, { now = Date.now(), readPre
   const effective = hasFork(prefs, key) ? resolveScoped(prefs, prefs.prefsByProject[key]) : prefs;
   const seconds = effectiveAutoApproveSeconds(kind, effective);
   if (seconds === null) return { enabled: false };
-  const instant = seconds === AUTO_APPROVE_INSTANT;
+  const instant = seconds === AUTO_APPROVE_INSTANT || seconds === AUTO_APPROVE_FULL;
   return {
     enabled: true,
     instant,
@@ -99,7 +120,7 @@ export function autoApproveFireDelayMs(computed, now = Date.now()) {
  * pending entry: { autoApproveAt, seconds, cancelled, timer }.
  * `onFire` is invoked once when the deadline (+buffer) passes; callers must
  * re-check the entry is still pending and not cancelled inside onFire.
- * Instant (-1) fires SYNCHRONOUSLY — the caller MUST register the pending entry
+ * Instant (-1/-2) fires SYNCHRONOUSLY — the caller MUST register the pending entry
  * (and emit the pending frame) before calling this.
  */
 export function createAutoApproveState(computed, onFire) {

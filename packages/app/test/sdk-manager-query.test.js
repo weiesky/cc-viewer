@@ -677,6 +677,29 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
     }
   });
 
+  it('目录外 Read + 完全免审批(-2) → allow + updatedPermissions.addDirectories', async () => {
+    const { deps } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'read-out-full' } };
+    const prevProjectDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = tmpDir;
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -2 }));
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Read', { file_path: '/outside/subdir/file.txt' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(ctrl.result.behavior, 'allow');
+      assert.deepEqual(ctrl.result.updatedPermissions, [
+        { type: 'addDirectories', directories: ['/outside/subdir'], destination: 'session' },
+      ]);
+    } finally {
+      if (prevProjectDir === undefined) delete process.env.CCV_PROJECT_DIR;
+      else process.env.CCV_PROJECT_DIR = prevProjectDir;
+      try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {}
+    }
+  });
+
   it('目录外 Read + 自动审批关闭 → allow 但无 updatedPermissions', async () => {
     const { deps, broadcasts } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'read-out-off' } };
@@ -992,6 +1015,31 @@ describe('sdk-manager-query — 审批政策链(im-deny → npm 硬闸 → bypas
     assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), [], 'bypass early-allow 不得 broadcast(回合状态帧除外)');
   });
 
+  it('bypass + npm publish + 完全免审批(-2) → 服务端即时自动批准,无需人工应答', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'pub-full' } };
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -2 }));
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'npm publish --provenance' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
+
+      const sendP = sdk.sendUserMessage('go');
+      await tick(10);
+      await sendP;
+      assert.equal(ctrl.result?.behavior, 'allow', 'publish must auto-fire at -2 even in bypass mode');
+      const pending = broadcasts.find((b) => b.type === 'perm-hook-pending' && b.id === 'pub-full');
+      assert.ok(pending, 'publish still broadcasts the pending frame');
+      assert.equal(pending.autoApproveSeconds, -2, 'frame stamped with the full tier');
+      assert.equal(
+        broadcasts.filter((b) => b.type === 'perm-hook-resolved' && b.id === 'pub-full' && b.reason === 'auto-approved').length,
+        1,
+      );
+    } finally {
+      try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {}
+    }
+  });
+
   it('bypass + npm publish → 强制走 perm 审批(broadcast perm-hook-pending + 5min 等待),allow 后放行', async () => {
     const { deps, broadcasts } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'pub-1' } };
@@ -1006,6 +1054,10 @@ describe('sdk-manager-query — 审批政策链(im-deny → npm 硬闸 → bypas
     assert.ok(pending, 'bypass 下 npm publish 必须 broadcast perm-hook-pending');
     assert.equal(pending.id, 'pub-1');
     assert.equal(pending.toolName, 'Bash');
+    // 硬闸未解除的明证：帧 stamp 必须为 0（若上一个用例的 -2 prefs 泄漏到这里，
+    // stamp 会是 -2 且请求已被即时放行，下面的手动 resolve 将是无操作 —— 该断言
+    // 保证本用例验证的是「人工批准」而非「自动放行」）。
+    assert.equal(pending.autoApproveSeconds, 0, 'publish frame must be stamped off (no leaked -2 prefs)');
     // ctrl.promise is still pending (on the 5-min _waitForApproval) → resolves to allow
     sdk.resolveApproval('pub-1', { decision: 'allow' });
     await sendP;

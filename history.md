@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web+server): **新增「完全免审批」权限自动审批档位（-2）** — 到达即放行且解除 `npm publish` 硬闸（含 bypassPermissions 模式），仅建议隔离容器使用；任意入口选择该档统一弹 danger 确认（默认聚焦取消），快捷菜单权限行补 (?) 帮助说明两档差异并红色标注；Plan 自动审批不提供该档。Coverage: `auto-approve.test.js`, `sdk-manager-auto-approve.test.js`, `sdk-manager-query.test.js`, `api-ask-perm-extra.test.js`, `branch-routes-ask-perm.test.js`, `auto-approve-options.test.js`, `plan-auto-approve-runtime.test.js`, `ask-auto-answer-menu.test.js`, `quick-settings-i18n.test.js`, `full-auto-approve-wiring.test.js`.
+
+- fix(web): **完全免审批帮助与确认文案改用 `rm -rf`（删除文件）作示例** — 相比 `npm publish` 更直观传达高危命令放行的含义（18 语言同步）。
+
 - fix(sdk+web): **血条（上下文消耗）停滞修复** — SDK 模式下 /ws/terminal 增加应用层 ping（建连即发 + 周期保活）与客户端空闲看门狗（含握手超时），半开断连自动重连；上下文拉取增加 15s 超时；异常未来时间戳可自愈；断连期间已输入的队列在重连后恢复。Coverage: `server-terminal-ws-ping.test.js`, `terminal-ws-watchdog.test.js`, `sdk-context-provider.test.js`, `context-usage-view.test.js`.
 
 - feat(web): **字幕文件支持在线预览** — SRT/VTT/ASS/SSA 解析时间区间，提供列表/原文双视图，超 1MiB/3000 条截断提示。Coverage: `subtitle-parser.test.js`, `subtitle-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`, `archive-preview.test.js`.

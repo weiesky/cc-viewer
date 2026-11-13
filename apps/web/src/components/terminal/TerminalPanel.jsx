@@ -1855,6 +1855,9 @@ class TerminalPanel extends React.Component {
                     onToggle={(k) => this.setState({ quickSettingsExpanded: k })}
                     onHoverEnter={this._qmHover.enter}
                     onHoverLeave={this._qmHover.leave}
+                    // 选「完全免审批」时整个菜单关闭：确认弹窗（zIndex 1200）出现时
+                    // 不能留着仍开着的 Popover (1030) 挡在上面。
+                    onRequestClose={() => this.setState({ quickSettingsOpen: false, quickSettingsExpanded: null })}
                     middle={
                       <ResumeSessionsRow
                         expanded={this.state.quickSettingsExpanded === 'history'}

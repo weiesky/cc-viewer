@@ -81,7 +81,7 @@ ccv --sdk -c             # 繼續最近的工作階段
 ccv --sdk --model sonnet # 選擇模型
 ```
 
-審批（Bash/Edit/Write/WebFetch/…）會以 允許 / 拒絕 / 本次工作階段允許 的形式在瀏覽器中彈出，`AskUserQuestion` / 計畫提示則以模式對話框出現。`npm publish` 一律要求明確審批——即使帶 `--d` 亦然。需要 `@anthropic-ai/claude-agent-sdk` 套件（隨 cc-viewer 一起打包）；若無法使用則退回終端機模式。
+審批（Bash/Edit/Write/WebFetch/…）會以 允許 / 拒絕 / 本次工作階段允許 的形式在瀏覽器中彈出，`AskUserQuestion` / 計畫提示則以模式對話框出現。`rm -rf`（刪除檔案）、`npm publish` 等高危命令預設硬攔截——即使帶 `--d` 亦然；僅當權限自動審批選擇「完全免審批」檔位時才解除該硬閘（僅建議用於隔離容器）。需要 `@anthropic-ai/claude-agent-sdk` 套件（隨 cc-viewer 一起打包）；若無法使用則退回終端機模式。
 
 ### 升級到 1.7.0（日誌格式 v2）
 

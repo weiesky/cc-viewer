@@ -81,7 +81,7 @@ ccv --sdk -c             # setzt die letzte Sitzung fort
 ccv --sdk --model sonnet # ein Modell auswählen
 ```
 
-Genehmigungen (Bash/Edit/Write/WebFetch/…) erscheinen im Browser mit erlauben / ablehnen / für die Sitzung erlauben, und `AskUserQuestion`- sowie Plan-Prompts werden als modale Fenster angezeigt. `npm publish` erfordert immer eine ausdrückliche Genehmigung — auch mit `--d`. Erfordert das Paket `@anthropic-ai/claude-agent-sdk` (in cc-viewer enthalten); andernfalls wird auf den Terminal-Modus zurückgegriffen.
+Genehmigungen (Bash/Edit/Write/WebFetch/…) erscheinen im Browser mit erlauben / ablehnen / für die Sitzung erlauben, und `AskUserQuestion`- sowie Plan-Prompts werden als modale Fenster angezeigt. Hochrisiko-Befehle wie `rm -rf` (löscht Dateien) und `npm publish` sind standardmäßig gesperrt — auch mit `--d`; nur die explizite Berechtigungsstufe **Vollständige Auto-Genehmigung** hebt diese Sperre auf (für isolierte Container gedacht). Erfordert das Paket `@anthropic-ai/claude-agent-sdk` (in cc-viewer enthalten); andernfalls wird auf den Terminal-Modus zurückgegriffen.
 
 ### Upgrade auf 1.7.0 (Logformat v2)
 

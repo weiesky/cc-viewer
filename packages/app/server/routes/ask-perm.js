@@ -7,7 +7,7 @@ import { _projectName } from '../interceptor.js';
 import { readPrefsRaw } from '../lib/prefs-store.js';
 import { getCurrentProjectKey, hasFork, resolveScoped } from '../lib/project-prefs.js';
 import { reportSwallowed } from '../lib/error-report.js';
-import { computeAutoApprove, createAutoApproveState } from '../lib/auto-approve.js';
+import { computeAutoApprove, createAutoApproveState, isAutoApproveEnabledValue, AUTO_APPROVE_FULL } from '../lib/auto-approve.js';
 import { isPublishCommand } from '../lib/approval-policy.js';
 import { computeAskAutoAnswer, createAskAutoAnswerState, pickAutoAnswers, replayAskAutoAnswerFields } from '../lib/ask-auto-answer.js';
 
@@ -537,11 +537,14 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
       // itself at deadline + 1s buffer when no client did. autoCancelled is set by
       // the perm-hook-auto-cancel WS handler (the approval then stays pending for
       // a manual decision) and replayed to fresh clients.
-      // npm publish is a hard safety floor: always wait for a human decision, never
-      // the server-side auto-approve fallback (SDK path parity: sdk-manager.js).
-      const autoMeta = isPublishCommand(toolName, input)
+      // npm publish is a hard safety floor: a human decision is required at every
+      // tier EXCEPT the explicit full auto-approve (-2, 完全免审批), which opts
+      // into letting high-risk commands through (intended for isolated
+      // containers). SDK path parity: sdk-manager.js.
+      const computedAuto = computeAutoApprove('perm', typeof cwd === 'string' && cwd ? cwd : undefined, { file: deps.getPrefsFile?.() });
+      const autoMeta = (isPublishCommand(toolName, input) && computedAuto.seconds !== AUTO_APPROVE_FULL)
         ? { enabled: false }
-        : computeAutoApprove('perm', typeof cwd === 'string' && cwd ? cwd : undefined, { file: deps.getPrefsFile?.() });
+        : computedAuto;
 
       const hookEntry = {
         toolName, input, res, timer, createdAt: Date.now(),
@@ -566,7 +569,7 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
         });
       }
 
-      // Arm AFTER the entry is in the map AND the pending frame is out: instant (-1)
+      // Arm AFTER the entry is in the map AND the pending frame is out: instant (-1/-2)
       // fires synchronously and resolves through the entry, so clients observe the
       // order pending → resolved (never a ghost panel for an already-answered hook).
       if (autoMeta.enabled) {
@@ -674,13 +677,14 @@ function permRequestHook(req, res, parsedUrl, isLocal, deps) {
       const effective = scoped ? resolveScoped(prefs, prefs.prefsByProject[projectKey]) : prefs;
       const autoApproveSeconds = Number(effective.autoApproveSeconds);
 
-      // autoApproveSeconds: 0 = off/manual, >0 = countdown, -1 = instant.
-      // For PermissionRequest the prompt is already imminent; we only suppress it
-      // when the user has explicitly enabled auto-approval. Both instant (-1) and
-      // countdown (>0) are treated as allow here because the user has already
-      // opted into automatic approval; the countdown variant simply adds a visible
-      // delay in the UI, which is irrelevant for a headless hook.
-      const shouldAutoAllow = autoApproveSeconds === -1 || autoApproveSeconds > 0;
+      // autoApproveSeconds: 0 = off/manual, >0 = countdown, -1 = instant, -2 =
+      // full auto-approve. For PermissionRequest the prompt is already imminent;
+      // we only suppress it when the user has explicitly enabled auto-approval.
+      // Both instant tiers (-1/-2) and countdown (>0) are treated as allow here
+      // because the user has already opted into automatic approval; the countdown
+      // variant simply adds a visible delay in the UI, which is irrelevant for a
+      // headless hook.
+      const shouldAutoAllow = isAutoApproveEnabledValue(autoApproveSeconds);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ decision: shouldAutoAllow ? 'allow' : 'ask' }));

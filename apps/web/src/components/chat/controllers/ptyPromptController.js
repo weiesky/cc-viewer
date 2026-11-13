@@ -20,7 +20,7 @@
  * host interface (injected by ChatView at construction):
  *  - getState()               -> live this.state
  *  - setState(update, cb?)    -> this.setState (functional updaters passed through)
- *  - isInstantAutoApprove()   -> props.autoApproveSeconds === AUTO_APPROVE_INSTANT
+ *  - isInstantAutoApprove()   -> props.autoApproveSeconds is an instant tier (-1/-2)
  *  - isAskSubmitting()        -> this._askFlow._askSubmitting (don't dismiss during ask submit)
  *  - permissionAutoAllow(p)   -> this._permission.autoAllow(p)
  *  - scrollToBottom()         -> this.scrollToBottom()

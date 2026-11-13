@@ -9,7 +9,7 @@ import ImageLightbox from '../common/ImageLightbox';
 import GitChanges from '../git/GitChanges';
 import GitDiffView from '../git/GitDiffView';
 import ToolApprovalPanel from '../approval/ToolApprovalPanel';
-import { getModelInfo, getEffectiveModel, resolveProducerModelInfo, AUTO_APPROVE_INSTANT } from '../../utils/helpers';
+import { getModelInfo, getEffectiveModel, resolveProducerModelInfo, AUTO_APPROVE_INSTANT, isInstantAutoApproveValue } from '../../utils/helpers';
 import { formatPromptNavTime, formatHms } from '../../utils/formatters';
 import { buildPromptNavItems } from '../../utils/promptNav';
 import { getTeammateAvatar } from '../../utils/teammateAvatars';
@@ -593,7 +593,7 @@ class ChatView extends React.Component {
     this._ptyPrompt = new PtyPromptController({
       getState: () => this.state,
       setState: (update, cb) => this.setState(update, cb),
-      isInstantAutoApprove: () => this.props.autoApproveSeconds === AUTO_APPROVE_INSTANT,
+      isInstantAutoApprove: () => isInstantAutoApproveValue(this.props.autoApproveSeconds),
       isAskSubmitting: () => this._askFlow._askSubmitting,
       permissionAutoAllow: (perm) => this._permission.autoAllow(perm),
       scrollToBottom: () => this.scrollToBottom(),
@@ -3101,10 +3101,12 @@ class ChatView extends React.Component {
           // 服务器 stamp 的档位（含 0=off / npm publish 硬闸 / fork 语义）优先于本地
           // 全局偏好——loopback 客户端的 /api/preferences 不做 fork 解析，本地 prop 可能与
           // 服务器为该请求实际计算的档位不一致；以服务器为准才能守住 publish 硬闸与 fork-off。
+          // -1/-2 两个即时档都在这里直放；publish 只有在服务端判定为 -2 时才会带着
+          // 即时档 stamp 到达（其余档位下 stamp 为 0，走正常面板）。
           const effAutoSeconds = (msg.autoApproveSeconds != null) ? msg.autoApproveSeconds : this.props.autoApproveSeconds;
           const instantAllowed = msg.autoCancelled !== true
             && !this._permAutoCancelled.has(msg.id)
-            && effAutoSeconds === AUTO_APPROVE_INSTANT
+            && isInstantAutoApproveValue(effAutoSeconds)
             && this._permission.autoAllow({ id: msg.id });
           if (!instantAllowed) {
             // Queue support: if a permission panel is already showing, queue the new one

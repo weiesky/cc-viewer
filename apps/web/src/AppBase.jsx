@@ -9,7 +9,7 @@ import NewProjectModal from './components/dashboard/NewProjectModal';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
 import LogTable from './components/viewers/LogTable';
 import { t, getLang, setLang } from './i18n';
-import { askAutoAnswerPrefValue } from './utils/autoApproveOptions';
+import { askAutoAnswerPrefValue, AUTO_APPROVE_FULL } from './utils/autoApproveOptions';
 import { SettingsContext } from './contexts/SettingsContext';
 import { formatTokenCount, filterRelevantRequests, isRelevantRequest, visibleRequests, appendCacheLossMap, extractCachedContent } from './utils/helpers';
 import { snapToPreset, stepPreset } from './utils/displayScaleHelper';
@@ -233,7 +233,7 @@ class AppBase extends React.Component {
       // when the proxy chip renders nothing. null = unknown / not SDK mode.
       sdkModel: null,
       resumeRememberChoice: false,
-      autoApproveSeconds: 3, // 自动审批倒计时秒数；默认 3s（0=关闭 / N=N 秒后自动批准 / -1=免审批）
+      autoApproveSeconds: 3, // 自动审批倒计时秒数；默认 3s（0=关闭 / N=N 秒后自动批准 / -1=免审批 / -2=完全免审批）
       logDir: '',
       themeColor: /Windows/i.test(navigator.userAgent) ? 'dark' : 'light',
       displayScale: 100, // 整体显示缩放百分比(100=原始大小),仅 Electron 桌面经 webFrame.setZoomFactor 原生缩放;浏览器交由原生快捷键
@@ -309,7 +309,7 @@ class AppBase extends React.Component {
         modalEnabled: true,
         soundEnabled: true,
         notifyOnlyWhenHidden: true,
-        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；CLI(PTY) 与 SDK 路径
+        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（0=关 / N=N 秒后自动批准 / -1=立即；与权限档不同：Plan 无 -2 完全免审批档）；CLI(PTY) 与 SDK 路径
         askAutoAnswerMinutes: null, // 「问答题自动托管」分钟数（null=不托管 / 0=立即 / N=N 分钟后服务端自动回答）
         voicePack: {
           enabled: true,
@@ -4373,6 +4373,30 @@ class AppBase extends React.Component {
   };
 
   handleAutoApproveChange = (seconds) => {
+    // 完全免审批 (-2) lifts the npm-publish hard gate — a dangerous tier that needs an
+    // explicit second step no matter which surface it was picked from (quick menu or any
+    // settings Select). Keep the confirm here in the shared handler rather than in the
+    // quick-menu renderer so every entry point is covered (house convention:
+    // handleDeleteLogs / handleResumeSession also confirm in the handler).
+    if (seconds === AUTO_APPROVE_FULL && this.state.autoApproveSeconds !== AUTO_APPROVE_FULL) {
+      Modal.confirm({
+        title: t('ui.permission.autoApprove.fullConfirmTitle'),
+        content: t('ui.permission.autoApprove.fullConfirmContent'),
+        okText: t('ui.common.confirmYes'),
+        okButtonProps: { danger: true },
+        // Default focus on Cancel so a held/habitual Enter cannot confirm the risky tier.
+        autoFocusButton: 'cancel',
+        cancelText: t('ui.common.confirmCancel'),
+        // zIndex above the quick-settings Popover (1030) so the dialog is never covered
+        // by the still-open cascade menu (house precedent: ConfirmRemoveButton 1200).
+        zIndex: 1200,
+        onOk: () => {
+          this.setState({ autoApproveSeconds: seconds });
+          this.context.updatePreferences({ autoApproveSeconds: seconds });
+        },
+      });
+      return;
+    }
     this.setState({ autoApproveSeconds: seconds });
     this.context.updatePreferences({ autoApproveSeconds: seconds });
   };

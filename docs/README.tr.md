@@ -81,7 +81,7 @@ ccv --sdk -c             # en son oturuma devam et
 ccv --sdk --model sonnet # bir model seç
 ```
 
-Onaylar (Bash/Edit/Write/WebFetch/…) tarayıcıda izin ver / reddet / oturum için izin ver olarak açılır ve `AskUserQuestion` / plan istemleri modallar olarak görünür. `npm publish` her zaman açık bir onay gerektirir — `--d` ile bile. `@anthropic-ai/claude-agent-sdk` paketini gerektirir (cc-viewer ile birlikte gelir); kullanılamıyorsa terminal moduna döner.
+Onaylar (Bash/Edit/Write/WebFetch/…) tarayıcıda izin ver / reddet / oturum için izin ver olarak açılır ve `AskUserQuestion` / plan istemleri modallar olarak görünür. `rm -rf` (dosyaları siler) ve `npm publish` gibi yüksek riskli komutlar varsayılan olarak engellenir — `--d` ile bile; bu bloğu yalnızca açık **Tam otomatik onay** izin seviyesi kaldırır (izole konteynerler için tasarlanmıştır). `@anthropic-ai/claude-agent-sdk` paketini gerektirir (cc-viewer ile birlikte gelir); kullanılamıyorsa terminal moduna döner.
 
 ### 1.7.0 sürümüne yükseltme (log formatı v2)
 

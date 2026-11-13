@@ -71,7 +71,7 @@ ccv --sdk -c             # continue the most recent session
 ccv --sdk --model sonnet # pick a model
 ```
 
-Approvals (Bash/Edit/Write/WebFetch/…) pop up in the browser with allow / deny / allow-for-session, and `AskUserQuestion` / plan prompts appear as modals. `npm publish` always requires an explicit approval — even with `--d`. Requires the `@anthropic-ai/claude-agent-sdk` package (bundled with cc-viewer); falls back to terminal mode if unavailable.
+Approvals (Bash/Edit/Write/WebFetch/…) pop up in the browser with allow / deny / allow-for-session, and `AskUserQuestion` / plan prompts appear as modals. High-risk commands such as `rm -rf` (deletes files) and `npm publish` are hard-gated by default — even with `--d`; only the explicit **Full auto-approve** permission tier lifts this gate (intended for isolated containers). Requires the `@anthropic-ai/claude-agent-sdk` package (bundled with cc-viewer); falls back to terminal mode if unavailable.
 
 ### Choose the Claude executable
 

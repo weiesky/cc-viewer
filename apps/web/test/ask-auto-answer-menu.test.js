@@ -62,6 +62,20 @@ describe('QuickAutoApproveRows — the third cascade row', () => {
   });
 });
 
+describe('QuickAutoApproveRows — 完全免审批 (-2) tier', () => {
+  it('perm row carries the (?) help explaining 免审批 vs 完全免审批', () => {
+    assert.ok(/key: 'perm'/.test(QUICK_ROWS), 'perm row must exist');
+    assert.ok(/ui\.permission\.autoApprove\.help/.test(QUICK_ROWS), 'perm row help i18n key');
+  });
+
+  it('the -2 option is danger-tinted and the host menu closes before the confirm', () => {
+    assert.ok(/AUTO_APPROVE_FULL/.test(QUICK_ROWS), 'rows must reference the -2 constant');
+    assert.ok(/quickMenuOptionDanger/.test(QUICK_ROWS), 'the -2 option must get the danger class');
+    assert.ok(/quickMenuValueDanger/.test(QUICK_ROWS), 'the current-value bracket must tint at -2');
+    assert.ok(/onRequestClose/.test(QUICK_ROWS), 'selecting -2 must close the host menu (confirm dialog opens next)');
+  });
+});
+
 describe('prop threading chain', () => {
   it('AppBase: initial null, null-aware hydrate, stable handler persisting via pref converter', () => {
     assert.ok(/askAutoAnswerMinutes: null/.test(APPBASE), 'initial approvalPrefs must default to null (off)');

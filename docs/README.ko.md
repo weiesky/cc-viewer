@@ -81,7 +81,7 @@ ccv --sdk -c             # 가장 최근 세션 계속
 ccv --sdk --model sonnet # 모델 선택
 ```
 
-승인(Bash/Edit/Write/WebFetch/…)은 허용 / 거부 / 세션 동안 허용 의 형태로 브라우저에 표시되며, `AskUserQuestion` / 계획 프롬프트는 모달로 나타납니다. `npm publish` 는 항상 명시적 승인을 요구합니다 — `--d` 를 붙여도 마찬가지입니다. `@anthropic-ai/claude-agent-sdk` 패키지가 필요합니다(cc-viewer 에 함께 번들됨); 사용할 수 없으면 터미널 모드로 대체됩니다.
+승인(Bash/Edit/Write/WebFetch/…)은 허용 / 거부 / 세션 동안 허용 의 형태로 브라우저에 표시되며, `AskUserQuestion` / 계획 프롬프트는 모달로 나타납니다. `rm -rf`(파일 삭제), `npm publish` 같은 고위험 명령은 기본적으로 하드 차단됩니다 — `--d` 를 붙여도 마찬가지입니다. 이 게이트를 해제하는 것은 명시적 권한 등급 **완전 자동 승인**뿐입니다(격리된 컨테이너용). `@anthropic-ai/claude-agent-sdk` 패키지가 필요합니다(cc-viewer 에 함께 번들됨); 사용할 수 없으면 터미널 모드로 대체됩니다.
 
 ### 1.7.0 으로 업그레이드 (로그 형식 v2)
 

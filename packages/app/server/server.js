@@ -2326,8 +2326,9 @@ async function setupTerminalWebSocket(httpServer) {
           ws.send(JSON.stringify({
             type: 'perm-hook-pending', id, toolName: entry.toolName, input: entry.input,
             autoApproveAt: entry.autoCancelled ? null : (entry.auto?.autoApproveAt ?? null),
-            // 0 = server says OFF (fork-off / npm publish floor): never let a reconnecting
-            // client fall back to its local pref and re-arm a countdown the server disabled.
+            // 0 = server says OFF (fork-off / npm publish floor — the floor applies at
+            // every tier except full auto-approve -2): never let a reconnecting client
+            // fall back to its local pref and re-arm a countdown the server disabled.
             autoApproveSeconds: entry.auto?.seconds ?? 0,
             autoCancelled: entry.autoCancelled === true,
           }));

@@ -121,6 +121,13 @@ describe('AUTO_APPROVE_INSTANT 常量', () => {
   it('AUTO_APPROVE_INSTANT === -1', () => {
     assert.equal(H.AUTO_APPROVE_INSTANT, -1);
   });
+
+  it('AUTO_APPROVE_FULL === -2 且 isInstantAutoApproveValue 经 helpers re-export', () => {
+    assert.equal(H.AUTO_APPROVE_FULL, -2);
+    assert.equal(H.isInstantAutoApproveValue(-1), true);
+    assert.equal(H.isInstantAutoApproveValue(-2), true);
+    assert.equal(H.isInstantAutoApproveValue(3), false);
+  });
 });
 
 describe('resolveCalibrationTokens', () => {

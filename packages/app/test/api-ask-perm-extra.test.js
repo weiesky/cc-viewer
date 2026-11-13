@@ -663,6 +663,28 @@ describe('ask-perm: permHook (POST /api/perm-hook)', () => {
     deps.pendingPermHooks.delete(id);
   });
 
+  it('npm publish 在完全免审批(-2)档下解除硬闸：同 tick 回 200 allow', async (t) => {
+    writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: -2 }));
+    t.after(prefsOff);
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const req = makeReq();
+    const res = makeRes();
+    permHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', JSON.stringify({ toolName: 'Bash', input: { command: 'npm publish' } }));
+    req.emit('end');
+    await drainMicro();
+    // -2 即时档：publish 也由服务端同步应答，无需人工
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'allow');
+    const types = deps._wss._sent.map(m => m.type);
+    const pi = types.indexOf('perm-hook-pending');
+    const ri = types.indexOf('perm-hook-resolved');
+    assert.ok(pi >= 0 && ri > pi, 'pending must be broadcast before resolved (no ghost panel)');
+    assert.equal(deps._wss._sent[pi].autoApproveSeconds, -2, 'publish frame stamped with the full tier');
+    assert.equal(deps._wss._sent[ri].reason, 'auto-approved');
+    assert.equal(deps.pendingPermHooks.size, 0, 'instant fire consumes the entry');
+  });
+
   it('autoApproveSeconds=-1（即时）→ 同 tick 回 200 allow；帧顺序 pending → resolved', async (t) => {
     writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: -1 }));
     t.after(prefsOff);

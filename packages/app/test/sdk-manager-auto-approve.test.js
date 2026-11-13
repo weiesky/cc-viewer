@@ -237,6 +237,67 @@ describe('sdk-manager 服务端自动审批 — 安全底线', () => {
     }
   });
 
+  it('npm publish 在完全免审批(-2)档下解除硬闸：同 tick 即时自动批准', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const { deps, broadcasts } = makeDeps();
+      const ctrl = { cutOpts: { toolUseID: 'perm-pub-full' }, deps, broadcasts };
+      await drivePending({
+        toolName: 'Bash', input: { command: 'npm publish' }, ctrl,
+        broadcastType: 'perm-hook-pending',
+        prefs: { autoApproveSeconds: -2 }, // 完全免审批：publish 硬闸被显式解除
+      });
+      const frame = broadcasts.find((b) => b.type === 'perm-hook-pending' && b.id === 'perm-pub-full');
+      assert.equal(frame.autoApproveSeconds, -2, 'publish frame must be stamped with the full tier');
+      assert.ok(typeof frame.autoApproveAt === 'number', 'publish frame must carry a deadline');
+      await tick(10);
+      assert.equal(ctrl.result?.behavior, 'allow', 'publish must auto-fire under -2');
+      assert.equal(
+        broadcasts.filter((b) => b.type === 'perm-hook-resolved' && b.id === 'perm-pub-full' && b.reason === 'auto-approved').length,
+        1,
+      );
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it('npm publish 在 -2 档 + scheduled-task（ctx 非空）下仍不自动批准', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      writePrefs({ autoApproveSeconds: -2 });
+      sdk.setSdkLaunchConfig({
+        permissionMode: 'default',
+        env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:9' },
+        settings: null, model: null, userArgs: [], claudeExecutable: null,
+      });
+      let capturedOpts = null;
+      sdk.__setQueryForTests(({ options } = {}) => {
+        capturedOpts = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'system', subtype: 'init', session_id: 'eph-pub-full' };
+            await new Promise(() => {});
+          },
+          close() {},
+        };
+      });
+      const runP = sdk.spawnEphemeralSession('do it', { cwd: tmpDir, project: 'proj' });
+      runP.catch(() => {});
+      const ok = await waitMicro(() => !!capturedOpts?.canUseTool);
+      assert.ok(ok, 'ephemeral query should expose canUseTool');
+      const resultP = capturedOpts.canUseTool('Bash', { command: 'npm publish' }, { toolUseID: 'eph-pub-full-1' });
+      let settled = false;
+      resultP.then(() => { settled = true; });
+      mock.timers.tick(10_000);
+      await tick(10);
+      assert.equal(settled, false, 'ephemeral publish must wait for a human even at -2');
+      sdk.stopSession();
+      await tick(10);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
   it('scheduled-task（ephemeral, ctx 非空）不走服务端自动批准', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
     try {

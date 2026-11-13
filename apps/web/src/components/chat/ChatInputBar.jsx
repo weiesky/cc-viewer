@@ -557,6 +557,8 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       onToggle={setQuickExpanded}
                       onHoverEnter={qmHover.enter}
                       onHoverLeave={qmHover.leave}
+                      // 选「完全免审批」时整个菜单关闭，避免确认弹窗出现时菜单仍开着。
+                      onRequestClose={closePlusMenu}
                       middle={
                         <ResumeSessionsRow
                           expanded={quickExpanded === 'history'}

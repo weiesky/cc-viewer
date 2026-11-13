@@ -42,6 +42,8 @@ import {
   createAutoApproveState,
   cancelAutoApproveState,
   replayAutoApproveFields,
+  isAutoApproveEnabledValue,
+  AUTO_APPROVE_FULL,
 } from './auto-approve.js';
 import {
   computeAskAutoAnswer,
@@ -939,7 +941,8 @@ function _createSession(key, cwd) {
       // canUseTool is mounted in EVERY mode (including bypassPermissions) so the
       // npm-publish hard gate survives --d, mirroring perm-bridge.js's bypass
       // exemption. In bypass mode the callback early-allows everything except
-      // publish commands and the two interactive tools (see _handleCanUseTool).
+      // publish commands and the two interactive tools (see _handleCanUseTool);
+      // the only publish exemption is the explicit full auto-approve tier (-2).
       canUseTool: _handleCanUseTool,
       ..._permissionMode === 'bypassPermissions' && { allowDangerouslySkipPermissions: true },
     };
@@ -2067,7 +2070,9 @@ function _createSession(key, cwd) {
       }
     }
 
-    // 2. npm publish is never auto-allowed, even under --d (safety floor).
+    // 2. npm publish is not auto-allowed by default, even under --d (safety floor) —
+    // the only exception is the explicit full auto-approve tier (-2) resolved in the
+    // perm branch below.
     const isPublish = isPublishCommand(toolName, input);
 
     // 3. Bypass mode auto-approves everything except publish and the two
@@ -2180,8 +2185,7 @@ function _createSession(key, cwd) {
       // directory is not trusted for subsequent calls.
       if (toolName === 'Read' || toolName === 'Glob' || toolName === 'Grep') {
         const prefs = readPrefsRaw();
-        const autoApproveSeconds = Number(prefs.autoApproveSeconds);
-        const shouldGrantDir = autoApproveSeconds === -1 || autoApproveSeconds > 0;
+        const shouldGrantDir = isAutoApproveEnabledValue(prefs.autoApproveSeconds);
         const sessionCwd = _cwd || process.env.CCV_PROJECT_DIR;
         if (sessionCwd && shouldGrantDir) {
           let targetDir = null;
@@ -2227,10 +2231,15 @@ function _createSession(key, cwd) {
         // unknown decision → fall through to normal approval flow
       } catch (err) { reportSwallowed('sdk-manager.waterfall.perm', err); }
     }
-    // npm publish is a hard safety floor: it must always wait for a HUMAN decision
-    // (the 5-minute deny timeout applies), never the server-side auto-approve fallback.
-    // Same exemption for unattended scheduled-task runs (ctx != null).
-    const permAuto = (isPublish || ctx) ? { enabled: false } : computeAutoApprove('perm', _cwd);
+    // npm publish is a hard safety floor: it must wait for a HUMAN decision at
+    // every tier EXCEPT the explicit full auto-approve (-2, 完全免审批), which
+    // opts into letting high-risk commands through (intended for isolated
+    // containers). Same exemption for unattended scheduled-task runs (ctx != null)
+    // — those never auto-approve at any tier.
+    const permComputed = computeAutoApprove('perm', _cwd);
+    const permAuto = (ctx || (isPublish && permComputed.seconds !== AUTO_APPROVE_FULL))
+      ? { enabled: false }
+      : permComputed;
     const permPayload = { type: 'perm-hook-pending', id, toolName, input, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin,
       autoApproveSeconds: permAuto.enabled ? permAuto.seconds : 0,
       ...(permAuto.enabled ? { autoApproveAt: permAuto.autoApproveAt } : {}) };
@@ -2316,8 +2325,8 @@ function _createSession(key, cwd) {
       };
       _pendingApprovals.set(id, entry);
       // Arm the server-side fallback AFTER the entry is in the map: instant (-1 for
-      // plan/perm, 0 minutes for ask hosting) fires synchronously and resolves through
-      // the same first-wins wrapper. Ask hosting arms its own state factory (minute
+      // plan, -1/-2 for perm, 0 minutes for ask hosting) fires synchronously and resolves
+      // through the same first-wins wrapper. Ask hosting arms its own state factory (minute
       // semantics) and resolves the pre-picked answers map; plan/perm keep the generic
       // auto-approve state. A null autoValue (no selectable option) never reaches here —
       // the ask caller passes autoMeta only when answers were actually picked, otherwise
