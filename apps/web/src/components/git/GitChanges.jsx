@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Modal, Dropdown, message } from 'antd';
+import { Modal, Dropdown, message, Button } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
@@ -9,7 +10,6 @@ import { toWorkspacePath } from '../../utils/gitWorkspacePath';
 import { FILE_DRAG_TYPE, FOLDER_DRAG_TYPE } from '../../utils/fileDragDrop';
 import { loadGitChangesCollapsedDirs, saveGitChangesCollapsedDirs } from '../../utils/fileExpandedPathsStorage';
 import { useSessionStoragePersistedSet } from '../../hooks/useSessionStoragePersistedSet';
-import RefreshIcon from '../common/RefreshIcon';
 import styles from './GitChanges.module.css';
 
 const STATUS_COLORS = {
@@ -289,6 +289,11 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, on
     save: saveGitChangesCollapsedDirs,
   });
   const mounted = useRef(true);
+  // 手动刷新按钮的 loading：仅在用户点刷新时置 true，refreshAllRepos 的 Promise
+  // 结束后置 false（无限旋转直到完成）。工具/恢复等其它 bump refreshTrigger 的来源
+  // 不触发按钮 loading，避免按钮无故自转。manualRef 标记本次 trigger 来自手动点击。
+  const [refreshing, setRefreshing] = useState(false);
+  const manualRefreshRef = useRef(false);
 
   // dir row 点击切换；key 由 TreeDir 算好（`${repoPath}::${dirPath}`），父级只管 Set 增删。
   const onToggleDir = useCallback((dirKey) => {
@@ -301,10 +306,16 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, on
   }, []);
 
   const refreshAllRepos = useCallback(() => {
-    fetchAllRepos(project, instance)
+    return fetchAllRepos(project, instance)
       .then(results => { if (mounted.current) setRepos(results); })
       .catch(() => {});
   }, [project, instance]);
+
+  const handleManualRefresh = useCallback(() => {
+    manualRefreshRef.current = true;
+    setRefreshing(true);
+    onManualRefresh && onManualRefresh();
+  }, [onManualRefresh]);
 
   const handleRestore = useCallback((repoPath, filePath, fileName) => {
     Modal.confirm({
@@ -352,9 +363,15 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, on
     return () => { mounted.current = false; };
   }, [project, instance]);
 
-  // 工具触发的增量刷新
+  // 工具触发的增量刷新；仅当本次由手动按钮触发时，结束后才清按钮 loading。
   useEffect(() => {
-    if (refreshTrigger > 0) refreshAllRepos();
+    if (refreshTrigger > 0) {
+      const isManual = manualRefreshRef.current;
+      manualRefreshRef.current = false;
+      Promise.resolve(refreshAllRepos()).finally(() => {
+        if (isManual && mounted.current) setRefreshing(false);
+      });
+    }
   }, [refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Prune per-repo state (`expandedCommits`, `collapsedUnpushed`) for repos that
@@ -399,10 +416,21 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, on
         <span className={styles.headerTitle}>
           {t('ui.gitChanges')}
           {/* 手动刷新：用户终端里执行 git checkout/stash/rebase 等不被 tool_result 感知的
-              git 操作时兜底；复用既有 gitChangesRefresh++ 链路触发 fetchAllRepos。RefreshIcon
-              内部封装 300ms cooldown，防狂点并发请求。 */}
+              git 操作时兜底；复用既有 gitChangesRefresh++ 链路触发 fetchAllRepos。
+              与「上下文消耗」刷新按钮同款 antd text 小按钮 + ReloadOutlined，点击后
+              无限旋转直到 fetch 完成（仅手动点击时转，见 refreshing/manualRefreshRef）。 */}
           {onManualRefresh && (
-            <RefreshIcon onClick={onManualRefresh} title={t('ui.gitChanges.refresh')} />
+            <Button
+              size="small"
+              type="text"
+              className={styles.refreshBtn}
+              icon={<ReloadOutlined />}
+              onClick={handleManualRefresh}
+              loading={refreshing}
+              disabled={refreshing}
+              aria-label={t('ui.gitChanges.refresh')}
+              title={t('ui.gitChanges.refresh')}
+            />
           )}
           <StatBadges insertions={totalInsertions} deletions={totalDeletions} />
         </span>

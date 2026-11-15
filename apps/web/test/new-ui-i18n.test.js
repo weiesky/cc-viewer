@@ -155,10 +155,8 @@ const KEYS = [
   // voice-pack agent-loop lifecycle event labels (VoicePackSettings.jsx rows):
   'ui.voicePack.event.agentLoopStart',
   'ui.voicePack.event.agentLoopEnd',
-  // SDK active subAgent/teammate strip (ActiveAgentsBar.jsx):
+  // SDK active subAgent/teammate card (ActiveAgentsBar.jsx):
   'ui.activeAgents.title',
-  'ui.activeAgents.all',
-  'ui.activeAgents.showAll',
 ];
 
 describe('new UI key i18n coverage', () => {
@@ -197,6 +195,8 @@ describe('new UI key i18n coverage', () => {
     ['ui.sdkRetry.retryingNetwork', '{max}'],
     // SDK slow-upstream advisory toast interpolation key.
     ['ui.sdkSlowUpstream', '{seconds}'],
+    // SDK active-agents card header count interpolation key (reused from workflow).
+    ['ui.workflow.agentsShort', '{count}'],
   ];
   for (const [key, placeholder] of PLACEHOLDER_KEYS) {
     it(`${key} 每个 locale 保留占位符 ${placeholder}`, () => {

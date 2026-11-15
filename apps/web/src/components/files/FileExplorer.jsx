@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, useContext } from 'react';
-import { Dropdown } from 'antd';
+import { Dropdown, Button } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
@@ -8,7 +9,6 @@ import { SettingsContext } from '../../contexts/SettingsContext';
 import OpenFolderIcon from '../common/OpenFolderIcon';
 import HtmlPreviewModal from '../common/HtmlPreviewModal';
 import FileBrowserModal from './FileBrowserModal';
-import RefreshIcon from '../common/RefreshIcon';
 import { buildFileContextMenuItems } from './fileContextMenu';
 import { createFileMenuHandler } from './fileContextMenuActions';
 import { importFiles, isExternalFileDrag, getTopLevelEntries } from './importFiles';
@@ -364,19 +364,30 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
   const [internalContainerDragOver, setInternalContainerDragOver] = useState(false);
   const mounted = useRef(true);
   const containerRef = useRef(null);
+  // 手动刷新按钮的 loading：仅手动点击时置 true，refreshRoot 的 Promise 结束后置 false
+  // （无限旋转直到根目录重拉完成；已展开子目录由 TreeNode 各自负责，不在此聚合）。
+  // 工具/重命名/搜索替换等其它 bump refreshTrigger 的来源不触发按钮 loading。
+  const [refreshing, setRefreshing] = useState(false);
+  const manualRefreshRef = useRef(false);
 
   // 重新加载根目录
   const refreshRoot = useCallback(() => {
-    if (!mounted.current) return;
+    if (!mounted.current) return Promise.resolve();
     // Clear any stale error from a previous project/attempt before reloading —
     // otherwise a failed project A's banner persists over project B's tree
     // (items is set on success but error was never reset).
     setError(null);
-    fetch(apiUrl(withViewParams('/api/files?path=', { project, instance })))
+    return fetch(apiUrl(withViewParams('/api/files?path=', { project, instance })))
       .then(readJsonOrThrow)
       .then(data => { if (mounted.current) setItems(data); })
       .catch(e => { if (mounted.current) setError(t('ui.fileExplorer.loadFailed', { reason: e.message })); });
   }, [project, instance]);
+
+  const handleManualRefresh = useCallback(() => {
+    manualRefreshRef.current = true;
+    setRefreshing(true);
+    onManualRefresh && onManualRefresh();
+  }, [onManualRefresh]);
 
   useEffect(() => {
     mounted.current = true;
@@ -393,9 +404,15 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     };
   }, [project, instance]);
 
-  // 工具触发的增量刷新
+  // 工具触发的增量刷新；仅当本次由手动按钮触发时，结束后才清按钮 loading。
   useEffect(() => {
-    if (refreshTrigger > 0) refreshRoot();
+    if (refreshTrigger > 0) {
+      const isManual = manualRefreshRef.current;
+      manualRefreshRef.current = false;
+      Promise.resolve(refreshRoot()).finally(() => {
+        if (isManual && mounted.current) setRefreshing(false);
+      });
+    }
   }, [refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Header 右键菜单与弹窗网格空白区域共用 'container' 定义/动作（同一 builder 保证同步）。
@@ -554,10 +571,20 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
             {t('ui.fileExplorer')}
             {/* 手动刷新：外部 mv/cp/系统级文件变化等 tool_result 感知不到的场景下用户兜底；
                 复用既有 refreshTrigger++ 链路（ChatView state.fileExplorerRefresh），TreeNode
-                的 useEffect 监听到变化 → 已展开目录全部重拉一次。RefreshIcon 内部封装 300ms
-                cooldown 防狂点 + 360° 单次旋转反馈。 */}
+                的 useEffect 监听到变化 → 已展开目录全部重拉一次。与「上下文消耗」刷新按钮同款
+                antd text 小按钮 + ReloadOutlined，点击后无限旋转直到根目录重拉完成（仅手动时转）。 */}
             {onManualRefresh && (
-              <RefreshIcon onClick={onManualRefresh} title={t('ui.fileExplorer.refresh')} />
+              <Button
+                size="small"
+                type="text"
+                className={styles.refreshBtn}
+                icon={<ReloadOutlined />}
+                onClick={handleManualRefresh}
+                loading={refreshing}
+                disabled={refreshing}
+                aria-label={t('ui.fileExplorer.refresh')}
+                title={t('ui.fileExplorer.refresh')}
+              />
             )}
             {/* Search toggle: replaces the old standalone rail 🔍 entry. Opens the
                 SearchPanel embedded below the tree inside this panel (active state

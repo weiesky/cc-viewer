@@ -36,7 +36,10 @@
 
 import { reportSwallowed } from './error-report.js';
 
-/** Per-connection cap on buffered bytes (mirrors the mux QUEUE_MAX_BYTES). */
+/** Per-connection cap on buffered bytes. Counted in real UTF-8 bytes (Buffer.byteLength),
+ *  matching the mux QUEUE_MAX_BYTES units so a full proxy can never overflow the socket
+ *  queue it replays into. For CJK content (JSON does not escape it) this bounds the proxy
+ *  to roughly 1/3 the *character* count an ASCII session gets — the honest memory measure. */
 export const ATTACH_BUFFER_MAX_BYTES = 32 * 1024 * 1024;
 
 const CONV_FRAME_PREFIX = 'event: v3_conv\ndata: ';
@@ -63,7 +66,7 @@ export function createAttachBufferClient({ project, instance, maxBytes, onOverfl
     overflowed: false,
     write(text) {
       if (client.destroyed || client.overflowed) return true;
-      const len = typeof text === 'string' ? text.length : (text ? text.length : 0);
+      const len = text ? Buffer.byteLength(text, 'utf8') : 0;
       if (client.bytes + len > limit) {
         // Overflow: degrade to today's pre-fix behavior (drop the window's
         // increments) rather than risk an unbounded queue. Never replay a
@@ -135,30 +138,66 @@ function _isCoveredConvFrame(frameText, convCoverage) {
  * any v3_conv frame the cold bundle already covered. Safe to call with a null
  * or overflowed client (no-op). Stops at the first dead sink or write error.
  *
- * @param {{write: (s:string)=>any, alive?: ()=>boolean}} sink
+ * Credit-based (async): the cold-load window now spans real time (the mux cold load is
+ * backpressured), so the replay may be multi-MB and must NOT dump synchronously into a
+ * possibly-congested socket. Each frame goes through the same contract as the cold load
+ * (write; if pressured, await drain; abort on a dead sink). `client.bytes` is decremented
+ * as frames are replayed so the cap tracks the LIVE backlog, not cumulative arrivals.
+ *
+ * Atomicity: the proxy is NOT cleared here. The caller passes an `onDrained` callback that
+ * — synchronously inside the final pass (no yield between the last write and it) — splices
+ * the proxy out of deps.clients, pushes the real registrable, and clears the proxy. That
+ * single synchronous step is what keeps the anti-flicker invariant: no broadcast can
+ * interleave between the final replay and the swap (a frame arriving mid-await is appended
+ * to the still-registered proxy and replayed on the next pass).
+ *
+ * @param {{write: (s:string)=>any, alive?: ()=>boolean,
+ *          needsDrain?: ()=>boolean, awaitDrain?: ()=>Promise}} sink
  * @param {object|null} client - the attach buffer client.
  * @param {Map<string,{seqs:Set<number>, baseSeq:number}>|null} convCoverage
- * @returns {{replayed: number, skipped: number}}
+ * @param {()=>void} onDrained - called synchronously when the queue is fully replayed (the
+ *   caller MUST do the proxy→registrable swap here).
+ * @param {()=>void} [onAbort] - called synchronously when the replay aborts early on a dead
+ *   sink or a write error; the caller MUST remove the proxy from the broadcast list here
+ *   (the registrable is NOT registered on abort). Both callbacks are the ONLY cleanup points
+ *   for the proxy — the caller cannot rely on dispose() to splice it after this returns.
+ * @returns {Promise<{replayed: number, skipped: number}>}
  */
-export function flushAttachBuffer(sink, client, convCoverage) {
+export async function flushAttachBuffer(sink, client, convCoverage, onDrained, onAbort) {
   const result = { replayed: 0, skipped: 0 };
   if (!client || client.overflowed || client.destroyed) {
     if (client) client._clear();
+    if (onDrained) onDrained();
     return result;
   }
   const frames = client.frames;
+  const abort = () => { client._clear(); if (onAbort) onAbort(); return result; };
+  // The for-loop re-reads frames.length every iteration, so frames appended to the
+  // still-registered proxy during an await below are replayed in order (the anti-loss
+  // invariant). Replayed entries are nulled in place so the array does not retain the whole
+  // replayed volume for the duration of a long backpressured flush (memory bound), and
+  // client.bytes is decremented so the cap tracks the live backlog, not cumulative arrivals.
   for (let i = 0; i < frames.length; i++) {
-    if (typeof sink.alive === 'function' && !sink.alive()) break;
+    if (typeof sink.alive === 'function' && !sink.alive()) return abort();
     const frame = frames[i];
-    if (_isCoveredConvFrame(frame, convCoverage)) { result.skipped++; continue; }
-    try {
-      sink.write(frame);
-      result.replayed++;
-    } catch (err) {
+    frames[i] = null;                                   // release the reference immediately
+    if (_isCoveredConvFrame(frame, convCoverage)) { result.skipped++; client.bytes -= Buffer.byteLength(frame, 'utf8'); continue; }
+    let ok;
+    try { ok = sink.write(frame); } catch (err) {
       reportSwallowed('sse.attach-buffer.flush', err);
-      break;
+      return abort();
+    }
+    result.replayed++;
+    client.bytes -= Buffer.byteLength(frame, 'utf8');   // free the cap as the backlog drains
+    if ((!ok || (typeof sink.needsDrain === 'function' && sink.needsDrain())) &&
+        typeof sink.awaitDrain === 'function') {
+      await sink.awaitDrain();
     }
   }
-  client._clear();
+  // Swap synchronously at the end of the final pass (no yield after the last write): the
+  // caller splices proxy→registrable and clears the proxy here, so nothing can land in a
+  // cleared-but-still-registered proxy.
+  if (onDrained) onDrained();
+  else client._clear();
   return result;
 }

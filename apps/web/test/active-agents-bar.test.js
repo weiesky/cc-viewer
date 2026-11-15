@@ -1,19 +1,20 @@
 /**
- * active-agents-bar.test.js — source contract for the SDK active-agents strip.
+ * active-agents-bar.test.js — source contract for the SDK active-agents card.
  *
  * The repo has no JSX transform/jsdom, so — like task-progress-hud.test.js —
  * these are readFileSync source contracts. Each assertion pins a deliberate
  * design decision (and was chosen so a specific mutation turns it red):
  *   1. drop the `if (!visible) return null` auto-hide
  *   2. subscribe to something other than taskStore
- *   3. render teammate avatars with animated:true (or drop animated:false)
- *   4. drop the (ALL) fallback button or its onShowAll handler
- *   5. make a non-matchable avatar clickable (dead blank filter)
- *   6. change the container off 28px / avatars off 24px / offsets off 4px/8px
- *   7. drop the frosted-glass recipe or a backdrop-filter line
+ *   3. drop the collapse toggle (or the rows gate)
+ *   4. re-introduce the click-to-filter props (onSelect/onShowAll/selectedKey)
+ *      or the (ALL) chip — both were deliberately removed in the card refactor
+ *   5. drop a row column (status dot / name / doing pill / elapsed)
+ *   6. drop the 1s clock tick (or leave it running while collapsed/hidden)
+ *   7. change the absolute top-right / frosted-glass positioning
  *   8. add a !important anywhere (repo-wide prohibition)
- *   9. drop `color: var(--model-logo-mono)` (currentColor glyphs go dark-on-dark)
- *  10. move the `return null` above the hooks (React hooks-order crash)
+ *   9. move the `return null` above the hooks (React hooks-order crash)
+ *  10. drop the mobile enlargement / pad-mode revert / reduced-motion guard
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,64 +30,29 @@ const jsx = readFileSync(JSX_PATH, 'utf-8');
 const css = readFileSync(CSS_PATH, 'utf-8');
 
 // A CSS-module rule body for an exact selector line, e.g. rule('.bar') → the body
-// of the block whose selector is exactly ".bar" (not ".bar::-webkit-scrollbar"
-// or ".barFocused .avatarBtn"). Mirrors the `css.match(/\.x\s*\{([^}]*)\}/)`
-// idiom in task-progress-hud.test.js but anchored to a line-start selector.
+// of the block whose selector is exactly ".bar" (not ".bar .header" or
+// ".collapsed .header"). Mirrors the idiom in task-progress-hud.test.js.
 function rule(sel) {
   const m = css.match(new RegExp('^' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}', 'm'));
   return m ? m[1] : null;
 }
 
-// Strip <Tooltip ...> opening tags so their own title prop is not counted by the
-// native-title guard below. Tag scanning tracks brace depth because attribute
-// values can contain '>' inside braces (same approach as task-progress-hud).
-function stripOverlayTags(src) {
-  let out = '', i = 0;
-  while (i < src.length) {
-    const m = /^<(Tooltip|Popover)\b/.exec(src.slice(i));
-    if (!m) { out += src[i]; i++; continue; }
-    let j = i + m[0].length, depth = 0;
-    while (j < src.length) {
-      const c = src[j];
-      if (c === '{') depth++;
-      else if (c === '}') depth--;
-      else if (c === '>' && depth === 0) break;
-      j++;
-    }
-    i = j + 1; out += ' ';
-  }
-  return out;
-}
-
 describe('ActiveAgentsBar source contract', () => {
   it('auto-hides: returns null when there are no active agents', () => {
     assert.ok(jsx.includes('if (!visible) return null'), 'early null return present');
-    assert.ok(jsx.includes('const visible = agents.length > 0'), 'visible derived from agent count');
+    assert.ok(jsx.includes('const visible = rows.length > 0'), 'visible derived from row count');
   });
 
   it('the early return null stays AFTER all hooks (hooks-order safety)', () => {
     const iSubscribe = jsx.indexOf('useEffect(() => subscribe(setSnapshot)');
-    const iMemo = jsx.indexOf('useMemo(');
+    const iMemo = jsx.lastIndexOf('useMemo(', jsx.indexOf('if (!visible) return null')); // rows memo — a conditional hook would crash
     const iVisibleFx = jsx.indexOf('onVisibleChange(visible)');
-    const iResetFx = jsx.indexOf('if (selectedKey && !focusAlive');
+    const iTickFx = jsx.indexOf('setInterval(() => setTick(');
     const iReturn = jsx.indexOf('if (!visible) return null');
     assert.ok(iSubscribe > -1 && iMemo > -1 && iReturn > -1, 'hooks + return all present');
-    assert.ok(iVisibleFx > -1 && iResetFx > -1, 'both useEffect hooks present');
-    assert.ok(iSubscribe < iReturn && iMemo < iReturn && iVisibleFx < iReturn && iResetFx < iReturn,
-      'return null must come AFTER every hook (subscribe, useMemo, both useEffects)');
-  });
-
-  it('resets the focus when the selected agent leaves the active set', () => {
-    // The bar holds the derived agents list, so it is the right place to detect a
-    // dead focus (ChatView does not re-render on a partial task completion). It
-    // uses the shared isFocusActive rule (teammate by name, subagent by taskId) so
-    // a multi-task teammate is not cleared while a sibling task is still running.
-    assert.ok(jsx.includes('isFocusActive('), 'liveness via the shared isFocusActive rule');
-    assert.ok(/if \(selectedKey && !focusAlive && typeof onShowAll === 'function'\) onShowAll\(\)/.test(jsx),
-      'effect restores "all" when the focus is no longer active');
-    assert.ok(jsx.includes('[selectedKey, focusAlive, onShowAll]'), 'effect deps cover the reset');
-    assert.ok(/styles\.bar\}\$\{focused \?/.test(jsx),
-      'barFocused keyed off the live focused flag (not raw selectedKey)');
+    assert.ok(iVisibleFx > -1 && iTickFx > -1, 'both useEffect hooks present');
+    assert.ok(iSubscribe < iReturn && iMemo < iReturn && iVisibleFx < iReturn && iTickFx < iReturn,
+      'return null must come AFTER every hook (subscribe, both useMemos, visibility + tick effects)');
   });
 
   it('subscribes to taskStore (not some other source)', () => {
@@ -95,104 +61,124 @@ describe('ActiveAgentsBar source contract', () => {
     assert.ok(jsx.includes('getSnapshot'), 'taskStore getSnapshot for initial value');
   });
 
-  it('derives agents from the snapshot via activeAgents helpers + joins identity via transcript', () => {
+  it('derives rows from the snapshot via activeAgents helpers + joins identity via transcript', () => {
     assert.ok(jsx.includes('deriveActiveAgents(snapshot.tasks)'), 'derive from taskStore tasks');
     assert.ok(jsx.includes('buildAgentToolUseMap(requests)'), 'build tool_use map from requests');
     assert.ok(jsx.includes('resolveAgentIdentity(agent, toolUseMap)'), 'join identity');
+    // The live per-task fields ride on the deriveActiveAgents entry (single
+    // pass) — no second byTaskId re-join against snapshot.tasks.
+    assert.ok(jsx.includes('lastToolName: agent.lastToolName'), 'doing pill sourced from the derived agent');
+    assert.ok(jsx.includes('createdAt: agent.createdAt'), 'elapsed sourced from the derived agent');
+    assert.ok(!jsx.includes('byTaskId'), 'no redundant taskId re-join');
   });
 
-  it('teammate avatars use the static portrait; subagents use sub-* glyphs', () => {
-    assert.ok(jsx.includes("getTeammateAvatar(agent.name, { animated: false })"),
-      'teammate portrait is animation-stripped');
-    assert.ok(jsx.includes('getSvgAvatar(agent.avatarType)'), 'subagent glyph');
+  it('header: live dot + title + count + collapse chevron, whole header is the toggle button', () => {
+    assert.ok(jsx.includes("t('ui.activeAgents.title')"), 'title i18n');
+    assert.ok(jsx.includes('title={t(\'ui.activeAgents.title\')}'), 'title has a hover reveal (truncation)');
+    assert.ok(jsx.includes("t('ui.workflow.agentsShort', { count: rows.length })"), 'count stat i18n');
+    assert.ok(jsx.includes('aria-expanded={!collapsed}'), 'collapse a11y state');
+    assert.ok(jsx.includes("t('ui.expand')"), 'expand tooltip i18n');
+    assert.ok(jsx.includes("t('ui.collapse')"), 'collapse tooltip i18n');
+    assert.ok(jsx.includes('onClick={() => setCollapsed((c) => !c)}'), 'header toggles collapse');
+    assert.ok(jsx.includes("collapsed ? '▸' : '▾'"), 'chevron reflects collapse');
   });
 
-  it('click avatar → onSelect(agent); click is disabled for non-matchable agents', () => {
-    assert.ok(jsx.includes("onClick={agent.matchable ? () => onSelect(agent) : undefined}"),
-      'only matchable agents are clickable');
-    assert.ok(jsx.includes('aria-disabled={!agent.matchable}'),
-      'non-matchable marked aria-disabled (keeps tooltip, unlike disabled attr)');
+  it('rows render only when expanded; one row per task keyed by taskId', () => {
+    assert.ok(jsx.includes('{!collapsed && ('), 'rows gated on expanded');
+    assert.ok(jsx.includes('key={row.taskId}'), 'row keyed by taskId (no teammate name dedupe)');
   });
 
-  it('trailing (ALL) button restores everything via onShowAll', () => {
-    assert.ok(jsx.includes('onClick={onShowAll}'), 'ALL button wired to onShowAll');
-    assert.ok(jsx.includes("t('ui.activeAgents.all')"), 'ALL label i18n');
-    assert.ok(jsx.includes("t('ui.activeAgents.showAll')"), 'show-all tooltip i18n');
-    assert.ok(jsx.includes("t('ui.activeAgents.title')"), 'group label i18n');
+  it('scrollable rows region is keyboard-focusable (WCAG 2.1.1)', () => {
+    assert.ok(jsx.includes('tabIndex={0}'), 'rows div is tabbable');
+    assert.ok(/\.rows:focus-visible\s*\{[^}]*outline-offset:\s*-2px/.test(css),
+      'inset focus ring on the scrollable rows (not clipped by .bar overflow)');
   });
 
-  it('selection state: focused bar dims the rest, selected stays solid', () => {
-    assert.ok(jsx.includes('styles.barFocused'), 'barFocused modifier applied');
-    assert.ok(jsx.includes('styles.avatarBtnActive'), 'active avatar class');
-    const dimmed = rule('.barFocused .avatarBtn');
-    assert.ok(dimmed && /opacity:\s*0\.45/.test(dimmed), 'non-selected avatars dimmed');
-    const solid = rule('.barFocused .avatarBtnActive');
-    assert.ok(solid && /opacity:\s*1/.test(solid), 'selected avatar solid');
+  it('each row: status dot + name + current-tool pill + elapsed duration', () => {
+    assert.ok(jsx.includes('stateGlyph(state)'), 'status glyph');
+    assert.ok(jsx.includes("row.status === 'pending'"), 'pending → queued mapping');
+    assert.ok(jsx.includes('row.lastToolName'), 'current-tool pill source');
+    assert.ok(jsx.includes('styles.doing'), 'doing pill class');
+    assert.ok(jsx.includes('fmtDuration(Math.max(0, now - row.createdAt))'), 'elapsed from task createdAt');
+    assert.ok(jsx.includes('styles.dur'), 'duration column class');
+    assert.ok(jsx.includes("t('ui.workflow.status.running')"), 'running status a11y label');
+    assert.ok(jsx.includes("t('ui.tasks.status.pending')"), 'pending status a11y label');
   });
 
-  it('container is 28px tall, positioned 4px from top / 8px from right, frosted glass', () => {
+  it('live clock: 1s tick, gated on visible && !collapsed, cleared on cleanup', () => {
+    assert.ok(jsx.includes('if (!visible || collapsed) return undefined'), 'tick gated off when hidden/collapsed');
+    assert.ok(/setInterval\(\(\) => setTick\(\(n\) => n \+ 1\), 1000\)/.test(jsx), '1s interval');
+    assert.ok(jsx.includes('clearInterval(id)'), 'interval cleared');
+    assert.ok(jsx.includes('[visible, collapsed]'), 'tick effect deps');
+  });
+
+  it('removed features are absent: no onSelect/onShowAll/selectedKey/ALL chip/avatars/antd', () => {
+    for (const gone of ['onSelect', 'onShowAll', 'selectedKey', 'matchable',
+      'getTeammateAvatar', 'getSvgAvatar', "from 'antd'", '<Tooltip',
+      'ui.activeAgents.all', 'ui.activeAgents.showAll', 'isFocusActive']) {
+      assert.ok(!jsx.includes(gone), `must not reference ${gone}`);
+    }
+  });
+
+  it('container floats top-right (absolute, 4px/8px), frosted glass, bounded width', () => {
     const bar = rule('.bar');
     assert.ok(bar, '.bar rule exists');
-    assert.match(bar, /height:\s*28px/, '28px tall');
+    assert.match(bar, /position:\s*absolute/, 'absolutely positioned overlay');
     assert.match(bar, /top:\s*4px/, '4px from top');
     assert.match(bar, /right:\s*calc\(8px \+ var\(--chat-scrollbar-width/, '8px + scrollbar gutter from right');
-    assert.match(bar, /position:\s*absolute/, 'absolutely positioned overlay');
+    // Width cap subtracts the scrollbar gutter too, so a narrow pane doesn't
+    // push the card's left edge past the split.
+    assert.match(bar, /width:\s*min\(340px, calc\(100% - 16px - var\(--chat-scrollbar-width/, 'bounded width');
     assert.match(bar, /background:\s*var\(--bg-glass\)/, 'frosted glass background');
     assert.match(bar, /backdrop-filter:\s*blur\(20px\) saturate\(180%\)/, 'backdrop blur');
     assert.match(bar, /-webkit-backdrop-filter:\s*blur\(20px\) saturate\(180%\)/, 'webkit backdrop blur');
-    assert.match(bar, /max-width:\s*calc\(100% - 16px\)/, 'width capped (calc with spaces)');
+    assert.match(bar, /overflow:\s*hidden/, 'rounded corners clip content');
   });
 
-  it('avatars are 24px circles; svg fills them; glyphs use the mono foreground', () => {
-    const avatar = rule('.avatar');
-    assert.ok(avatar, '.avatar rule exists');
-    assert.match(avatar, /width:\s*24px/, '24px wide');
-    assert.match(avatar, /height:\s*24px/, '24px tall');
-    assert.match(avatar, /border-radius:\s*50%/, 'circular');
-    assert.match(avatar, /color:\s*var\(--model-logo-mono\)/, 'currentColor glyph foreground');
-    assert.ok(css.includes('.avatar > :global(svg)'), 'svg scoped to fill the avatar');
+  it('rows area scrolls vertically with a bounded max-height', () => {
+    const rows = rule('.rows');
+    assert.ok(rows, '.rows rule exists');
+    assert.match(rows, /max-height:\s*min\(40vh, 260px\)/, 'bounded max-height');
+    assert.match(rows, /overflow-y:\s*auto/, 'vertical scroll');
   });
 
-  it('(ALL) chip has a bordered surface background and readable text color', () => {
-    const all = rule('.allAvatar');
-    assert.ok(all, '.allAvatar rule exists');
-    assert.match(all, /border-radius:\s*50%/, 'circular');
-    assert.match(all, /background:\s*var\(--bg-surface\)/, 'surface background');
-    assert.match(all, /border:\s*1px solid var\(--border-secondary\)/, 'bordered (light-theme contrast)');
-    assert.match(all, /color:\s*var\(--text-secondary\)/, 'readable text color');
+  it('row layout mirrors WorkflowLiveHud: flex row, dot 1em, doing pill, dur tabular-nums', () => {
+    const row = rule('.row');
+    assert.ok(row && /display:\s*flex/.test(row), '.row is a flex row');
+    const dot = rule('.dot');
+    assert.ok(dot && /width:\s*1em/.test(dot), '.dot fixed 1em');
+    const doing = rule('.doing');
+    assert.ok(doing && /background:\s*var\(--color-primary\)/.test(doing), 'doing pill uses primary bg');
+    const dur = rule('.dur');
+    assert.ok(dur && /text-align:\s*right/.test(dur) && /font-variant-numeric:\s*tabular-nums/.test(dur), 'dur right-aligned tabular-nums');
   });
 
-  it('horizontal scroll on overflow, with the scrollbar hidden both ways', () => {
-    const bar = rule('.bar');
-    assert.match(bar, /overflow-x:\s*auto/, 'horizontal scroll');
-    assert.match(bar, /scrollbar-width:\s*none/, 'Firefox scrollbar hidden');
-    assert.ok(/\.bar::-webkit-scrollbar\s*\{\s*display:\s*none/.test(css), 'webkit scrollbar hidden');
+  it('status pulse + reduced-motion guard', () => {
+    assert.ok(css.includes('@keyframes ccvHudPulse'), 'pulse keyframes');
+    const reduced = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([^}]*)\}/);
+    assert.ok(reduced && /animation:\s*none/.test(reduced[1]), 'reduced-motion disables the pulse');
   });
 
-  it('mobile enlargement keeps the avatar tappable under the 0.6 zoom', () => {
+  it('mobile enlargement keeps the card legible under the 0.6 zoom', () => {
     const m = css.match(/@media\s*\(max-width:\s*768px\)\s*\{/);
     assert.ok(m, 'mobile media query exists');
-    assert.ok(/width:\s*34px/.test(css), 'mobile avatar enlarged');
+    assert.ok(/font-size:\s*16px/.test(css), 'mobile card font enlarged');
   });
 
   it('pad-mode restore rules exist (comment claims them — keep impl in sync)', () => {
-    // The module comment promises a pad-mode revert; without the rule a portrait
-    // iPad would render the enlarged mobile sizes at full zoom.
     assert.ok(css.includes(':global(html.pad-mode) .bar'), 'pad-mode bar revert rule');
-    assert.ok(css.includes(':global(html.pad-mode) .avatar'), 'pad-mode avatar revert rule');
     const m = css.match(/:global\(html\.pad-mode\) \.bar\s*\{([^}]*)\}/);
-    assert.ok(m && /height:\s*28px/.test(m[1]), 'pad-mode restores the 28px desktop height');
+    assert.ok(m && /font-size:\s*12px/.test(m[1]), 'pad-mode restores the desktop font size');
+  });
+
+  it('no leftover strip classes (avatar/ALL/focused all removed)', () => {
+    for (const gone of ['.avatarBtn', '.allAvatar', '.barFocused', '.avatar']) {
+      assert.ok(!css.includes(gone), `CSS must not define ${gone}`);
+    }
   });
 
   it('no !important anywhere in the module (excluding comments)', () => {
     const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
     assert.ok(!cssNoComments.includes('!important'), 'repo-wide prohibition');
-  });
-
-  it('no native title= on triggers (antd Tooltip is used instead)', () => {
-    assert.ok(jsx.includes("from 'antd'"), 'antd import present');
-    assert.ok((jsx.match(/<Tooltip\b/g) || []).length >= 2, 'Tooltips used');
-    assert.equal((stripOverlayTags(jsx).match(/\btitle=/g) || []).length, 0,
-      'no native title= left on any trigger');
   });
 });

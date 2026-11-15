@@ -133,10 +133,12 @@ export function needsDrain(res) {
 /**
  * Wait until the response's write target can accept more data (or the
  * connection dies, or timeoutMs elapses). On the plain path this is exactly
- * awaitDrainOrClose(res). On the compressed path the pressured stream is the
- * ENCODER (its 'drain' fires when compression consumes the input backlog) —
- * waiting on res 'drain' there can stall the full timeout, because compressed
- * output is 20-80x smaller and may never backpressure the socket at all.
+ * awaitDrainOrClose(res). On the compressed path the pressured stream may be the
+ * ENCODER (its 'drain' fires when compression consumes the input backlog) OR the
+ * socket (res 'drain'): when the caller wrote successfully (encoder accepted the
+ * input) but the socket is backpressured (res.writableNeedDrain), only res 'drain'
+ * signals recovery — the encoder never emits 'drain' because it never returned
+ * false. Wait on BOTH so a socket-level stall doesn't sit out the full timeout.
  */
 export function awaitWireDrain(res, timeoutMs) {
   const encoder = res._wireEnc;
@@ -147,6 +149,7 @@ export function awaitWireDrain(res, timeoutMs) {
       clearTimeout(t);
       encoder.off('drain', done);
       encoder.off('close', done);
+      res.off('drain', done);
       res.off('close', done);
       res.off('error', done);
       resolve();
@@ -154,6 +157,7 @@ export function awaitWireDrain(res, timeoutMs) {
     t = setTimeout(done, timeoutMs);
     encoder.once('drain', done);
     encoder.once('close', done); // encoder is destroyed on res close
+    res.once('drain', done);     // socket-level recovery (encoder accepted the write)
     res.once('close', done);
     res.once('error', done);
   });

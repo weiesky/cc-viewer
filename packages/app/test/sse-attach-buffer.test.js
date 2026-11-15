@@ -91,75 +91,75 @@ describe('attach-buffer: proxy write/end contract', () => {
 });
 
 describe('attach-buffer: flushAttachBuffer', () => {
-  it('replays queued frames in order through the sink, then clears', () => {
+  it('replays queued frames in order through the sink, then clears', async () => {
     const c = createAttachBufferClient({});
     c.write(rowFrame('s1', 1));
     c.write(rowFrame('s1', 2));
     const sink = makeSink();
-    const r = flushAttachBuffer(sink, c, null);
+    const r = await flushAttachBuffer(sink, c, null);
     assert.equal(r.replayed, 2);
     assert.deepEqual(sink.written, [rowFrame('s1', 1), rowFrame('s1', 2)]);
     assert.deepEqual(c.frames, [], 'queue drained after flush');
   });
 
-  it('skips a v3_conv frame the cold coverage already carried (idempotency guard)', () => {
+  it('skips a v3_conv frame the cold coverage already carried (idempotency guard)', async () => {
     const c = createAttachBufferClient({});
     c.write(convFrame('s1', 'main', 1));  // covered → skip
     c.write(convFrame('s1', 'main', 2));  // new → replay
     c.write(respFrame('s1', 2));          // resp: always replay (client upserts)
     const coverage = new Map([['s1\x00main', { seqs: new Set([1]), baseSeq: 1 }]]);
     const sink = makeSink();
-    const r = flushAttachBuffer(sink, c, coverage);
+    const r = await flushAttachBuffer(sink, c, coverage);
     assert.equal(r.skipped, 1);
     assert.equal(r.replayed, 2);
     assert.deepEqual(sink.written, [convFrame('s1', 'main', 2), respFrame('s1', 2)]);
   });
 
-  it('skips a conv frame whose seq predates the coverage baseSeq', () => {
+  it('skips a conv frame whose seq predates the coverage baseSeq', async () => {
     const c = createAttachBufferClient({});
     c.write(convFrame('s1', 'main', 3)); // baseSeq=5 → 3 < 5 → covered → skip
     const coverage = new Map([['s1\x00main', { seqs: new Set([5, 6]), baseSeq: 5 }]]);
     const sink = makeSink();
-    const r = flushAttachBuffer(sink, c, coverage);
+    const r = await flushAttachBuffer(sink, c, coverage);
     assert.equal(r.skipped, 1);
     assert.equal(r.replayed, 0);
   });
 
-  it('does NOT skip a conv frame for a different channel or session', () => {
+  it('does NOT skip a conv frame for a different channel or session', async () => {
     const c = createAttachBufferClient({});
     c.write(convFrame('s1', 'teammate', 1));  // channel not covered
     c.write(convFrame('s2', 'main', 1));      // session not covered
     const coverage = new Map([['s1\x00main', { seqs: new Set([1]), baseSeq: 1 }]]);
     const sink = makeSink();
-    const r = flushAttachBuffer(sink, c, coverage);
+    const r = await flushAttachBuffer(sink, c, coverage);
     assert.equal(r.skipped, 0);
     assert.equal(r.replayed, 2);
   });
 
-  it('fails open (replays all) when coverage is null or the frame is unparseable', () => {
+  it('fails open (replays all) when coverage is null or the frame is unparseable', async () => {
     const c = createAttachBufferClient({});
     c.write(convFrame('s1', 'main', 1));
     c.write('event: v3_conv\ndata: {not json}\n\n'); // torn → fail-open
     const sink = makeSink();
-    const r = flushAttachBuffer(sink, c, null);
+    const r = await flushAttachBuffer(sink, c, null);
     assert.equal(r.skipped, 0);
     assert.equal(r.replayed, 2);
   });
 
-  it('is a no-op for a null, overflowed, or destroyed client', () => {
+  it('is a no-op for a null, overflowed, or destroyed client', async () => {
     const sink = makeSink();
-    assert.deepEqual(flushAttachBuffer(sink, null, null), { replayed: 0, skipped: 0 });
+    assert.deepEqual(await flushAttachBuffer(sink, null, null), { replayed: 0, skipped: 0 });
     const over = createAttachBufferClient({ maxBytes: 1 });
     over.write('xx');
-    assert.deepEqual(flushAttachBuffer(sink, over, null), { replayed: 0, skipped: 0 });
+    assert.deepEqual(await flushAttachBuffer(sink, over, null), { replayed: 0, skipped: 0 });
     const dead = createAttachBufferClient({});
     dead.write('a');
     dead.end();
-    assert.deepEqual(flushAttachBuffer(sink, dead, null), { replayed: 0, skipped: 0 });
+    assert.deepEqual(await flushAttachBuffer(sink, dead, null), { replayed: 0, skipped: 0 });
     assert.deepEqual(sink.written, [], 'nothing written for null/overflowed/destroyed');
   });
 
-  it('stops at the first dead sink and reports the write error', () => {
+  it('stops at the first dead sink and reports the write error', async () => {
     const c = createAttachBufferClient({});
     c.write(rowFrame('s1', 1));
     c.write(rowFrame('s1', 2));
@@ -168,11 +168,11 @@ describe('attach-buffer: flushAttachBuffer', () => {
       alive: () => true,
       write: () => { throw new Error('pipe gone'); },
     };
-    const r = flushAttachBuffer(sink, c, null);
+    const r = await flushAttachBuffer(sink, c, null);
     assert.equal(r.replayed, 0, 'first write threw → stop, do not replay the rest');
   });
 
-  it('honors sink.alive() going false mid-flush', () => {
+  it('honors sink.alive() going false mid-flush', async () => {
     const c = createAttachBufferClient({});
     c.write(rowFrame('s1', 1));
     c.write(rowFrame('s1', 2));
@@ -182,7 +182,7 @@ describe('attach-buffer: flushAttachBuffer', () => {
       alive: () => calls < 1, // alive for the first frame only
       write(s) { calls++; this.written.push(s); return true; },
     };
-    const r = flushAttachBuffer(sink, c, null);
+    const r = await flushAttachBuffer(sink, c, null);
     assert.equal(r.replayed, 1, 'second frame skipped once sink died');
     assert.equal(sink.written.length, 1);
   });

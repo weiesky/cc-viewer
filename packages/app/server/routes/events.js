@@ -261,6 +261,19 @@ export async function serveEventStream(sink, params, deps) {
   // previous tail-registration leaked the timer and pushed a dead res in that window.
   sink.onClose?.(dispose);
 
+  // Credit-based bulk write: a cold-load / replay producer must NOT dump a whole
+  // multi-MB burst in one tick (the mux queue cap would 1011 the socket). Write one
+  // frame, then — if the sink signaled pressure (write returned false, or the socket
+  // is behind) — await drain before the next. Aborts on a dead sink. Mirrors the
+  // legacy per-entry loop's contract below; resolves to awaitWireDrain on SSE.
+  const writeBp = async (text) => {
+    if (!sink.alive()) return false;
+    let ok;
+    try { ok = sink.write(text); } catch (err) { reportSwallowed('events.cold-write', err); return false; }
+    if (!ok || sink.needsDrain()) await sink.awaitDrain();
+    return sink.alive();
+  };
+
   const { sidParam, projectParam, instanceParam, sinceParam, ccParam, limitRaw, limitGiven, shardBeforeParam } = {
     sidParam: params.sid,
     projectParam: params.project,
@@ -533,11 +546,8 @@ export async function serveEventStream(sink, params, deps) {
       for (const raw of shardRes.entries) {
         if (!sink.alive()) break;
         const out = enrichRawIfNeeded(raw);
-        try {
-          sink.write('event: load_chunk\ndata: [');
-          sink.write(out.includes('\n') ? out.replace(/\n/g, '') : out);
-          sink.write(']\n\n');
-        } catch { break; }
+        const body = out.includes('\n') ? out.replace(/\n/g, '') : out;
+        if (!(await writeBp(`event: load_chunk\ndata: [${body}]\n\n`))) break;
       }
     } catch (err) {
       reportSwallowed('events.shard-load', err, { sid: sidParam, shardBefore: shardBeforeParam });
@@ -660,16 +670,20 @@ export async function serveEventStream(sink, params, deps) {
         loadStartData.oldestTs = meta.oldestTimestamp || '';
       }
       if (_coldShardCursor) loadStartData.shard = _coldShardCursor;
-      sink.write(`event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`);
-      sink.write(`event: v2_requests\ndata: ${rowsPayload}\n\n`);
-      for (const payload of native.convPayloads) sink.write(`event: v3_conv\ndata: ${payload}\n\n`);
-      for (const payload of native.respPayloads) sink.write(`event: v3_resp\ndata: ${payload}\n\n`);
+      if (!(await writeBp(`event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`))) { /* sink gone mid-load */ }
+      else if (!(await writeBp(`event: v2_requests\ndata: ${rowsPayload}\n\n`))) { /* sink gone mid-load */ }
+      else {
+        let aborted = false;
+        for (const payload of native.convPayloads) { if (!(await writeBp(`event: v3_conv\ndata: ${payload}\n\n`))) { aborted = true; break; } }
+        for (const payload of (!aborted ? native.respPayloads : [])) { if (!(await writeBp(`event: v3_resp\ndata: ${payload}\n\n`))) break; }
+      }
       // kv-cache / context_window sources: rebuild the newest completed
       // mainAgent rows. Depth 3 mirrors the legacy scan-ring fallback (review
       // P2-e): the newest main may lack usage/cached-content or be a
       // synthesis-gated orphan — earlier candidates then provide the values.
       const mains = meta.rows.filter((r) => r.mainAgent && !r.inProgress).slice(-3);
       for (const m of mains) {
+        if (!sink.alive()) break;
         const detail = await readV2SingleEntry(src, { seq: m.seq, sessionId: m.sessionId });
         if (detail && detail.entry) mainAgentRawRing.push(detail.entry);
       }
@@ -760,16 +774,29 @@ export async function serveEventStream(sink, params, deps) {
   //
   // Attach buffer flush + swap: replay every live delta queued during the cold
   // load (in emission order, conv-covered frames skipped), then swap the proxy
-  // for the real registrable. This whole block is synchronous — no broadcast can
-  // interleave between the replay and the swap, so nothing is double-sent or
-  // lost. After this point the connection receives live frames directly.
+  // for the real registrable. The replay is awaited (credit-based: it paces into
+  // a congested socket instead of dumping a multi-MB burst), and the proxy stays
+  // registered throughout so frames landing mid-replay are appended + replayed in
+  // order. The proxy→registrable swap happens synchronously inside onDrained (no
+  // yield after the final replay write) — no broadcast can interleave between the
+  // last replay and the swap, so nothing is double-sent or lost. `closed` is
+  // RE-CHECKED after the await: a client that disconnects mid-flush must NOT have
+  // its (now-destroyed) registrable pushed into the broadcast list.
   if (!closed) {
-    flushAttachBuffer(sink, attachBufferClient, coldConvCoverage);
-    if (attachBufferClient) {
-      const bi = deps.clients.indexOf(attachBufferClient);
-      if (bi !== -1) deps.clients.splice(bi, 1);
-    }
-    deps.clients.push(registrable);
+    const removeProxy = () => {
+      if (attachBufferClient) {
+        const bi = deps.clients.indexOf(attachBufferClient);
+        if (bi !== -1) deps.clients.splice(bi, 1);
+        attachBufferClient._clear();
+      }
+    };
+    await flushAttachBuffer(sink, attachBufferClient, coldConvCoverage,
+      () => {                                // onDrained: swap proxy → registrable atomically
+        if (closed) { removeProxy(); return; }  // client died mid-flush: drop, do not register
+        removeProxy();
+        deps.clients.push(registrable);
+      },
+      removeProxy);                          // onAbort (dead sink / write error): never leak the proxy
   }
   attachBufferClient = null;
 

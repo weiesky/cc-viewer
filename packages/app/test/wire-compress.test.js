@@ -184,6 +184,25 @@ describe('wire-compress streaming', () => {
     assert.equal(needsDrain(res), res.writableNeedDrain === true);
   });
 
+  // Regression (2026-11): with brotli on, a write the encoder ACCEPTED (ok=true) while the
+  // SOCKET was backpressured (writableNeedDrain) used to wait only on the encoder's 'drain'
+  // — which never fires because the encoder never returned false — so the wait sat out the
+  // full timeout. awaitWireDrain must also listen for res 'drain' (socket-level recovery).
+  it('awaitWireDrain resolves via SOCKET drain when the encoder accepted the write but the socket was pressured', async () => {
+    // A hand-rolled res: a real Writable's writableNeedDrain is a getter we can't set, so we
+    // simulate "encoder accepted (ok=true) + socket pressured (writableNeedDrain=true)".
+    const { EventEmitter } = await import('node:events');
+    const encoder = new EventEmitter();
+    const res = new EventEmitter();
+    res._wireEnc = encoder;                          // compressed path
+    res.writableNeedDrain = true;                    // socket pressured
+    const t0 = performance.now();
+    const p = awaitWireDrain(res, 5000);
+    setTimeout(() => { res.emit('drain'); }, 30);    // socket recovers (encoder never drains)
+    await p;
+    assert.ok(performance.now() - t0 < 4000, 'resolved by res drain, not the 5s timeout');
+  });
+
   it('CCV_BROTLI_QUALITY is honored (garbage value falls back)', async () => {
     process.env.CCV_BROTLI_QUALITY = 'not-a-number';
     const res = mockRes();
