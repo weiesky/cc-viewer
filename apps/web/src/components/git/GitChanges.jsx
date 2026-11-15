@@ -5,6 +5,8 @@ import { apiUrl } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
 import { fetchAllRepos } from '../../utils/gitApi';
 import { buildGitTree } from '../../utils/gitTreeBuilder';
+import { toWorkspacePath } from '../../utils/gitWorkspacePath';
+import { FILE_DRAG_TYPE, FOLDER_DRAG_TYPE } from '../../utils/fileDragDrop';
 import { loadGitChangesCollapsedDirs, saveGitChangesCollapsedDirs } from '../../utils/fileExpandedPathsStorage';
 import { useSessionStoragePersistedSet } from '../../hooks/useSessionStoragePersistedSet';
 import RefreshIcon from '../common/RefreshIcon';
@@ -33,7 +35,29 @@ const STATUS_LABELS = {
   '??': 'U',
 };
 
-function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onRestore, selectedFile, selectedRepo, commitHash, selectedCommitHash, collapsedDirs, onToggleDir, parentPath = '' }) {
+// Same dataTransfer contract as the dragstart payload written by FileExplorer
+// (components/files/FileExplorer.jsx); the FILE/FOLDER type constants live in
+// utils/fileDragDrop.js.
+// NOTE: rows reuse the shared 'text/x-internal-move' marker, so a git row is also a
+// valid *move* source for FileExplorer/FileBrowserModal drop targets. That path is
+// currently unreachable: the UI cannot start a sidebar-row drag onto those targets
+// (the two panels are mutually exclusive, and the modal is read-only / masked).
+function writeFileDragPayload(e, path, isDir) {
+  if (!path) return;
+  e.dataTransfer.setData('text/plain', path);
+  e.dataTransfer.setData('text/x-internal-move', '1');
+  e.dataTransfer.setData(isDir ? FOLDER_DRAG_TYPE : FILE_DRAG_TYPE, '1');
+  e.dataTransfer.effectAllowed = 'copyMove';
+}
+
+// Rename/copy rows carry a porcelain pseudo-path ("old -> new") that the server does
+// not split (server/routes/git.js). The XY status can be a pair (e.g. 'RM' after a
+// staged rename + edit), so reject any status containing R or C.
+function isFileRowDraggable(status) {
+  return typeof status === 'string' && !status.includes('R') && !status.includes('C');
+}
+
+function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onRestore, onAttachToChat, onInsertPathToChat, selectedFile, selectedRepo, commitHash, selectedCommitHash, collapsedDirs, onToggleDir, parentPath = '' }) {
   const dirNames = Object.keys(node.dirs).sort();
   const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
   // 累计 dirPath：父级 + name；name 空（根节点）时透传 parentPath 不变。
@@ -54,17 +78,41 @@ function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onResto
       if (onToggleDir && dirKey) onToggleDir(dirKey);
     }
   }, [onToggleDir, dirKey]);
+  // Both the working tree and unpushed-commit file lists are drag sources. Directory
+  // rows are always draggable; file rows skip renames/copies whose path is a pseudo-path.
+  const [draggingDir, setDraggingDir] = useState(false);
+  const [draggingFilePath, setDraggingFilePath] = useState(null);
+  const handleDragEnd = useCallback(() => {
+    setDraggingDir(false);
+    setDraggingFilePath(null);
+  }, []);
+  const handleDirDragStart = useCallback((e) => {
+    // A cross-directory rename pseudo-path ("a -> dir/b") is split by buildGitTree into
+    // a fake directory node; it has no valid path, so do not start a drag for it.
+    if (dirPath.includes(' -> ')) { e.preventDefault(); return; }
+    writeFileDragPayload(e, toWorkspacePath(repoPath, dirPath), true);
+    setDraggingDir(true);
+  }, [repoPath, dirPath]);
+  // One shared handler keeps the drag logic in a single place; each row binds its own
+  // fullPath via a lightweight inline closure at the call site.
+  const handleFileDragStart = useCallback((e, fullPath) => {
+    writeFileDragPayload(e, toWorkspacePath(repoPath, fullPath), false);
+    setDraggingFilePath(fullPath);
+  }, [repoPath]);
   return (
     <>
       {name && (
         <div
-          className={`${styles.dirItem} ${collapsible ? styles.dirItemClickable : ''}`}
+          className={`${styles.dirItem} ${collapsible ? styles.dirItemClickable : ''} ${draggingDir ? styles.dirItemDragging : ''}`}
           style={{ paddingLeft: 8 + depth * 16 }}
           onClick={collapsible ? handleClick : undefined}
           onKeyDown={collapsible ? handleKeyDown : undefined}
           role={collapsible ? 'button' : undefined}
           tabIndex={collapsible ? 0 : undefined}
           aria-expanded={collapsible ? !isCollapsed : undefined}
+          draggable
+          onDragStart={handleDirDragStart}
+          onDragEnd={handleDragEnd}
         >
           <span className={styles.dirArrow}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={isCollapsed ? '' : styles.rotated90}>
@@ -76,18 +124,22 @@ function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onResto
         </div>
       )}
       {!isCollapsed && dirNames.map(dir => (
-        <TreeDir key={dir} name={dir} node={node.dirs[dir]} depth={name ? depth + 1 : depth} repoPath={repoPath} onFileClick={onFileClick} onOpenFile={onOpenFile} onRestore={onRestore} selectedFile={selectedFile} selectedRepo={selectedRepo} commitHash={commitHash} selectedCommitHash={selectedCommitHash} collapsedDirs={collapsedDirs} onToggleDir={onToggleDir} parentPath={dirPath} />
+        <TreeDir key={dir} name={dir} node={node.dirs[dir]} depth={name ? depth + 1 : depth} repoPath={repoPath} onFileClick={onFileClick} onOpenFile={onOpenFile} onRestore={onRestore} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} selectedFile={selectedFile} selectedRepo={selectedRepo} commitHash={commitHash} selectedCommitHash={selectedCommitHash} collapsedDirs={collapsedDirs} onToggleDir={onToggleDir} parentPath={dirPath} />
       ))}
       {!isCollapsed && files.map(file => {
         const isSelected = selectedFile === file.fullPath && selectedRepo === repoPath
           && (commitHash || null) === (selectedCommitHash || null);
+        const fileRowDraggable = isFileRowDraggable(file.status);
         return (
         <Dropdown key={`${commitHash || 'wt'}::${file.fullPath}`} menu={{ items: [
           { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
           { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
           { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
+          // Keyboard / no-drag affordance mirroring FileExplorer's file menu.
+          { key: 'attachToChat', label: t('ui.contextMenu.attachToChat') },
+          { key: 'insertPathToChat', label: t('ui.contextMenu.insertPathToChat') },
         ], onClick: ({ key }) => {
-          const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${file.fullPath}` : file.fullPath;
+          const resolvedPath = toWorkspacePath(repoPath, file.fullPath);
           if (key === 'reveal') {
             fetch(apiUrl('/api/reveal-file'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: resolvedPath }) }).catch(() => {});
           } else if (key === 'copyPath') {
@@ -95,12 +147,19 @@ function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onResto
               .then(r => r.json()).then(data => { if (data.fullPath) navigator.clipboard.writeText(data.fullPath).then(() => message.success(t('ui.copied'))).catch(() => {}); }).catch(() => {});
           } else if (key === 'copyRelPath') {
             navigator.clipboard.writeText(resolvedPath).then(() => message.success(t('ui.copied'))).catch(() => {});
+          } else if (key === 'attachToChat') {
+            onAttachToChat && onAttachToChat(resolvedPath);
+          } else if (key === 'insertPathToChat') {
+            onInsertPathToChat && onInsertPathToChat(resolvedPath);
           }
         }}} trigger={['contextMenu']}>
           <div
-            className={`${styles.changeItem} ${isSelected ? styles.changeItemSelected : ''}`}
+            className={`${styles.changeItem} ${isSelected ? styles.changeItemSelected : ''} ${draggingFilePath === file.fullPath ? styles.changeItemDragging : ''}`}
             style={{ paddingLeft: 8 + (name ? depth + 1 : depth) * 16 }}
             onClick={() => onFileClick && onFileClick(repoPath, file.fullPath, commitHash || null)}
+            draggable={fileRowDraggable}
+            onDragStart={fileRowDraggable ? (e) => handleFileDragStart(e, file.fullPath) : undefined}
+            onDragEnd={fileRowDraggable ? handleDragEnd : undefined}
           >
             <span className={styles.icon}>{getFileIcon(file.name)}</span>
             <span className={styles.fileName}>{file.name}</span>
@@ -137,7 +196,7 @@ function StatBadges({ insertions, deletions }) {
   );
 }
 
-function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFile, selectedFile, selectedRepo, selectedCommitHash, depth = 0 }) {
+function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFile, onAttachToChat, onInsertPathToChat, selectedFile, selectedRepo, selectedCommitHash, depth = 0 }) {
   // Memoize tree build to avoid recomputing on every parent re-render
   // (e.g. when another commit is expanded or a file is selected elsewhere).
   const fileTree = useMemo(() => buildGitTree(commit.files), [commit.files]);
@@ -153,13 +212,23 @@ function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFi
         : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
     } catch { return ''; }
   }, [commit.date]);
+  // Dragging the commit row itself passes the commit id (hash) to the drop target.
+  const [draggingCommit, setDraggingCommit] = useState(false);
+  const handleCommitDragStart = useCallback((e) => {
+    writeFileDragPayload(e, commit.hash, false);
+    setDraggingCommit(true);
+  }, [commit.hash]);
+  const handleCommitDragEnd = useCallback(() => setDraggingCommit(false), []);
   return (
     <>
       <div
-        className={styles.commitItem}
+        className={`${styles.commitItem} ${draggingCommit ? styles.changeItemDragging : ''}`}
         style={{ paddingLeft: 8 + depth * 16 }}
         onClick={onToggle}
         title={commit.subject}
+        draggable
+        onDragStart={handleCommitDragStart}
+        onDragEnd={handleCommitDragEnd}
       >
         <span className={`${styles.commitArrow} ${expanded ? styles.commitArrowExpanded : ''}`}>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -185,6 +254,8 @@ function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFi
           onFileClick={onFileClick}
           onOpenFile={onOpenFile}
           onRestore={null}
+          onAttachToChat={onAttachToChat}
+          onInsertPathToChat={onInsertPathToChat}
           selectedFile={selectedFile}
           selectedRepo={selectedRepo}
           commitHash={commit.hash}
@@ -195,7 +266,7 @@ function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFi
   );
 }
 
-export default function GitChanges({ style, onClose, onFileClick, onOpenFile, refreshTrigger, onManualRefresh, projectName, project, instance }) {
+export default function GitChanges({ style, onClose, onFileClick, onOpenFile, onAttachToChat, onInsertPathToChat, refreshTrigger, onManualRefresh, projectName, project, instance }) {
   const [repos, setRepos] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -374,6 +445,8 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
                   onToggle={() => toggleCommit(c.hash)}
                   onFileClick={handleClickFile}
                   onOpenFile={onOpenFile}
+                  onAttachToChat={onAttachToChat}
+                  onInsertPathToChat={onInsertPathToChat}
                   selectedFile={selectedFile}
                   selectedRepo={selectedRepo}
                   selectedCommitHash={selectedCommitHash}
@@ -421,6 +494,8 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
               onFileClick={handleClickFile}
               onOpenFile={onOpenFile}
               onRestore={handleRestore}
+              onAttachToChat={onAttachToChat}
+              onInsertPathToChat={onInsertPathToChat}
               selectedFile={selectedFile}
               selectedRepo={selectedRepo}
               commitHash={null}

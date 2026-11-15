@@ -75,6 +75,12 @@
   background: var(--color-tree-selected);
 }
 
+/* Drag source feedback — mirrors FileExplorer .treeItemDragging. */
+.dirItemDragging,
+.changeItemDragging {
+  opacity: 0.5;
+}
+
 .dirItem {
   display: flex;
   align-items: center;

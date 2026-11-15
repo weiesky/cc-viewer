@@ -5522,6 +5522,8 @@ class ChatView extends React.Component {
               project={this.props.viewProject || this.props.projectName}
               instance={this.props.viewInstance}
               onClose={() => this._setGitChangesOpen(false)}
+              onAttachToChat={(filePath) => this._addPendingImage(filePath, 'explorer')}
+              onInsertPathToChat={this._handleInsertPathToChat}
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
                 if (tryOpenWithSystem(resolvedPath, 'git-changes', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;

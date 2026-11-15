@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { FILE_DRAG_TYPE, FOLDER_DRAG_TYPE, isFileDrag, getDraggedFilePath, getDraggedEntry, formatFolderPath, planFileDropInput, quotePathForTerminal } from '../src/utils/fileDragDrop.js';
+import { toWorkspacePath } from '../src/utils/gitWorkspacePath.js';
 
 function drag(types, path = '') {
   return { dataTransfer: { types, getData: (type) => type === 'text/plain' ? path : '' } };
@@ -87,6 +88,48 @@ describe('file browser drop wiring', () => {
     assert.equal(source.split("e.dataTransfer.dropEffect !== 'move'").length - 1, 2);
   });
 
+  it('exposes git change files, folders and commits as drag sources', () => {
+    const source = read('components/git/GitChanges.jsx');
+    assert.ok(source.includes("import { FILE_DRAG_TYPE, FOLDER_DRAG_TYPE } from '../../utils/fileDragDrop'"));
+    assert.ok(source.includes("import { toWorkspacePath } from '../../utils/gitWorkspacePath'"));
+    // Same payload contract as FileExplorer; effectAllowed must stay 'copyMove' so the
+    // chat/terminal drop targets (dropEffect 'copy') accept the drag.
+    assert.ok(source.includes("e.dataTransfer.setData('text/plain', path)"));
+    assert.ok(source.includes("e.dataTransfer.setData('text/x-internal-move', '1')"));
+    assert.ok(source.includes("e.dataTransfer.setData(isDir ? FOLDER_DRAG_TYPE : FILE_DRAG_TYPE, '1')"));
+    assert.ok(source.includes("e.dataTransfer.effectAllowed = 'copyMove'"));
+    // Empty payload (e.g. a missing commit hash) must not be written as the path.
+    assert.ok(source.includes('if (!path) return;'));
+    // Directory rows always drag; renames split into pseudo-dirs are refused at dragstart.
+    assert.ok(source.includes("if (dirPath.includes(' -> ')) { e.preventDefault(); return; }"));
+    assert.ok(source.includes('onDragStart={handleDirDragStart}'));
+    // File rows skip renames/copies; the XY status can be a pair (e.g. 'RM'), so the
+    // guard rejects any status containing R or C.
+    assert.ok(source.includes('const fileRowDraggable = isFileRowDraggable(file.status);'));
+    assert.ok(source.includes("!status.includes('R') && !status.includes('C')"));
+    assert.ok(source.includes('draggable={fileRowDraggable}'));
+    assert.ok(source.includes('onDragStart={fileRowDraggable ? (e) => handleFileDragStart(e, file.fullPath) : undefined}'));
+    // Every drag source is actually enabled (the `draggable` attribute is the master switch).
+    assert.equal(source.split('draggable').length - 1 >= 3, true);
+    // Both row types reset drag feedback on dragend.
+    assert.ok(source.includes('onDragEnd={handleDragEnd}'));
+    assert.ok(source.includes('onDragEnd={fileRowDraggable ? handleDragEnd : undefined}'));
+    // Full payload call sites lock the path source (fullPath, not basename) and isDir arg.
+    assert.ok(source.includes('writeFileDragPayload(e, toWorkspacePath(repoPath, dirPath), true)'));
+    assert.ok(source.includes('writeFileDragPayload(e, toWorkspacePath(repoPath, fullPath), false)'));
+    // Dragging a commit row itself passes the commit id (hash) and is wired to the DOM.
+    assert.ok(source.includes('writeFileDragPayload(e, commit.hash, false)'));
+    assert.ok(source.includes('onDragStart={handleCommitDragStart}'));
+    assert.ok(source.includes('onDragEnd={handleCommitDragEnd}'));
+    // File rows expose keyboard / no-drag affordances mirroring FileExplorer's menu.
+    assert.ok(source.includes("{ key: 'attachToChat', label: t('ui.contextMenu.attachToChat') }"));
+    assert.ok(source.includes("{ key: 'insertPathToChat', label: t('ui.contextMenu.insertPathToChat') }"));
+    assert.ok(source.includes('onAttachToChat && onAttachToChat(resolvedPath)'));
+    assert.ok(source.includes('onInsertPathToChat && onInsertPathToChat(resolvedPath)'));
+    assert.ok(source.includes('styles.changeItemDragging'));
+    assert.ok(source.includes('styles.dirItemDragging'));
+  });
+
   it('attaches a local fake upload without using the real upload callback', () => {
     const input = read('components/chat/ChatInputBar.jsx');
     const view = read('components/chat/ChatView.jsx');
@@ -142,5 +185,16 @@ describe('file browser drop wiring', () => {
     assert.ok(scratch.includes('shell: this.state.shellBasename'));
     assert.ok(scratch.includes("document.addEventListener('dragend', this._resetFileDragOver)"));
     assert.ok(scratch.includes("document.removeEventListener('dragend', this._resetFileDragOver)"));
+  });
+});
+
+describe('git workspace path mapping', () => {
+  it('maps repo-relative paths to workspace-root-relative paths', () => {
+    assert.equal(toWorkspacePath('.', 'src/a.js'), 'src/a.js');
+    assert.equal(toWorkspacePath('sub', 'src/a.js'), 'sub/src/a.js');
+    assert.equal(toWorkspacePath('sub', 'src'), 'sub/src');
+    assert.equal(toWorkspacePath('', 'src/a.js'), 'src/a.js');
+    assert.equal(toWorkspacePath(null, 'src/a.js'), 'src/a.js');
+    assert.equal(toWorkspacePath(undefined, 'src/a.js'), 'src/a.js');
   });
 });
