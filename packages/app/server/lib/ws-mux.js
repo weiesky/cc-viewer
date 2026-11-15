@@ -36,6 +36,25 @@
  * changes. The shim is a real EventEmitter because `awaitWireDrain`/`_safeSseWrite`
  * use on/once/off('drain'|'close'|'error') on it.
  *
+ * Backpressure (2026-11 rework): the mux does NOT use lib/ws-backpressure.js's
+ * gate (that gate's contract is "skip the send + resync on resume", which the mux
+ * inverts into "queue + replay" — see st.send). Instead a self-contained per-socket
+ * pump (a single setInterval) is the ONLY queue driver. Invariants:
+ *   - a frame is queued only via enterBehind() (queue non-empty ⇒ _behind + pump armed);
+ *   - 'drain' fires once the socket has headroom again (the pump dequeued bytes AND
+ *     bufferedAmount <= HIGH_WATER, or the queue fully drains to <= LOW_WATER) — never
+ *     while peak-congested, or woken producers would reflood the queue past the cap;
+ *   - health is measured by the pump DEQUEUING bytes (a frame left the app queue), NOT
+ *     by the bufferedAmount level: a full socket buffer is refilled to ~HIGH every tick,
+ *     so its level never drops even for a fast-draining client. A queue with no byte
+ *     movement for WS_MUX_STALL_MS is closed 1011 (an absolute 2× ceiling covers a
+ *     pathological run of event-loop stalls), even while control pings keep flowing.
+ * Bulk producers (the /events cold loads, the attach-buffer replay) are credit-based:
+ * they `await sink.awaitDrain()` instead of dumping a whole multi-MB burst in one tick.
+ * The cap is per-socket and the credit is per-producer, so N concurrent bulk streams on
+ * one socket can still aggregate past it — a large single frame is the residual exposure
+ * (tracked as follow-up: rowsPayload/conv-line chunking).
+ *
  * Pure logic: no `ws` module dependency (the WebSocketServer class is injected) and no
  * routes/ dependency (serveStream is injected by server.js), so this stays L1 and
  * unit-testable with fakes — same house style as lib/ws-backpressure.js.
@@ -43,23 +62,30 @@
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { reportSwallowed as defaultReport } from '../lib/error-report.js';
-import { createBackpressureGate } from './ws-backpressure.js';
 
 const STREAM_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const HEARTBEAT_SEND_MS = 25_000;   // app-level ping cadence (chisel: proxies kill idle conns)
 const HEARTBEAT_REAP_MS = 60_000;   // no inbound frame for this long → terminate the socket
 const MAX_STREAMS_PER_SOCKET = 8;
-// Per-socket queue is a pure MEMORY SAFETY NET (the primary slow-consumer eviction is the
-// per-stream 30s backpressure rule inherited from _safeSseWrite). Sized above any legitimate
-// cold-load burst so it only trips on a genuinely wedged socket, never on a fast-producer
-// burst. Postmortem (2026-10-15): cc-viewer's own ~11MB v3 cold load exceeded the old 8MB
-// cap — the CAP RAISE is the load-bearing fix; the perMessageDeflate disable below is
-// prophylactic (it removes bufferedAmount inflation so the gate stops false-tripping, but
-// even with deflate on the 32MB cap absorbs the burst: measured peak 10.6MB).
-// 32MB covers ~40k-row sessions while still bounding a truly dead client's damage.
+// Per-socket queue is a pure MEMORY SAFETY NET. With the credit-based producers the
+// queue only ever holds the admitted quantum (O(one frame) once a producer waits), so
+// 32MB is a generous bound that only trips on a pathological single frame or a bug —
+// never on a legitimate cold load, however large. Counted in real UTF-8 bytes
+// (Buffer.byteLength), so CJK sessions consume the cap ~3x faster in *characters*
+// than ASCII — the byte bound is the honest memory measure. Postmortem lineage
+// (2026-10-15): the cap was raised 8MB→32MB when cc-viewer's own ~11MB v3 cold load
+// overflowed; perMessageDeflate stays disabled (it inflates bufferedAmount with
+// zlib-pending bytes and would re-break the pump's progress detection).
 export const QUEUE_MAX_BYTES = 32 * 1024 * 1024;
-const HIGH_WATER = 1024 * 1024;     // mirrors terminal's hysteresis band
-const LOW_WATER = 256 * 1024;
+const HIGH_WATER = 1024 * 1024;     // enter behind / stop flushing above this
+const LOW_WATER = 256 * 1024;       // exit behind only below this (hysteresis band)
+
+/** Pump cadence: how often a behind socket tries to flush its queue. */
+export const WS_MUX_PUMP_MS = 100;
+/** Max bytes dequeued per pump tick (after the guaranteed first frame). */
+export const WS_MUX_FLUSH_BUDGET_BYTES = 4 * 1024 * 1024;
+/** Kill a socket whose queue makes no byte-progress (bufferedAmount never drops) for this long. */
+export const WS_MUX_STALL_MS = 30_000;
 
 /** Per-stream application error codes (WS close-code range, graphql-ws 44xx semantics). */
 export const MUX_CODES = {
@@ -242,8 +268,6 @@ export function createStreamMuxServer({
   epoch = randomBytes(6).toString('hex'),
   setInterval: setI = setInterval,
   clearInterval: clearI = clearInterval,
-  setTimeout: setT = setTimeout,
-  clearTimeout: clearT = clearTimeout,
   now = Date.now,
 } = {}) {
   // perMessageDeflate DISABLED (2026-10-15, queue-overflow postmortem): with deflate on,
@@ -275,77 +299,165 @@ export function createStreamMuxServer({
       streams: new Map(),          // streamId -> { sink, handle, disposed }
       lastInboundAt: now(),
       closed: false,
-      queue: [],                   // FIFO of encoded frames held while behind
+      queue: [],                   // FIFO of { text, bytes } held while behind
       queuedBytes: 0,
       _behind: false,
-      gate: null,
+      pumpTimer: null,
+      lastProgressAt: 0,           // stall-guard clock: reset on byte progress OR a tick-gap stall
+      lastByteProgressAt: 0,       // ABSOLUTE clock: reset ONLY when bufferedAmount truly dropped —
+                                   //   the stall-guard reset never touches it, so a pathological
+                                   //   run of >500ms event-loop stalls cannot postpone the kill forever
+      lastBuffered: 0,             // bufferedAmount sampled at the previous pump tick
+      lastTickAt: 0,               // last pumpTick wall time (event-loop-stall guard)
       pingTimer: null,
-      flushTimer: null,
       report: reportSwallowed,
       send: null, behind: null, closeStream: null,
     };
     sockets.add(st);
 
-    // Drain the queue as a BOUNDED trickle, not a single-tick flood: after each frame, re-check
-    // bufferedAmount and stop the moment it climbs back over highWater (a slow consumer's socket
-    // buffer would otherwise spike to many times the high-water mark in one resume tick). The
-    // trickle self-reschedules (the gate's poll stops once it fires onResume, so we can't rely on
-    // it to drive the next trickle); teardown clears the timer.
-    const flushQueue = () => {
-      if (st.flushTimer) { clearT(st.flushTimer); st.flushTimer = null; }
+    // ── Backpressure pump (the ONLY queue driver) ────────────────────────────
+    // One self-scheduling setInterval per socket. A frame is queued only via
+    // enterBehind() (so queue non-empty ⇒ _behind ∧ pump armed — the invariant the
+    // old gate+flushQueue pair violated, leaving a wedged queue with no driver).
+    const fireAllDrain = () => {
+      // A throwing 'drain' listener must not escape into the pump's timer callback (an
+      // uncaught throw there would kill the process). Drain listeners are optional.
+      for (const rec of st.streams.values()) {
+        try { rec.sink.emit('drain'); } catch (err) { reportSwallowed('ws.mux.drain', err); }
+      }
+    };
+    const armPump = () => {
+      if (st.pumpTimer || st.closed) return;
+      st.pumpTimer = setI(pumpTick, WS_MUX_PUMP_MS);
+      st.pumpTimer.unref?.();
+    };
+    const disarmPump = () => {
+      if (st.pumpTimer) { clearI(st.pumpTimer); st.pumpTimer = null; }
+    };
+    const enterBehind = (buffered) => {
+      if (st._behind) return;          // ONLY on the false→true edge: re-arming on every
+      st._behind = true;               // enqueue would keep resetting the progress clock and
+      st.lastProgressAt = now();       // let live traffic starve the stall watchdog forever.
+      st.lastByteProgressAt = now();
+      st.lastBuffered = buffered;
+      st.lastTickAt = now();
+      armPump();
+    };
+    const exitBehind = () => {
+      // Clear the producer-facing flag so a new write may direct-send, but do NOT disarm:
+      // the pump keeps watching bufferedAmount until the socket is fully drained (the
+      // queue-empty-but-still-buffered wedge below HIGH needs the stall watchdog too).
+      // Only wake waiters once there is real headroom (<= HIGH_WATER): firing drain at peak
+      // congestion (queue just emptied but buffered > HIGH) would let every woken producer
+      // re-enqueue a frame at the worst moment — the F2 reflood this redesign exists to prevent.
+      st._behind = false;
+      if ((st.ws.bufferedAmount || 0) <= HIGH_WATER) fireAllDrain();
+    };
+    function pumpTick() {
+      if (st.closed || st.ws.readyState !== 1) return disarmPump();
+      // Event-loop-stall guard: a gap > 5 ticks is OUR scheduling stall (a big synchronous
+      // cold-load stringify), not the client dying — reset the progress clock rather than
+      // count it against a healthy-but-paused consumer.
+      if (now() - st.lastTickAt > 5 * WS_MUX_PUMP_MS) { st.lastProgressAt = now(); }
+      st.lastTickAt = now();
+      let sentBytes = 0;
       while (st.queue.length && !st.closed && st.ws.readyState === 1) {
-        if ((st.ws.bufferedAmount || 0) > HIGH_WATER) {
-          st._behind = true;
-          st.flushTimer = setT(flushQueue, 100);
-          st.flushTimer.unref?.();
-          return;
-        }
-        const text = st.queue[0];
-        try { st.ws.send(text); } catch (err) {
+        if ((st.ws.bufferedAmount || 0) > HIGH_WATER) break;
+        if (sentBytes > 0 && sentBytes >= WS_MUX_FLUSH_BUDGET_BYTES) break;  // ≥1 frame, then bounded
+        const e = st.queue[0];
+        try { st.ws.send(e.text); } catch (err) {
           reportSwallowed('ws.mux.send', err);
           closeSocket(st, 1011, 'send-failed');
           return;
         }
         st.queue.shift();
-        st.queuedBytes -= text.length;
+        st.queuedBytes -= e.bytes;
+        sentBytes += e.bytes;
       }
-    };
-    const fireAllDrain = () => {
-      for (const rec of st.streams.values()) rec.sink.emit('drain');
-    };
-    st.gate = createBackpressureGate({
-      getBufferedAmount: () => st.ws.bufferedAmount || 0,
-      onResume: () => { st._behind = false; flushQueue(); fireAllDrain(); },
-      onBehind: () => { st._behind = true; },
-      onTimeout: () => {
-        reportSwallowed('ws.mux.backpressure', new Error('timeout'));
+      if (st.closed) return;
+      const b = st.ws.bufferedAmount || 0;
+      if (st.queue.length === 0 && b <= LOW_WATER) {
+        // Fully drained: clear behind (if set), wake waiters, and DISARM — nothing left
+        // to watch. This is the only state where the pump stands down. Drain fires
+        // unconditionally here: maximal headroom, and a waiter that entered mid-band must
+        // not be stranded (the heartbeat timer shares lastBuffered — see ping — so a
+        // conditional drain could be lost). A drain with no listeners is a no-op.
+        st._behind = false;
+        disarmPump();
+        fireAllDrain();
+        st.lastBuffered = 0;
+        return;
+      }
+      // Queue empty but the socket still holds > LOW_WATER: producers may resume (clear the
+      // flag so a new write direct-sends), yet the pump stays armed to watch the wedge.
+      if (st._behind && st.queue.length === 0) exitBehind();
+      // Progress == the pump actually DEQUEUED bytes this tick (a frame left the app queue
+      // into the socket). This — NOT a bufferedAmount level drop — is the sound signal: when
+      // the queue stays non-empty the flush refills the socket buffer to ~HIGH every tick, so
+      // a level sample taken AFTER our own sends is pinned and never "declines" even for a
+      // client draining megabytes per second (it would be false-killed). A wedged client, by
+      // contrast, lets the socket buffer sit > HIGH so the flush breaks with sentBytes===0.
+      // (Also credit the residual band: queue empty, buffer draining from > LOW to <= LOW.)
+      if (sentBytes > 0 || (st.queue.length === 0 && b < st.lastBuffered)) {
+        st.lastProgressAt = now();
+        st.lastByteProgressAt = now();   // the ONLY clock that marks real byte movement
+        // Emit 'drain' once there is real headroom (<= HIGH_WATER), so a woken producer
+        // refills into a draining socket instead of reflooding a congested one.
+        if (b <= HIGH_WATER) fireAllDrain();
+      }
+      st.lastBuffered = b;
+      // Kill on measured no-progress. Two clocks: the stall-guard clock (lastProgressAt) is
+      // reset by event-loop stalls so a slow-but-paused consumer isn't false-killed; the
+      // absolute clock (lastByteProgressAt) is NEVER reset by a stall, so a pathological run
+      // of stalls (or a frozen client whose buffer never drains) is still killed — by the
+      // absolute ceiling 2×STALL_MS even if the guard keeps deferring the primary window.
+      const stalledPrimary = now() - st.lastProgressAt >= WS_MUX_STALL_MS;
+      const stalledAbsolute = now() - st.lastByteProgressAt >= 2 * WS_MUX_STALL_MS;
+      if (stalledPrimary || stalledAbsolute) {
+        reportSwallowed('ws.mux.backpressure', new Error('stalled'), { queuedBytes: st.queuedBytes, buffered: b, absolute: stalledAbsolute && !stalledPrimary });
         closeSocket(st, 1011, 'backpressure-timeout');
-      },
-      highWater: HIGH_WATER,
-      lowWater: LOW_WATER,
-      timeoutMs: 30000,
-    });
+      }
+    }
+
     st.behind = () => st._behind || st.queuedBytes > 0;
 
     // Send-or-enqueue. NEVER drops: while behind, frames accumulate in the bounded queue
-    // (order preserved). A wedged client dies by the 30s gate timeout / queue cap, then the
-    // client reconnects and resumes via its since/cc cursor. The gate's offer() return is
-    // ONLY a signal (its native contract is "skip this send" — the terminal path compensates
-    // with data-resync; mux must NOT skip, so we ignore the return for the send decision).
+    // (order preserved). A genuinely wedged client is killed by the stall watchdog (its
+    // bufferedAmount stops dropping) or the queue cap, then the client reconnects and
+    // resumes via its since/cc cursor. Every enqueue goes through ONE path that both
+    // cap-checks and enterBehind()s — an enqueued frame always has the pump armed.
     st.send = (msg) => {
       if (st.closed || st.ws.readyState !== 1) return false;
       const text = encodeFrame(msg);
-      st.gate.offer();                       // signal only; result deliberately unused
-      if (st._behind) {
-        if (st.queuedBytes + text.length > QUEUE_MAX_BYTES) {
+      const enqueue = () => {
+        const bytes = Buffer.byteLength(text, 'utf8');   // real UTF-8 bytes ws.send will write
+        if (st.queuedBytes + bytes > QUEUE_MAX_BYTES) {
           closeSocket(st, 1011, 'queue-overflow');
           return false;
         }
-        st.queue.push(text);
-        st.queuedBytes += text.length;
+        st.queue.push({ text, bytes });
+        st.queuedBytes += bytes;
+        enterBehind(st.ws.bufferedAmount || 0);
+        return false;
+      };
+      if (st._behind || st.queue.length > 0) return enqueue();   // never direct-send while queued
+      if ((st.ws.bufferedAmount || 0) > HIGH_WATER) return enqueue();
+      try { st.ws.send(text); } catch (err) {
+        reportSwallowed('ws.mux.send', err);
+        closeSocket(st, 1011, 'send-failed');
         return false;
       }
-      try { st.ws.send(text); } catch (err) {
+      return true;
+    };
+
+    // Control-plane bypass: ping/pong/open-ack carry no per-stream seq (the client's
+    // dedup cursor only applies to 'frame'), so they may overtake queued bulk data to
+    // keep liveness alive during a congested cold load. They do NOT count as queue
+    // progress (the stall watchdog only watches bufferedAmount), so they can never mask
+    // a wedged data queue. Data 'frame'/'close'/'error' still go through st.send (FIFO).
+    st.sendControl = (msg) => {
+      if (st.closed || st.ws.readyState !== 1) return false;
+      try { st.ws.send(encodeFrame(msg)); } catch (err) {
         reportSwallowed('ws.mux.send', err);
         closeSocket(st, 1011, 'send-failed');
         return false;
@@ -373,13 +485,24 @@ export function createStreamMuxServer({
       }
     };
 
+    // Ping-timer liveness sample: kept SEPARATE from the pump's lastBuffered baseline so a
+    // 25s heartbeat can never clobber the pump's final-drain 'drain' emission (lost wakeup).
+    let lastPingBuffered = 0;
     st.pingTimer = setI(() => {
       if (st.closed) return;
-      if (now() - st.lastInboundAt > HEARTBEAT_REAP_MS) {
+      // Reap only on TRUE silence: inbound silence AND no outbound byte-progress. A slow
+      // client (a ping that bypasses the data queue still sits behind up to HIGH_WATER of
+      // socket buffer, so its pong can be >60s out on a very slow link) is kept alive as
+      // long as the socket keeps draining; only a socket that is neither heard from nor
+      // draining is reaped.
+      const b = st.ws.bufferedAmount || 0;
+      if (b < lastPingBuffered) st.lastProgressAt = now();
+      lastPingBuffered = b;
+      if (now() - st.lastInboundAt > HEARTBEAT_REAP_MS && now() - st.lastProgressAt > HEARTBEAT_REAP_MS) {
         closeSocket(st, 1001, 'heartbeat-reap');
         return;
       }
-      st.send({ type: 'ping', ts: now() });
+      st.sendControl({ type: 'ping', ts: now() });
     }, HEARTBEAT_SEND_MS);
     st.pingTimer.unref?.();
 
@@ -395,7 +518,7 @@ export function createStreamMuxServer({
       return;
     }
     if (msg.type === 'pong') return;
-    if (msg.type === 'ping') { st.send({ type: 'pong', ts: now() }); return; }
+    if (msg.type === 'ping') { st.sendControl({ type: 'pong', ts: now() }); return; }
     if (msg.type === 'close') {
       st.closeStream(msg.streamId, 'client-close');   // unknown id: ignore (graphql-ws)
       return;
@@ -421,8 +544,10 @@ export function createStreamMuxServer({
     const rec = { sink, handle: null, disposed: false };
     st.streams.set(v.streamId, rec);
     sink.on('close', () => st.closeStream(v.streamId, 'sink-close'));
-    // ack precedes every frame of this stream (history frames included).
-    st.send({ type: 'open-ack', streamId: v.streamId, epoch, seq: 0 });
+    // ack precedes every frame of this stream (history frames included). Sent via
+    // sendControl so it bypasses any queued bulk data — a cold-load backlog must not
+    // push the ack past the client's 2.5s/4s ack deadline and force an SSE fallback.
+    st.sendControl({ type: 'open-ack', streamId: v.streamId, epoch, seq: 0 });
     let handleP;
     try {
       handleP = serveStream(sink, v.qs);
@@ -463,9 +588,13 @@ export function createStreamMuxServer({
     if (st.closed) return;
     st.closed = true;
     for (const streamId of [...st.streams.keys()]) st.closeStream(streamId, _reason);
-    try { st.gate.dispose(); } catch { /* best-effort */ }
     if (st.pingTimer) { clearI(st.pingTimer); st.pingTimer = null; }
-    if (st.flushTimer) { clearT(st.flushTimer); st.flushTimer = null; }
+    if (st.pumpTimer) { clearI(st.pumpTimer); st.pumpTimer = null; }
+    // Reset the backpressure state so a dead sink's needsDrain() goes false and a
+    // writeBp loop aborts on alive() instead of waiting out the 30s awaitDrain timeout.
+    st._behind = false;
+    st.queue.length = 0;
+    st.queuedBytes = 0;
     sockets.delete(st);
   }
 

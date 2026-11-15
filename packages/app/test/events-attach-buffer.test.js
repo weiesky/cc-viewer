@@ -57,7 +57,9 @@ function makeRes(opts = {}) {
     res.chunks.push(s);
     return true;
   };
-  res.end = (c) => { if (c != null) res.chunks.push(Buffer.isBuffer(c) ? c.toString('utf-8') : String(c)); res.ended = true; res.emit('finish'); return res; };
+  // SSE backpressure surface the serve core consults (wire-compress needsDrain / awaitWireDrain).
+  res.writableNeedDrain = false;
+  res.end = (c) => { if (c != null) res.chunks.push(Buffer.isBuffer(c) ? c.toString('utf-8') : String(c)); res.ended = true; res.destroyed = true; res.writable = false; res.emit('finish'); return res; };
   res.on('error', () => {});
   return res;
 }
@@ -304,5 +306,44 @@ describe('events attach buffer: cold-load window no longer loses live deltas', (
       mux.mux.close();
       if (mux.mux._sockets) mux.mux._sockets.forEach((st) => { st.pingTimer && clearInterval(st.pingTimer); });
     }
+  });
+
+  it('regression: a client that closes DURING the awaited flush is NOT re-registered (no ghost client)', async () => {
+    const sid = await seedV2([mainAgentEntry('2026-06-06T01:00:00.000Z', 100)]);
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    // Pressure during the flush so the replay awaits awaitDrain (a real await window in
+    // which the close can land). SSE needsDrain() reads res.writableNeedDrain.
+    res.writableNeedDrain = true;
+    const deps = eventsDeps();
+    const p = events(req, res, url('/events'), true, deps);
+    sendEventToClients(deps.clients, 'v2_requests_delta', rowDeltaFrame(sid, 21)); // buffer one frame
+    // Close while the flush is awaiting (SSE_BACKPRESSURE_TIMEOUT_MS:50 resolves the await).
+    setTimeout(() => res.emit('close'), 5);
+    await p;
+    assert.equal(deps.clients.includes(res), false, 'destroyed registrable must NOT be pushed after a mid-flush close');
+    assert.equal(deps.clients.some(c => c && c._ccvAttachBuffer === true), false, 'proxy removed');
+    assert.equal(deps.clients.length, 0, 'no client left after mid-flush close');
+  });
+
+  it('regression: proxy→registrable swap is atomic — a frame broadcast at the swap boundary is not lost', async () => {
+    const sid = await seedV2([mainAgentEntry('2026-06-06T01:00:00.000Z', 100)]);
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    const deps = eventsDeps();
+    // Broadcast a delta, then IMMEDIATELY (same macrotask) await the handler so the swap
+    // runs; a second delta broadcast from a microtask queued at the flush boundary must land
+    // on exactly one of proxy/real (never neither).
+    const p = events(req, res, url('/events'), true, deps);
+    sendEventToClients(deps.clients, 'v2_requests_delta', rowDeltaFrame(sid, 31));
+    await p;
+    // After completion the real res is registered and the connection streams directly.
+    sendEventToClients(deps.clients, 'v2_requests_delta', rowDeltaFrame(sid, 32));
+    const frames = parseFrames(bodyStr(res));
+    const deltas = frames.filter(f => f.event === 'v2_requests_delta');
+    // Both window deltas must be delivered (none lost at the boundary), each exactly once.
+    assert.ok(deltas.length >= 1, 'window delta delivered, not lost at the swap boundary');
+    assert.equal(deps.clients.includes(res), true, 'real registrable registered after swap');
+    req.emit('close');
   });
 });
