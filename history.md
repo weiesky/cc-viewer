@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web): **GIT 变更面板文件与文件夹支持拖拽到终端或对话** — GIT 变更面板（工作树变更与本地未推送 commit）中的文件/文件夹可拖入终端追加转义路径（不发送回车），或拖入对话输入框作为附件，行为与文件浏览器一致；拖拽未推送 commit 行本身则传入该 commit id；重命名/复制条目因无有效路径不可拖。文件行右键菜单补齐「添加到对话 / 插入路径到对话」，提供键盘可达的等价能力。Coverage: `file-drag-drop.test.js`.
+
+- fix(web+server): **自动审批/自动托管推进后弹窗不关闭修复** — 服务端实质推进后，客户端待审批/待回答弹窗与状态可靠推进为已完成；修复 instant 档下 pending 与 resolved 帧同 tick 连发时因 React 批处理读到未提交状态而漏清，并让带 id 的审批终态帧绕过视图收窄全量广播。Coverage: `plan-auto-approve-runtime.test.js`, `ask-flow-controller.test.js`, `ws-instance-isolation.test.js`, `sdk-plan-approval-guard.test.js`.
+
 - feat(web+server): **新增「完全免审批」权限自动审批档位（-2）** — 到达即放行且解除 `npm publish` 硬闸（含 bypassPermissions 模式），仅建议隔离容器使用；任意入口选择该档统一弹 danger 确认（默认聚焦取消），快捷菜单权限行补 (?) 帮助说明两档差异并红色标注；Plan 自动审批不提供该档。Coverage: `auto-approve.test.js`, `sdk-manager-auto-approve.test.js`, `sdk-manager-query.test.js`, `api-ask-perm-extra.test.js`, `branch-routes-ask-perm.test.js`, `auto-approve-options.test.js`, `plan-auto-approve-runtime.test.js`, `ask-auto-answer-menu.test.js`, `quick-settings-i18n.test.js`, `full-auto-approve-wiring.test.js`.
 
 - fix(web): **完全免审批帮助与确认文案改用 `rm -rf`（删除文件）作示例** — 相比 `npm publish` 更直观传达高危命令放行的含义（18 语言同步）。

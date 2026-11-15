@@ -341,6 +341,48 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
     assert.equal(view.state.pendingPlanApproval, null);
   });
 
+  it('clears the plan when pending and resolved arrive in the same batch (stale-state race)', () => {
+    // React 18 batches the WS onmessage setStates: an instant-tier auto-approve emits
+    // sdk-plan-pending and sdk-plan-resolved in the SAME tick. An imperative
+    // `this.state.pendingPlanApproval?.id` read in the resolved branch would still see the
+    // pre-pending state (null) and no-op, leaving the modal stuck after the pending commit.
+    // Simulate the batch by deferring every setState into a queue, delivering both frames,
+    // then draining. The functional clear must still settle the pending plan.
+    const view = makeView(0);
+    const queue = [];
+    view.setState = (update, callback) => { queue.push([update, callback]); };
+    view._onTerminalWsMessage({
+      type: 'sdk-plan-pending', id: 'plan-1', input: { plan: 'test plan' },
+      cwd: '/work/project-a', instanceKey: 'instance-a',
+    });
+    view._onTerminalWsMessage({ type: 'sdk-plan-resolved', id: 'plan-1', reason: 'auto-approved' });
+    const drain = () => {
+      while (queue.length) {
+        const [update, callback] = queue.shift();
+        const patch = typeof update === 'function' ? update(view.state, view.props) : update;
+        if (patch) view.state = { ...view.state, ...patch };
+        callback?.();
+      }
+    };
+    drain();
+    assert.equal(view.state.pendingPlanApproval, null,
+      'resolved must clear the pending plan even when both frames landed in one batch');
+  });
+
+  it('keeps a pending plan when a resolved frame names a different id', () => {
+    const view = makeView(0);
+    receivePlan(view, 'plan-1');
+    view._onTerminalWsMessage({ type: 'sdk-plan-resolved', id: 'someone-else', reason: 'auto-approved' });
+    assert.equal(view.state.pendingPlanApproval?.id, 'plan-1', 'an unmatched resolved id must be a no-op');
+  });
+
+  it('ignores a resolved frame with no id instead of clearing everything', () => {
+    const view = makeView(0);
+    receivePlan(view, 'plan-1');
+    view._onTerminalWsMessage({ type: 'sdk-plan-resolved' });
+    assert.equal(view.state.pendingPlanApproval?.id, 'plan-1', 'a no-id resolved frame must not clear the pending plan');
+  });
+
   it('honors a switch to instant approval during an active countdown', () => {
     mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(30);
@@ -458,6 +500,80 @@ describe('perm-hook-pending instant interception honors the server-stamped level
     receivePerm(view, { autoApproveSeconds: -1 });
     assert.equal(sent.some((m) => m.type === 'perm-hook-answer'), false);
     assert.equal(view.state.pendingPermission?.autoCancelled, false, 'replay w/o autoCancelled keeps it manual');
+  });
+});
+
+describe('perm-hook terminal clears (functional, id-addressed)', () => {
+  // A permission set in a NON-instant tier stays pending; the server-side fallback timer then
+  // fires and broadcasts perm-hook-resolved. The clear must read the latest state — under
+  // React 18 batching a same-tick pending setState may not be committed when resolved lands.
+  function pendingPerm(view, id, toolName = 'Bash') {
+    view._onTerminalWsMessage({
+      type: 'perm-hook-pending', id, toolName, input: { command: 'ls' },
+      cwd: '/work/project-a', instanceKey: 'instance-a', autoApproveSeconds: 0,
+    });
+  }
+
+  it('clears a same-batch pending+resolved (stale-state race) and prunes the cancel latch', () => {
+    const view = makeView(0);
+    const queue = [];
+    view.setState = (update, cb) => { queue.push([update, cb]); };
+    view._permAutoCancelled.add('perm-1');
+    view._onTerminalWsMessage({ type: 'perm-hook-pending', id: 'perm-1', toolName: 'Bash', input: { command: 'ls' }, cwd: '/work/project-a', instanceKey: 'instance-a', autoApproveSeconds: 0 });
+    view._onTerminalWsMessage({ type: 'perm-hook-resolved', id: 'perm-1', reason: 'auto-approved' });
+    while (queue.length) {
+      const [update, cb] = queue.shift();
+      const patch = typeof update === 'function' ? update(view.state, view.props) : update;
+      if (patch) view.state = { ...view.state, ...patch };
+      cb?.();
+    }
+    assert.equal(view.state.pendingPermission, null, 'resolved must clear the pending permission in one batch');
+    assert.equal(view._permAutoCancelled.has('perm-1'), false, 'cancel latch pruned for the resolved id');
+  });
+
+  it('promotes the queued permission after the head resolves', () => {
+    const view = makeView(0);
+    pendingPerm(view, 'perm-1');
+    pendingPerm(view, 'perm-2');
+    assert.equal(view.state.pendingPermission?.id, 'perm-1');
+    assert.equal(view.state.permissionQueue.length, 1);
+    view._onTerminalWsMessage({ type: 'perm-hook-resolved', id: 'perm-1' });
+    assert.equal(view.state.pendingPermission?.id, 'perm-2', 'queued permission promoted to the panel');
+    assert.equal(view.state.permissionQueue.length, 0);
+  });
+
+  it('removes a queued (non-head) permission without touching the head', () => {
+    const view = makeView(0);
+    pendingPerm(view, 'perm-1');
+    pendingPerm(view, 'perm-2');
+    view._onTerminalWsMessage({ type: 'perm-hook-resolved', id: 'perm-2' });
+    assert.equal(view.state.pendingPermission?.id, 'perm-1', 'head unchanged');
+    assert.equal(view.state.permissionQueue.length, 0, 'queued entry removed');
+  });
+
+  it('a resolved frame for an unknown id is a no-op', () => {
+    const view = makeView(0);
+    pendingPerm(view, 'perm-1');
+    view._onTerminalWsMessage({ type: 'perm-hook-resolved', id: 'someone-else' });
+    assert.equal(view.state.pendingPermission?.id, 'perm-1', 'unmatched id must not clear the panel');
+  });
+
+  it('a no-id perm-hook-resolved returns early (never clears)', () => {
+    const view = makeView(0);
+    pendingPerm(view, 'perm-1');
+    view._onTerminalWsMessage({ type: 'perm-hook-resolved' });
+    assert.equal(view.state.pendingPermission?.id, 'perm-1');
+  });
+
+  it('a no-id perm-hook-timeout clears all (legacy), an id one clears only the match', () => {
+    const view = makeView(0);
+    pendingPerm(view, 'perm-1');
+    pendingPerm(view, 'perm-2');
+    view._onTerminalWsMessage({ type: 'perm-hook-timeout', id: 'perm-1' });
+    assert.equal(view.state.pendingPermission?.id, 'perm-2', 'id timeout promotes the queue head');
+    view._onTerminalWsMessage({ type: 'perm-hook-timeout' }); // legacy no-id clear-all
+    assert.equal(view.state.pendingPermission, null);
+    assert.equal(view.state.permissionQueue.length, 0);
   });
 });
 

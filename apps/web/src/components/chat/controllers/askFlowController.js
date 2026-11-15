@@ -96,14 +96,11 @@ export class AskFlowController {
     });
   };
 
-  _promoteNextAskFromQueue = () => {
-    // 清当前 head 的 askMetaMap 条目（内存回收）
-    const state = this.host.getState();
-    const prevHeadId = state.pendingAsk?.id;
-    if (prevHeadId) this._clearAskMeta(prevHeadId);
-
-    const queue = state.askQueue;
-    const next = queue && queue.length > 0 ? queue[0] : null;
+  // Side effects ONLY (no state write): sync the controller's routing fields to the ask that
+  // became head, and prune the cleared head's meta. `next`/`queue` are state values already
+  // derived by the caller's setState updater. Kept out of any updater so it runs exactly once.
+  _syncAskRouting = (headId, next) => {
+    if (headId) this._clearAskMeta(headId);
     if (next) {
       if (next.kind === ASK_KIND.SDK) {
         this._sdkAskId = next.id;
@@ -113,16 +110,63 @@ export class AskFlowController {
         this._askHookActive = true; this._askHookEverActive = true;
       }
       this._askHookQuestions = next.questions;
+    } else {
+      this._askHookActive = false;
+      this._sdkAskId = null;
+      this._askHookQuestions = null;
+    }
+  };
+
+  _promoteNextAskFromQueue = () => {
+    const state = this.host.getState();
+    const prevHeadId = state.pendingAsk?.id;
+    const queue = state.askQueue;
+    const next = queue && queue.length > 0 ? queue[0] : null;
+    if (next) {
       this.host.setState({
         pendingAsk: { id: next.id, questions: next.questions },
         askQueue: queue.slice(1),
       });
     } else {
-      this._askHookActive = false;
-      this._sdkAskId = null;
-      this._askHookQuestions = null;
       this.host.setState({ pendingAsk: null, askQueue: [] });
     }
+    this._syncAskRouting(prevHeadId, next);
+  };
+
+  // Id-addressed terminal clear. CRITICAL: match against the LATEST state inside a
+  // functional update — under React 18 batching an instant-tier hosting fires
+  // sdk-ask-pending and sdk-ask-resolved in the SAME tick, so the pending setState may not
+  // be committed when this frame arrives and a `getState().pendingAsk?.id` guard would read
+  // null, no-op, and leave the modal stuck forever (the server has already advanced).
+  //
+  // The state patch is computed inside the updater; the side effects run in the setState
+  // CALLBACK (post-commit, exactly once) — NOT synchronously after setState, because a class
+  // component's updater is deferred to the render phase, so reading the captured action
+  // immediately after the setState call would always see null and silently drop the routing
+  // sync / meta prune.
+  _resolveAskById = (askId) => {
+    let action = null; // 'head' | 'queue' | null — captured by the updater
+    let prevHeadId = null;
+    let capturedNext = null;
+    this.host.setState(state => {
+      if (state.pendingAsk?.id === askId) {
+        action = 'head';
+        prevHeadId = state.pendingAsk.id;
+        capturedNext = (state.askQueue && state.askQueue.length > 0) ? state.askQueue[0] : null;
+        return capturedNext
+          ? { pendingAsk: { id: capturedNext.id, questions: capturedNext.questions }, askQueue: state.askQueue.slice(1) }
+          : { pendingAsk: null, askQueue: [] };
+      }
+      if (state.askQueue.some(a => a.id === askId)) {
+        action = 'queue';
+        return { askQueue: state.askQueue.filter(a => a.id !== askId) };
+      }
+      return null;
+    }, () => {
+      // Post-commit: the updater has run, so the captured action is reliable.
+      if (action === 'head') this._syncAskRouting(prevHeadId, capturedNext);
+      else if (action === 'queue') this._clearAskMeta(askId);
+    });
   };
 
   /**
@@ -476,6 +520,11 @@ export class AskFlowController {
     if (!askId) return;
     const cancelReason = typeof reason === 'string' && reason ? reason : 'User aborted';
 
+    // Match against the LATEST state (same React-18 batching hazard as _resolveAskById): a
+    // remote ask-hook-cancelled can land in the same batch as the pending frame. Side effects
+    // run in the post-commit callback; the patch carries the cancel sentinel + head/queue move.
+    let cancelAction = null; // 'head' | 'queue' | null
+    let cancelNext = null;
     this.host.setState(prev => {
       const existingLocal = prev.localAskAnswers && prev.localAskAnswers[askId];
       const hasRealAnswer = existingLocal
@@ -484,19 +533,29 @@ export class AskFlowController {
         && Object.keys(existingLocal).length > 0;
       if (hasRealAnswer) return null;
       if (existingLocal && existingLocal.__cancelled__ === true) return null;
-      return {
-        localAskAnswers: { ...(prev.localAskAnswers || {}), [askId]: { __cancelled__: true, __cancelReason__: cancelReason } },
-      };
+      const sentinel = { __cancelled__: true, __cancelReason__: cancelReason };
+      const localAskAnswers = { ...(prev.localAskAnswers || {}), [askId]: sentinel };
+      if (prev.pendingAsk?.id === askId) {
+        cancelAction = 'head';
+        cancelNext = (prev.askQueue && prev.askQueue.length > 0) ? prev.askQueue[0] : null;
+        return cancelNext
+          ? { localAskAnswers, pendingAsk: { id: cancelNext.id, questions: cancelNext.questions }, askQueue: prev.askQueue.slice(1) }
+          : { localAskAnswers, pendingAsk: null, askQueue: [] };
+      }
+      if (prev.askQueue.some(a => a.id === askId)) {
+        cancelAction = 'queue';
+        return { localAskAnswers, askQueue: prev.askQueue.filter(a => a.id !== askId) };
+      }
+      return { localAskAnswers };
+    }, () => {
+      if (cancelAction === 'head') {
+        this._clearAskMeta(askId);
+        // Only promote the routing for a remote-cancel ack; a local cancel already promoted.
+        if (promoteHead) this._syncAskRouting(askId, cancelNext);
+      } else if (cancelAction === 'queue') {
+        this._clearAskMeta(askId);
+      }
     });
-
-    if (this.host.getState().pendingAsk?.id === askId) {
-      // 内存回收：head 分支无条件清 askMetaMap entry；幂等。
-      this._clearAskMeta(askId);
-      if (promoteHead) this._promoteNextAskFromQueue();
-    } else if (this.host.getState().askQueue.some(a => a.id === askId)) {
-      this._clearAskMeta(askId);
-      this.host.setState(state => ({ askQueue: state.askQueue.filter(a => a.id !== askId) }));
-    }
   };
 
   /**
@@ -694,18 +753,14 @@ export class AskFlowController {
       return true;
     }
     if (msg.type === 'ask-hook-timeout') {
-      // id-aware：只在 timed-out ask 匹配 head 时 clear/promote。
+      // id-aware terminal clear — same functional matching as the resolved paths (an eviction /
+      // bridge-close timeout can land in the same batch as the pending frame).
       const askId = msg.id != null ? String(msg.id) : null;
       if (askId == null) {
         if (this.host.getState().pendingAsk?.id === LEGACY_ASK_PLACEHOLDER_ID) this._promoteNextAskFromQueue();
         return true;
       }
-      if (this.host.getState().pendingAsk?.id === askId) {
-        this._promoteNextAskFromQueue();
-      } else if (this.host.getState().askQueue.some(a => a.id === askId)) {
-        this._clearAskMeta(askId);
-        this.host.setState(state => ({ askQueue: state.askQueue.filter(a => a.id !== askId) }));
-      }
+      this._resolveAskById(askId);
       return true;
     }
     if (msg.type === 'sdk-ask-pending') {
@@ -744,12 +799,7 @@ export class AskFlowController {
     if (msg.type === 'sdk-ask-timeout') {
       const askId = msg.id != null ? String(msg.id) : null;
       if (askId == null) return true;
-      if (this.host.getState().pendingAsk?.id === askId) {
-        this._promoteNextAskFromQueue();
-      } else if (this.host.getState().askQueue.some(a => a.id === askId)) {
-        this._clearAskMeta(askId);
-        this.host.setState(state => ({ askQueue: state.askQueue.filter(a => a.id !== askId) }));
-      }
+      this._resolveAskById(askId);
       return true;
     }
     if (msg.type === 'ask-hook-resolved' || msg.type === 'ask-hook-already-answered') {
@@ -757,22 +807,15 @@ export class AskFlowController {
       const askId = msg.id != null ? String(msg.id) : null;
       if (askId == null) {
         if (this.host.getState().pendingAsk?.id === LEGACY_ASK_PLACEHOLDER_ID) this._promoteNextAskFromQueue();
-      } else if (this.host.getState().pendingAsk?.id === askId) {
-        this._promoteNextAskFromQueue();
-      } else if (this.host.getState().askQueue.some(a => a.id === askId)) {
-        this._clearAskMeta(askId);
-        this.host.setState(state => ({ askQueue: state.askQueue.filter(a => a.id !== askId) }));
+      } else {
+        this._resolveAskById(askId);
       }
       return true;
     }
     if (msg.type === 'sdk-ask-resolved') {
       const askId = msg.id != null ? String(msg.id) : null;
-      if (askId != null && this.host.getState().pendingAsk?.id === askId) {
-        this._promoteNextAskFromQueue();
-      } else if (askId != null && this.host.getState().askQueue.some(a => a.id === askId)) {
-        this._clearAskMeta(askId);
-        this.host.setState(state => ({ askQueue: state.askQueue.filter(a => a.id !== askId) }));
-      }
+      if (askId == null) return true;
+      this._resolveAskById(askId);
       return true;
     }
     if (msg.type === 'ask-auto-cancel') {

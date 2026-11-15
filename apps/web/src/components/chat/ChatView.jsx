@@ -3079,7 +3079,7 @@ class ChatView extends React.Component {
         } else if (msg.type === 'sdk-plan-pending') {
           // An auto-action must never target a plan from another viewed workspace/instance.
           if (!this._sdkFrameMatchesView(msg)) return;
-          if (msg.autoCancelled) this._planAutoCancelled.add(msg.id);
+          if (msg.autoCancelled) this._planAutoCancelled.add(String(msg.id));
           this.setState({ pendingPlanApproval: {
             id: msg.id, input: msg.input, cwd: msg.cwd || null,
             project: msg.project || null, instanceKey: msg.instanceKey || null,
@@ -3117,7 +3117,7 @@ class ChatView extends React.Component {
                 autoApproveSeconds: msg.autoApproveSeconds ?? null,
                 autoCancelled: msg.autoCancelled === true,
               };
-              if (msg.autoCancelled) this._permAutoCancelled.add(msg.id);
+              if (msg.autoCancelled) this._permAutoCancelled.add(String(msg.id));
               if (state.pendingPermission) {
                 return { permissionQueue: [...state.permissionQueue, { id: msg.id, toolName: msg.toolName, input: msg.input, ...autoFields }] };
               }
@@ -3127,7 +3127,7 @@ class ChatView extends React.Component {
         } else if (msg.type === 'perm-hook-auto-cancel') {
           // 服务端/其他端取消了自动审批倒计时：保持 pending 供手动决定，本地不再武装。
           if (msg.id) {
-            this._permAutoCancelled.add(msg.id);
+            this._permAutoCancelled.add(String(msg.id));
             this.setState(state => {
               if (state.pendingPermission?.id === msg.id) {
                 return { pendingPermission: { ...state.pendingPermission, autoCancelled: true, autoApproveAt: null } };
@@ -3141,28 +3141,37 @@ class ChatView extends React.Component {
             });
           }
         } else if (msg.type === 'perm-hook-timeout') {
-          // Timeout carries id — only clear if it matches the active request, or remove from queue
-          if (msg.id) this._permAutoCancelled.delete(msg.id);
+          // Id-addressed terminal clear. Compare inside a functional update: under React 18
+          // batching a same-tick pending setState may not be committed yet, so reading
+          // this.state here could miss the very request this frame resolves.
+          if (msg.id == null) {
+            // Legacy timeout without id — clear all (kept scoped server-side).
+            this.setState({ pendingPermission: null, permissionQueue: [] });
+            return;
+          }
+          const permId = String(msg.id);
+          this._permAutoCancelled.delete(permId);
           this.setState(state => {
-            if (msg.id && state.pendingPermission?.id === msg.id) {
+            if (String(state.pendingPermission?.id) === permId) {
               const next = state.permissionQueue[0] || null;
               return { pendingPermission: next, permissionQueue: state.permissionQueue.slice(1) };
             }
-            if (msg.id) {
-              return { permissionQueue: state.permissionQueue.filter(p => p.id !== msg.id) };
-            }
-            // Legacy timeout without id — clear all
-            return { pendingPermission: null, permissionQueue: [] };
+            const nextQueue = state.permissionQueue.filter(p => String(p.id) !== permId);
+            return nextQueue.length === state.permissionQueue.length ? null : { permissionQueue: nextQueue };
           });
         } else if (msg.type === 'perm-hook-resolved') {
-          // 另一端已审批，清除本端面板 or remove from queue
-          if (msg.id) this._permAutoCancelled.delete(msg.id);
+          // Id-addressed terminal clear (another end approved). Deliberately NOT view-guarded
+          // and functional for the same stale-state reason as above.
+          if (msg.id == null) return;
+          const permId = String(msg.id);
+          this._permAutoCancelled.delete(permId);
           this.setState(state => {
-            if (state.pendingPermission?.id === msg.id) {
+            if (String(state.pendingPermission?.id) === permId) {
               const next = state.permissionQueue[0] || null;
               return { pendingPermission: next, permissionQueue: state.permissionQueue.slice(1) };
             }
-            return { permissionQueue: state.permissionQueue.filter(p => p.id !== msg.id) };
+            const nextQueue = state.permissionQueue.filter(p => String(p.id) !== permId);
+            return nextQueue.length === state.permissionQueue.length ? null : { permissionQueue: nextQueue };
           });
         } else if (msg.type === 'sdk-plan-auto-cancel') {
           if (msg.id && this._sdkFrameMatchesView(msg)) {
@@ -3170,10 +3179,20 @@ class ChatView extends React.Component {
             if (this.state.pendingPlanApproval?.id === msg.id) this._clearPlanAutoApprove();
           }
         } else if (msg.type === 'sdk-plan-resolved') {
-          this._planAutoCancelled.delete(msg.id);
-          if (this.state.pendingPlanApproval?.id === msg.id) {
-            this.setState({ pendingPlanApproval: null });
-          }
+          // Id-addressed terminal clear. Deliberately NOT view-guarded: the server broadcasts
+          // these to every connection, and an unmatched id is a no-op. CRITICAL: read the id
+          // inside a functional update. Under React 18 batching, an instant-tier auto-approve
+          // emits sdk-plan-pending and sdk-plan-resolved in the SAME tick — the pending setState
+          // may not be committed when this frame arrives, so `this.state.pendingPlanApproval`
+          // would still read null and the clear would no-op, leaving the modal stuck forever.
+          if (msg.id == null) return;
+          const planId = String(msg.id);
+          this._planAutoCancelled.delete(planId);
+          this.setState(state => (
+            state.pendingPlanApproval != null && String(state.pendingPlanApproval.id) === planId
+              ? { pendingPlanApproval: null }
+              : null
+          ));
         } else if (msg.type === 'image-upload-notify') {
           // 另一个视图/设备上传了图片，同步到本端 pendingImages
           this._addPendingImage(msg.path, msg.source);
@@ -5503,6 +5522,8 @@ class ChatView extends React.Component {
               project={this.props.viewProject || this.props.projectName}
               instance={this.props.viewInstance}
               onClose={() => this._setGitChangesOpen(false)}
+              onAttachToChat={(filePath) => this._addPendingImage(filePath, 'explorer')}
+              onInsertPathToChat={this._handleInsertPathToChat}
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
                 if (tryOpenWithSystem(resolvedPath, 'git-changes', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;

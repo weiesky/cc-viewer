@@ -417,6 +417,64 @@ describe('AskFlowController — timeout 队列移除 / 生命周期', () => {
     assert.equal(host._state.pendingAsk?.id, 'toolu_dup');
     assert.equal(host._state.askQueue.length, 0);
   });
+
+  it('sdk-ask-resolved clears the ask when pending and resolved arrive in the same batch (stale-state race)', () => {
+    // Instant-tier hosting (askAutoAnswerMinutes=0) emits sdk-ask-pending and sdk-ask-resolved
+    // in the SAME tick. A `getState().pendingAsk?.id` guard would read the pre-pending state
+    // (null) and no-op, leaving the modal stuck after the pending commit. Simulate the batch by
+    // deferring setState into a queue, delivering both frames, then draining.
+    const host = makeHost({ sdkMode: true });
+    const queue = [];
+    host.setState = (updater, cb) => { queue.push([updater, cb]); };
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'sdk-ask-pending', id: 's1', questions: Q1, startedAt: 1, timeoutMs: 1000 });
+    c.handleWsMessage({ type: 'sdk-ask-resolved', id: 's1', reason: 'auto-answered' });
+    while (queue.length) {
+      const [updater, cb] = queue.shift();
+      const partial = typeof updater === 'function' ? updater(host._state) : updater;
+      if (partial) Object.assign(host._state, partial);
+      cb?.();
+    }
+    assert.equal(host._state.pendingAsk, null,
+      'resolved must clear the pending ask even when both frames landed in one batch');
+    // Side effects (routing fields + meta prune) run in the setState callback — drain ran them.
+    assert.equal(c._sdkAskId, null, 'routing id cleared after head resolved');
+    assert.equal(c._askHookQuestions, null, 'cached questions cleared after head resolved');
+    assert.equal(host._state.askMetaMap['s1'], undefined, 'meta pruned after head resolved');
+  });
+
+  it('sdk-ask-resolved promotes the queued ask and switches the routing fields to it', () => {
+    // Regression for the deferred-updater capture bug: after head s1 resolves and queued s2 is
+    // promoted, the submit path must key answers by s2's questions, not s1's.
+    const host = makeHost({ sdkMode: true });
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'sdk-ask-pending', id: 's1', questions: Q1, startedAt: 1, timeoutMs: 1000 });
+    c.handleWsMessage({ type: 'sdk-ask-pending', id: 's2', questions: Q2, startedAt: 2, timeoutMs: 1000 });
+    c.handleWsMessage({ type: 'sdk-ask-resolved', id: 's1', reason: 'auto-answered' });
+    assert.equal(host._state.pendingAsk?.id, 's2', 'queued ask promoted to head');
+    assert.equal(c._sdkAskId, 's2', 'routing id switched to the promoted ask');
+    assert.deepEqual(c._askHookQuestions, Q2, 'cached questions switched to the promoted ask');
+    assert.equal(host._state.askMetaMap['s1'], undefined, 'old head meta pruned');
+  });
+
+  it('sdk-ask-resolved for a queued (non-head) ask removes only that queue entry', () => {
+    const host = makeHost({ sdkMode: true });
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'sdk-ask-pending', id: 's1', questions: Q1 });
+    c.handleWsMessage({ type: 'sdk-ask-pending', id: 's2', questions: Q2 });
+    c.handleWsMessage({ type: 'sdk-ask-resolved', id: 's2', reason: 'auto-answered' });
+    assert.equal(host._state.pendingAsk?.id, 's1', 'head unchanged');
+    assert.equal(host._state.askQueue.length, 0, 'queued entry removed');
+    assert.equal(host._state.askMetaMap['s2'], undefined, 'queued entry meta pruned');
+  });
+
+  it('sdk-ask-resolved for a different id is a no-op', () => {
+    const host = makeHost({ sdkMode: true });
+    const c = new AskFlowController(host);
+    c.handleWsMessage({ type: 'sdk-ask-pending', id: 's1', questions: Q1 });
+    c.handleWsMessage({ type: 'sdk-ask-resolved', id: 'someone-else', reason: 'auto-answered' });
+    assert.equal(host._state.pendingAsk?.id, 's1', 'an unmatched resolved id must not clear the head ask');
+  });
 });
 
 describe('AskFlowController — 问答题自动托管 (ask hosting)', () => {

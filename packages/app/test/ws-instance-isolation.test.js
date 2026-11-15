@@ -87,6 +87,71 @@ describe('broadcastWsMessage instance narrowing', () => {
   });
 });
 
+describe('broadcastWsMessage id-addressed approval clears bypass narrowing', () => {
+  // An auto-approve/auto-answer/timeout emits a terminal "this pending is over" frame whose
+  // ONLY consumer action is "clear the pending whose id matches" (a no-op otherwise). Routing
+  // it through view narrowing turns a display optimization into a correctness dependency: a
+  // diverged connection stamp would silently drop the only close signal, and the server-side
+  // pending is already deleted, so no replay can recover it. These frames broadcast to all.
+  it('id-addressed SDK terminal frames reach every viewer regardless of project/instance stamp', () => {
+    const wss = { clients: new Set() };
+    const owner = makeClient('same', 'ccv-aaa111');
+    const twin = makeClient('same', 'ccv-bbb222');
+    const foreign = makeClient('other-proj', 'ccv-zzz999');
+    const unstamped = makeClient(null, null);
+    for (const c of [owner, twin, foreign, unstamped]) wss.clients.add(c);
+    mod.setTerminalWssForTests(wss);
+    try {
+      const types = ['sdk-plan-resolved', 'sdk-ask-resolved', 'perm-hook-resolved', 'sdk-ask-timeout', 'perm-hook-timeout'];
+      for (const type of types) {
+        for (const c of [owner, twin, foreign, unstamped]) c.sent.length = 0;
+        mod.broadcastWsMessage({ type, id: 'req-1', reason: 'auto-approved', cwd: '/a/same', instanceKey: 'ccv-aaa111' });
+        assert.equal(owner.sent.length, 1, `${type}: owner receives`);
+        assert.equal(twin.sent.length, 1, `${type}: same-basename twin receives (id no-op)`);
+        assert.equal(foreign.sent.length, 1, `${type}: foreign project viewer receives (id no-op)`);
+        assert.equal(unstamped.sent.length, 1, `${type}: unstamped receives`);
+      }
+    } finally {
+      mod.setTerminalWssForTests(null);
+    }
+  });
+
+  it('a no-id perm-hook-timeout (legacy clear-all) stays narrowed', () => {
+    const wss = { clients: new Set() };
+    const owner = makeClient('same', 'ccv-aaa111');
+    const foreign = makeClient('other-proj', null);
+    wss.clients.add(owner);
+    wss.clients.add(foreign);
+    mod.setTerminalWssForTests(wss);
+    try {
+      mod.broadcastWsMessage({ type: 'perm-hook-timeout', cwd: '/a/same', instanceKey: 'ccv-aaa111' });
+      assert.equal(owner.sent.length, 1, 'the owning instance viewer receives the legacy clear-all');
+      assert.equal(foreign.sent.length, 0, 'a no-id clear-all must NOT cross views');
+    } finally {
+      mod.setTerminalWssForTests(null);
+    }
+  });
+
+  it('non-clear approval frames (pending / auto-cancel) stay narrowed even with an id', () => {
+    const wss = { clients: new Set() };
+    const owner = makeClient('same', 'ccv-aaa111');
+    const foreign = makeClient('other-proj', 'ccv-zzz999');
+    wss.clients.add(owner);
+    wss.clients.add(foreign);
+    mod.setTerminalWssForTests(wss);
+    try {
+      for (const type of ['sdk-plan-pending', 'sdk-ask-pending', 'perm-hook-pending', 'sdk-plan-auto-cancel']) {
+        owner.sent.length = 0; foreign.sent.length = 0;
+        mod.broadcastWsMessage({ type, id: 'req-1', cwd: '/a/same', instanceKey: 'ccv-aaa111' });
+        assert.equal(owner.sent.length, 1, `${type}: owner receives`);
+        assert.equal(foreign.sent.length, 0, `${type}: still narrowed (state-carrying frames must not bleed)`);
+      }
+    } finally {
+      mod.setTerminalWssForTests(null);
+    }
+  });
+});
+
 describe('sdkContextReplayFrame — context-only instance-aware reconnect replay', () => {
   const frame = (cwd, instanceKey) => ({
     type: 'sdk-context-usage', ts: 1, usage: { totalTokens: 1 }, cwd,
