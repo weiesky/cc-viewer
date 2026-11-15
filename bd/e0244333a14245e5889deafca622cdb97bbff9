@@ -1,0 +1,80 @@
+packages/app/test/events-attach-buffer.test.js
+  s_e25a74658cd28c::t_7fcfcf8691da8b 60-62
+  s_e25a74658cd28c::t_90a17afe3da667 310-314,318-320,322-348
+  s_e25a74658cd28c::t_0b0e291df50ec3 315-317,321
+packages/app/test/ws-mux-backpressure.test.js
+  s_e25a74658cd28c::t_51e33eec082ff6 166
+  s_e25a74658cd28c::t_b0c663212094d2 75
+  s_e25a74658cd28c::t_75da90b4eeb976 1-74,76-82,84,86-153,157,161-163,165,167-171,173-315,361
+  s_e25a74658cd28c::t_90b41577784445 316-360
+  s_e25a74658cd28c::t_d62beda3e4e400 154-156,158-160,164,172
+  s_e25a74658cd28c::t_0e24c869894669 83,85
+packages/app/test/wire-compress.test.js
+  s_e25a74658cd28c::t_b74ef4dad0485e 187-191,199-200,202-205
+  s_e25a74658cd28c::t_4da851ef3d3915 192-198,201
+packages/app/test/sse-attach-buffer.test.js
+  s_e25a74658cd28c::t_05b2b37fb76093 94,105,118,128,139,149,162,175
+  s_e25a74658cd28c::t_9fcd98b7cab34f 99,112,123,134,144,151,154,158,171,185
+packages/app/server/lib/ws-mux.js
+  s_e25a74658cd28c::t_8df42a520c88fe 44-51,54-56
+  s_e25a74658cd28c::t_1c668a7dcc308c 488-490,499-500
+  s_e25a74658cd28c::t_5458294b1c9f33 39-43,52-53,57,70-78,80-88
+  s_e25a74658cd28c::t_a6dab5343a50ed 547-550
+  s_e25a74658cd28c::t_944cd730633c1c 592-597
+  s_e25a74658cd28c::t_ecfc317e85377d 381-384,387,394-400,403-405
+  s_e25a74658cd28c::t_fc2a1dff6c7f3b 302,305,310-311,318-322,328-340,342-346,353,355-363,365-368,374-375,377-378,402,406-408,419-421,425-428,432-434,438-440,442-444,453-460,464,466
+  s_e25a74658cd28c::t_94007eea079bc3 493-498,501,505
+  s_e25a74658cd28c::t_bcbe56e4ad3772 306-309
+  s_e25a74658cd28c::t_ddcd81a1c1a55b 347-352,354
+  s_e25a74658cd28c::t_623b27b591e9b8 379-380,385-386,388-393
+  s_e25a74658cd28c::t_c7fd76bfc087f2 409-417
+  s_e25a74658cd28c::t_0d767b5d625166 341
+  s_e25a74658cd28c::t_5c627bbef81ff6 521
+  s_e25a74658cd28c::t_4b01cb1b077025 401
+  s_e25a74658cd28c::t_1ee67fb6b84ecb 323-327
+  s_e25a74658cd28c::t_a2accdd3574ebd 461-463
+  s_e25a74658cd28c::t_2480710951f5de 465
+  s_e25a74658cd28c::t_8903d5dc81e1d0 467
+.changeset/ws-mux-backpressure-fix.md
+  s_e25a74658cd28c::t_9c5dfed538ab75 1-4
+  s_e25a74658cd28c::t_becff6a7d0661a 5
+history.md
+  s_e25a74658cd28c::t_1300f0bf6d40e7 5
+  s_e25a74658cd28c::t_301446f653df2d 6
+packages/app/server/lib/wire-compress.js
+  s_e25a74658cd28c::t_29599f3a73bee7 136-141,152,160
+packages/app/server/lib/attach-buffer.js
+  s_e25a74658cd28c::t_6d70e4c3a3dfb0 146,154-155,164
+  s_e25a74658cd28c::t_580aef32c36a73 141-145,147-153,170,200-201
+  s_e25a74658cd28c::t_d6d8bde7fd9bb2 158-163,166,174-179,181,183-186,188,190-194,197-199
+  s_e25a74658cd28c::t_44147279acd72f 189
+  s_e25a74658cd28c::t_54aab9b16c95f1 39-42
+  s_e25a74658cd28c::t_9ae34574b21ccb 69
+packages/app/test/events-v3-cold-backpressure.test.js
+  s_e25a74658cd28c::t_506961b7595b81 121-122,124,128
+  s_e25a74658cd28c::t_64568c5febba00 1-120,123,125-127,129-166
+packages/app/server/routes/events.js
+  s_e25a74658cd28c::t_566501cf5326e8 777-779
+  s_e25a74658cd28c::t_a7c635bdcde15c 780-784,787-791
+  s_e25a74658cd28c::t_9995e221587c10 786,792-799
+  s_e25a74658cd28c::t_2f8d6d3bb1daa6 264-276
+  s_e25a74658cd28c::t_b92e6fefc9d01d 686
+  s_e25a74658cd28c::t_771d6722d35448 673-679
+  s_e25a74658cd28c::t_d3adbcf07eb864 549-550
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bde0244333a14245e5889deafca622cdb97bbff9",
+  "prompts": {},
+  "sessions": {
+    "s_e25a74658cd28c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "859dfa4c-4ac9-47c4-91cb-a579f1e7cfaf",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
