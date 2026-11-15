@@ -1,0 +1,36 @@
+apps/web/src/components/files/FileExplorer.module.css
+  s_d9b506918b770b::t_4609b4ba7a593a 31-46
+apps/web/src/components/git/GitChanges.jsx
+  s_d9b506918b770b::t_a9ab3cd7664000 292-296,309,314-318
+  s_d9b506918b770b::t_6b1ebb4b26e026 419-421,423-433
+  s_d9b506918b770b::t_1c1b93c2157928 2-3
+  s_d9b506918b770b::t_a6b4e362cda63e 366,368-374
+  s_d9b506918b770b::t_5ae98c839f467f 319
+apps/web/src/components/git/GitChanges.module.css
+  s_d9b506918b770b::t_78e0e863720af3 25,32-46
+  s_d9b506918b770b::t_ff3bd64a036c86 47
+.changeset/unify-refresh-button-style.md
+  s_d9b506918b770b::t_2b37fb5fcfd4e0 1-5
+apps/web/src/components/files/FileExplorer.jsx
+  s_d9b506918b770b::t_a555a6daeab9f6 2-3
+  s_d9b506918b770b::t_5afe3181d36efd 407,409-415
+  s_d9b506918b770b::t_5a394c99eec4db 574-575,577-587
+  s_d9b506918b770b::t_51869746ecd0c4 367-371,375,380,386-390
+  s_d9b506918b770b::t_a1dae65f370a93 391
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5fc4c752297c7df9f581c913aa2a1852a0b27a38",
+  "prompts": {},
+  "sessions": {
+    "s_d9b506918b770b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5aedd855-fe00-4102-8d1c-e6d5302d9b25",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
