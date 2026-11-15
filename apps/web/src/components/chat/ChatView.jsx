@@ -5828,6 +5828,7 @@ class ChatView extends React.Component {
               proxyRoles={this.props.proxyRoles}
               proxyOfficialDefault={this.props.proxyOfficialDefault}
               onProxyProfileChange={this.props.onProxyProfileChange}
+              sdkMode={this.props.sdkMode}
             />
             )}
             <UltraPlanModal

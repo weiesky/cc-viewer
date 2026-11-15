@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **SDK 模式代理热切换隐藏 Teammate 角色** — `ccv --sdk` 无 PTY、无法唤起 Teammate，角色分工区与其徽章在该模式下不再渲染 Teammate 行，仅保留主 Agent / 子 Agent；PTY 模式行为不变。
+
 - fix(server): **WS-mux 冷加载背压卡死修复（会话区空白）** — 冷加载历史经 WS-mux 推送时触发队列上限，连接以 1011 关闭、页面收不到 load_end、刷新后仍空白。重构背压泵与生产者为信用式逐帧背压，修复大会话/慢链路下刷新后聊天区不显示；压缩 SSE 路径冷加载不再因 drain 等待卡满超时。Coverage: `ws-mux-backpressure.test.js`, `events-v3-cold-backpressure.test.js`, `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`, `wire-compress.test.js`.
 
 - feat(web): **GIT 变更面板文件与文件夹支持拖拽到终端或对话** — GIT 变更面板（工作树变更与本地未推送 commit）中的文件/文件夹可拖入终端追加转义路径（不发送回车），或拖入对话输入框作为附件，行为与文件浏览器一致；拖拽未推送 commit 行本身则传入该 commit id；重命名/复制条目因无有效路径不可拖。文件行右键菜单补齐「添加到对话 / 插入路径到对话」，提供键盘可达的等价能力。Coverage: `file-drag-drop.test.js`.

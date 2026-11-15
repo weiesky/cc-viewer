@@ -59,6 +59,7 @@ export default function ProxyModal({
   proxyRoles,
   proxyOfficialDefault,
   onProxyProfileChange,
+  sdkMode,
 }) {
   const [editingProxy, setEditingProxy] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
@@ -120,6 +121,8 @@ export default function ProxyModal({
   // 角色分配（存储值）：main=Default 且官方端点时分配区隐藏、存储分配休眠（服务端同步不生效）。
   const roles = proxyRoles || { subagent: 'follow', teammate: 'follow' };
   const hideRoles = activeId === 'max' && proxyOfficialDefault !== false;
+  // SDK mode has no PTY and cannot spawn a Teammate, so the Teammate role row is hidden to avoid visual noise.
+  const roleKeys = sdkMode ? ['subagent'] : ['subagent', 'teammate'];
   const mainProfile = profiles.find(p => p.id === activeId) || null;
   const followLabel = t('ui.proxy.followMainResolved', { name: mainProfile ? mainProfile.name : 'Default' });
 
@@ -243,7 +246,7 @@ export default function ProxyModal({
               {profiles.map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
             </Select>
           </div>
-          {['subagent', 'teammate'].map(role => (
+          {roleKeys.map(role => (
             <div className={styles.roleAssignRow} key={role}>
               <label>{t(role === 'subagent' ? 'ui.proxy.roleSubagent' : 'ui.proxy.roleTeammate')}</label>
               <Select
@@ -271,7 +274,7 @@ export default function ProxyModal({
                     {/* 角色徽章：仅显式分配打标（follow 解析到的不打，避免"我没指定它"困惑） */}
                     {!hideRoles && p.id === activeId && <Tag className={styles.proxyRoleBadge}>{t('ui.proxy.badgeMain')}</Tag>}
                     {!hideRoles && roles.subagent === p.id && <Tag className={styles.proxyRoleBadge}>{t('ui.proxy.badgeSubagent')}</Tag>}
-                    {!hideRoles && roles.teammate === p.id && <Tag className={styles.proxyRoleBadge}>{t('ui.proxy.badgeTeammate')}</Tag>}
+                    {!hideRoles && !sdkMode && roles.teammate === p.id && <Tag className={styles.proxyRoleBadge}>{t('ui.proxy.badgeTeammate')}</Tag>}
                   </div>
                   {p.id === 'max' && defaultConfig && (
                     <div className={styles.proxyItemDetail}>

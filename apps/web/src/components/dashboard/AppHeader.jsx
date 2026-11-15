@@ -2669,6 +2669,7 @@ class AppHeader extends React.Component {
           proxyRoles={this.props.proxyRoles}
           proxyOfficialDefault={this.props.proxyOfficialDefault}
           onProxyProfileChange={this.props.onProxyProfileChange}
+          sdkMode={this.props.sdkMode}
         />
         <SystemTextModal
           open={this.state.systemTextModalVisible}
