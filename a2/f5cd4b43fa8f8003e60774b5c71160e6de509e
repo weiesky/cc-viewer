@@ -1,0 +1,63 @@
+apps/web/src/components/git/GitChanges.module.css
+  s_6bba2a04f27b72::t_8a6bf2cae57486 78-83
+apps/web/src/utils/gitWorkspacePath.js
+  s_6bba2a04f27b72::t_2444a884ebc888 1-6
+apps/web/test/file-drag-drop.test.js
+  s_6bba2a04f27b72::t_94e58c20da85de 92-93,95-96,98-100,129-132
+  s_6bba2a04f27b72::t_360eb444a7f544 190-200
+  s_6bba2a04f27b72::t_25decc1c37973d 97,110-111,114,116-119
+  s_6bba2a04f27b72::t_a50fa1ee4cf0a2 121
+  s_6bba2a04f27b72::t_724958871a6b8b 124-128
+  s_6bba2a04f27b72::t_6b74532c46bcfd 91,94,101-107,109,112-113,115,120,122-123
+  s_6bba2a04f27b72::t_fba7b7e3e494e9 108
+  s_6bba2a04f27b72::t_08646c5c347415 6
+apps/web/src/components/chat/ChatView.jsx
+  s_6bba2a04f27b72::t_e83ede9fa70c11 5525-5526
+history.md
+  s_6bba2a04f27b72::t_06a77e94ba87e3 6
+  s_6bba2a04f27b72::t_4c112bdc989e47 5
+apps/web/src/components/git/GitChanges.jsx
+  s_6bba2a04f27b72::t_9843e01334d2de 81-82
+  s_6bba2a04f27b72::t_183f24ddeaa6cd 269
+  s_6bba2a04f27b72::t_a098d78ce7eb4d 127
+  s_6bba2a04f27b72::t_42cb3dd4dc8cc3 157
+  s_6bba2a04f27b72::t_83da63cf67ebb8 497-498
+  s_6bba2a04f27b72::t_f89cddf7044a3a 142
+  s_6bba2a04f27b72::t_9df4101b5728fa 38-40,43-44,51-53
+  s_6bba2a04f27b72::t_df1aa06af4363d 8-9
+  s_6bba2a04f27b72::t_35fdb77bf63e39 46,54-55,57
+  s_6bba2a04f27b72::t_4b88ae288c8e07 60
+  s_6bba2a04f27b72::t_7e6586ec818fac 138-140,150-153
+  s_6bba2a04f27b72::t_ea209f6a7422a6 160-162
+  s_6bba2a04f27b72::t_5c777c85660a97 448-449
+  s_6bba2a04f27b72::t_807189ab6ed1b3 56
+  s_6bba2a04f27b72::t_a9f47263594384 96-97
+  s_6bba2a04f27b72::t_a0b6cc72d7e979 257-258
+  s_6bba2a04f27b72::t_d23c3526bc8893 106
+  s_6bba2a04f27b72::t_5b10ed4d7dc19d 215-221,225,229-231
+  s_6bba2a04f27b72::t_c04f1cbfcb478a 113-115
+  s_6bba2a04f27b72::t_f7b85196a38cea 41-42,45,47-50,58-59
+  s_6bba2a04f27b72::t_0207712fac29fe 199
+  s_6bba2a04f27b72::t_ef424955f8f12a 83-89,93-95,98-101
+  s_6bba2a04f27b72::t_5ca453e91bc09e 90-92
+  s_6bba2a04f27b72::t_60e0c9c28c9d79 132
+.changeset/git-changes-drag-drop.md
+  s_6bba2a04f27b72::t_0f0818f91d2abf 5
+  s_6bba2a04f27b72::t_a18a2f198c469a 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a2f5cd4b43fa8f8003e60774b5c71160e6de509e",
+  "prompts": {},
+  "sessions": {
+    "s_6bba2a04f27b72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b396ee92-3b1e-4651-ba40-9d03f0a2fe97",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
