@@ -28,6 +28,22 @@
   gap: 5px;
 }
 
+/* 头部刷新按钮：复用「上下文消耗」的 antd text 小按钮，但压缩到贴合 11px 标题栏。
+   antd small 默认 24px 高、内边距偏大，这里收窄成 16×16、图标 12px，与旧 RefreshIcon 占位一致。 */
+.refreshBtn {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-radius: 3px;
+}
+
+.refreshBtn:hover {
+  color: var(--text-secondary);
+}
+
 /* 右侧折叠/关闭按钮。原 .collapseBtn → .iconBtn → 改名 .headerCloseBtn：
    语义更准（只服务 close），避免跟 OpenFolderIcon.module.css 的 .iconBtn 同名混淆。 */
 .headerCloseBtn {
