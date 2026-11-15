@@ -1,5 +1,14 @@
 # cc-viewer
 
+## 1.9.28
+
+### Patch Changes
+
+- 9753137: feat(web): **`--sdk` 活跃 SubAgent/Teammate 浮条改为可折叠卡片列表** — 对话面板右上角浮层由 24px 头像条改为标题 + 数量 + 行列表（状态点、名称、当前工具、耗时）；移除 (ALL) 按钮与点击头像过滤对话；有活跃代理时显示、结束自动消失，与角色筛选互斥。WS 重连后卡片保留当前工具标签、且不再重置已运行耗时。
+- add350b: fix(web): **SDK 模式代理热切换隐藏 Teammate 角色** — `ccv --sdk` 无 PTY、无法唤起 Teammate，角色分工区与其徽章在该模式下不再渲染 Teammate 行，仅保留主 Agent / 子 Agent；PTY 模式行为不变。
+- 5fc4c75: style(web): **统一 Git 变更 / 文件浏览器刷新按钮样式** — 两处头部刷新按钮从自绘 SVG 的 RefreshIcon 换成与「上下文消耗」同款的 antd text 小按钮 + ReloadOutlined，压缩至 16×16 贴合 11px 标题栏；点击后无限旋转 loading 直到刷新完成（仅手动点击时转，工具/重命名等其它触发源不触发按钮 loading）。
+- bde0244: fix(server): **WS-mux 冷加载背压卡死修复（1011 queue-overflow → 会话区空白）** — 冷加载历史经 WS-mux 一次推送数十 MB 突发，触发队列上限导致连接以 1011 关闭、页面收不到 load_end、刷新后仍空白。重构 mux 背压为自包含 pump（排队必有驱动、泵出字节才算进展的双时钟看门狗、有余量才发 drain、ping/pong/open-ack 绕过数据队列）,v3 冷加载/shard/attach-buffer flush 全部改为信用式逐帧 await,attach 缓冲与 mux 队列统一按字节核算；压缩 SSE 路径的 drain 等待同时监听 socket 与 encoder，消除冷加载卡顿。
+
 ## 1.9.27
 
 ### Patch Changes
