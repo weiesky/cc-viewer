@@ -48,6 +48,15 @@ describe('utils/sdkTaskTracker.js', () => {
     assert.equal(getTasks()[0].subject, 'Reworked');
   });
 
+  it('task_started re-fire keeps the original createdAt (elapsed clock does not reset)', () => {
+    applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Original' });
+    const first = getTasks()[0].createdAt;
+    assert.ok(Number.isFinite(first));
+    // A re-fire must not stamp a new start time, or the card's elapsed restarts.
+    applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Reworked' });
+    assert.equal(getTasks()[0].createdAt, first);
+  });
+
   it('task_started retains toolUseId and a bounded promptSnippet for agent tasks', () => {
     const longPrompt = 'p'.repeat(5000);
     applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'Explore', taskType: 'local_agent', toolUseId: 'toolu_1', prompt: longPrompt });
@@ -314,6 +323,18 @@ describe('utils/sdkTaskTracker.js', () => {
       });
       const t = getTasks().find((x) => x.taskId === 't_done');
       assert.equal(t.status, 'completed');
+    });
+
+    it('carries lastToolName through the replay so the doing pill survives a reconnect', () => {
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_tool', taskType: 'local_agent', status: 'running', description: 'Tool', lastToolName: 'Grep' },
+          { taskId: 't_idle', taskType: 'local_agent', status: 'running', description: 'Idle' },
+        ],
+      });
+      assert.equal(getTasks().find((t) => t.taskId === 't_tool').lastToolName, 'Grep');
+      assert.equal(getTasks().find((t) => t.taskId === 't_idle').lastToolName, undefined, 'absent → not set');
     });
 
     it('ignores malformed snapshots', () => {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **`--sdk` 活跃 SubAgent/Teammate 浮条改为可折叠卡片列表** — 对话面板右上角浮层由头像条改为标题 + 数量 + 行列表（状态点 / 名称 / 当前工具 / 耗时）；移除 (ALL) 与点击头像过滤对话；有活跃代理即显示、结束自动消失，与角色筛选互斥；WS 重连后保留当前工具标签且不重置已运行耗时。Coverage: `active-agents-bar.test.js`, `chat-active-agents-wiring.test.js`, `activeAgents.test.js`, `sdkTaskTracker.test.js`, `new-ui-i18n.test.js`.
+
 - fix(web): **SDK 模式代理热切换隐藏 Teammate 角色** — `ccv --sdk` 无 PTY、无法唤起 Teammate，角色分工区与其徽章在该模式下不再渲染 Teammate 行，仅保留主 Agent / 子 Agent；PTY 模式行为不变。
 
 - fix(server): **WS-mux 冷加载背压卡死修复（会话区空白）** — 冷加载历史经 WS-mux 推送时触发队列上限，连接以 1011 关闭、页面收不到 load_end、刷新后仍空白。重构背压泵与生产者为信用式逐帧背压，修复大会话/慢链路下刷新后聊天区不显示；压缩 SSE 路径冷加载不再因 drain 等待卡满超时。Coverage: `ws-mux-backpressure.test.js`, `events-v3-cold-backpressure.test.js`, `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`, `wire-compress.test.js`.

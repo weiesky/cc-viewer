@@ -1,18 +1,18 @@
 /**
  * chat-active-agents-wiring.test.js — source contract for ChatView's wiring of
- * the SDK active-agents strip.
+ * the SDK active-agents card.
  *
  * readFileSync source contract (no JSX transform/jsdom), same policy as
- * task-progress-hud.test.js. Pins the integration points the reviewers flagged
- * as P0/P1 — each was chosen so a specific regression turns it red:
- *   1. drop the `_agentFocus` branch from the filter block (focus never filters)
- *   2. drop `activeAgent` from `_isFiltering` (main-agent Last Response / streaming
- *      overlay leak into a focused view)
- *   3. remove the zero-hit fallback (a click can blank the conversation)
- *   4. drop the cDU focus backstop (focus leaks across session/workspace switches)
- *   5. render the bar in only ONE branch (auto-reset effect dies on empty state)
- *   6. gate the bar on roleFilterOpen the wrong way (two top bars stack)
- *   7. forget the withActiveAgents padding class / use it alongside withRoleFilter
+ * task-progress-hud.test.js. After the card refactor the click-to-filter focus
+ * machinery is gone; these assertions pin BOTH the simplified wiring that must
+ * be present AND the removed focus plumbing that must stay absent — each was
+ * chosen so a specific regression turns it red:
+ *   1. re-introduce `activeAgent` state / `_handleAgentSelect` / `_handleAgentShowAll`
+ *   2. leave a dangling `_agentFocus` (or its `_navCacheKey` segment) — render throws
+ *   3. drop the withActiveAgents padding class / use it alongside withRoleFilter
+ *   4. render the bar in only ONE branch (visibility effect dies on empty state)
+ *   5. gate the bar on roleFilterOpen the wrong way (two top bars stack)
+ *   6. pass a handler the card no longer accepts (selectedKey/onSelect/onShowAll)
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,70 +25,44 @@ const JSX = readFileSync(join(__dirname, '..', 'src', 'components', 'chat', 'Cha
 const CSS = readFileSync(join(__dirname, '..', 'src', 'components', 'chat', 'ChatView.module.css'), 'utf-8');
 
 describe('ChatView active-agents wiring contract', () => {
-  it('imports the bar and the pure helpers, and reads the task snapshot', () => {
+  it('imports the bar but NOT the removed pure helpers / task snapshot', () => {
     assert.ok(JSX.includes("import ActiveAgentsBar from './ActiveAgentsBar'"), 'bar import');
-    assert.ok(/from '\.\.\/\.\.\/utils\/activeAgents'/.test(JSX), 'activeAgents import');
-    assert.ok(JSX.includes('getSnapshot as getTaskSnapshot'), 'taskStore snapshot import');
+    assert.ok(!/from '\.\.\/\.\.\/utils\/activeAgents'/.test(JSX),
+      'ChatView no longer imports the activeAgents helpers (the card owns the join)');
+    assert.ok(!JSX.includes('getSnapshot as getTaskSnapshot'), 'no task snapshot import');
   });
 
-  it('adds activeAgent + activeAgentsBarVisible state', () => {
-    assert.ok(JSX.includes('activeAgent: null'), 'activeAgent state');
-    assert.ok(JSX.includes('activeAgentsBarVisible: false'), 'activeAgentsBarVisible state');
+  it('keeps only the visibility state (activeAgent is gone)', () => {
+    // activeAgentsBarVisible appears twice: initial state AND the cDU
+    // view/instance-switch reset (deleting the reset reintroduces stale padding).
+    assert.ok((JSX.match(/activeAgentsBarVisible: false/g) || []).length >= 2,
+      'activeAgentsBarVisible: false in initial state AND the view-switch reset');
+    // Word-boundary so activeAgentsBarVisible does not match \bactiveAgent\b (the
+    // trailing "sBarVisible" is \w, so the boundary lands after "activeAgent").
+    assert.ok(!/\bactiveAgent\b/.test(JSX), 'no activeAgent state/prop anywhere');
   });
 
-  it('agent focus filters rows via transcriptRowMatchesAgent (tool_use join) + labelMatchesAgent', () => {
-    assert.ok(JSX.includes('transcriptRowMatchesAgent('), 'row bound to focus via the spawn tool_use join');
-    assert.ok(JSX.includes('buildAgentToolUseMap(reqList)'), 'per-render join map for instance matching');
-    assert.ok(JSX.includes('labelMatchesAgent(p.label, _agentFocus)'), 'teammate label match against focus');
-    assert.ok(JSX.includes('firstUserText(req)'), 'row first-user-text extraction');
+  it('focus plumbing is absent: no handlers, no filter block, no helpers', () => {
+    for (const gone of [
+      '_handleAgentSelect', '_handleAgentShowAll', '_getAgentToolUseMap',
+      '_clickedFocus', '_agentFocus', '_zeroHit', '_effectiveFocus',
+      'transcriptRowMatchesAgent', 'labelMatchesAgent', 'firstUserText',
+      'isFocusActive', 'deriveActiveAgents', 'resolveAgentIdentity', 'buildAgentToolUseMap',
+    ]) {
+      assert.ok(!JSX.includes(gone), `must not reference ${gone}`);
+    }
   });
 
-  it('zero-hit guard: a click can never blank the conversation (message rows only)', () => {
-    // The guard must judge by matched MESSAGE rows — separators/banners always
-    // survive the filter, so a raw length check would never fire.
-    assert.ok(JSX.includes('if (_matchedMsgRows === 0) { filteredItems = allItems; _zeroHit = true; }'),
-      'zero matched message rows falls back to the full list and marks the zero-hit');
+  it('role filter no longer clears a focus (there is none to clear)', () => {
+    assert.ok(!/roleFilterOpen: true, activeAgent: null/.test(JSX), 'funnel open does not clear focus');
+    assert.ok(!/roleFilterSelected: next, activeAgent: null/.test(JSX), 'chip toggle does not clear focus');
   });
 
-  it('focus is folded into _isFiltering and the streaming-overlay gate via the effective focus', () => {
-    assert.ok(JSX.includes('const _effectiveFocus = _zeroHit ? null : _agentFocus;'),
-      'a zero-hit focus is treated as unfocused');
-    assert.ok(/const _isFiltering = !!_effectiveFocus \|\|/.test(JSX), 'focus counts as filtering');
-    assert.ok(/_assistantFilteredOut = _isFiltering && \(_effectiveFocus \|\|/.test(JSX),
-      'streaming overlay suppressed while focused');
-  });
-
-  it('focus is mutually exclusive with the RoleFilterBar (both directions)', () => {
-    // funnel open clears the focus
-    assert.ok(JSX.includes('{ roleFilterOpen: true, activeAgent: null }'), 'opening role filter clears focus');
-    // chip toggle clears the focus
-    assert.ok(/roleFilterSelected: next, activeAgent: null/.test(JSX), 'chip toggle clears focus');
-    // focusing closes the role filter and clears its chips
-    assert.ok(/roleFilterOpen: false,\s*\n\s*roleFilterSelected: new Set\(\)/.test(JSX),
-      'focus clears role filter state');
-  });
-
-  it('cDU clears the focus on view/instance switch', () => {
-    assert.ok(/activeAgent: null, activeAgentsBarVisible: false,/.test(JSX),
-      'view/instance switch resets focus + visibility');
-  });
-
-  it('cDU clears the focus on same-workspace session switch (attachedSid) and pin', () => {
-    assert.ok(/attachedSid[\s\S]{0,200}if \(this\.state\.activeAgent\) this\.setState\(\{ activeAgent: null \}\)/.test(JSX),
-      'attachedSid change clears focus');
-    assert.ok(/sessionUpperBoundTs != null && this\.state\.activeAgent/.test(JSX),
-      'pinning to history clears focus');
-  });
-
-  it('cDU focus backstop: clears focus via the shared isFocusActive rule', () => {
-    assert.ok(JSX.includes('deriveActiveAgents(getTaskSnapshot().tasks)'),
-      'backstop derives the active set from the task snapshot');
-    assert.ok(/if \(!isFocusActive\(this\.state\.activeAgent, active, toolUseMap\)\) this\.setState\(\{ activeAgent: null \}\)/.test(JSX),
-      'backstop clears a dead focus (teammate by name, subagent by taskId)');
-  });
-
-  it('focus descriptor carries taskId so the backstop can match it', () => {
-    assert.ok(JSX.includes('taskId: agent.taskId'), 'focus stores taskId');
+  it('_isFiltering is role-only; the streaming overlay gate matches', () => {
+    assert.ok(JSX.includes('const _isFiltering = _selSize > 0 && _selSize < collectedRoles.length;'),
+      'filter flag derived from the role selection only');
+    assert.ok(/_assistantFilteredOut = _isFiltering && !this\.state\.roleFilterSelected\.has\('assistant'\)/.test(JSX),
+      'streaming overlay suppressed only by the role filter');
   });
 
   it('bar renders in BOTH the empty and the loaded branch', () => {
@@ -101,24 +75,27 @@ describe('ChatView active-agents wiring contract', () => {
       'single gate: sdk only, not role-filter-open, not pinned, not attached to a historical session');
   });
 
-  it('bar is a controlled child: receives requests, selectedKey, and the three handlers', () => {
+  it('bar receives only requests + onVisibleChange (no selection/show-all handlers)', () => {
     assert.ok(JSX.includes('requests={this.props.requests}'), 'requests passed for the join');
-    assert.ok(JSX.includes('selectedKey={this.state.activeAgent ? this.state.activeAgent.key : null}'), 'selectedKey');
-    assert.ok(JSX.includes('onSelect={this._handleAgentSelect}'), 'onSelect handler');
-    assert.ok(JSX.includes('onShowAll={this._handleAgentShowAll}'), 'onShowAll handler');
     assert.ok(JSX.includes('onVisibleChange={this._handleActiveAgentsVisibility}'), 'onVisibleChange handler');
+    assert.ok(!JSX.includes('selectedKey='), 'no selectedKey prop');
+    assert.ok(!JSX.includes('onSelect='), 'no onSelect prop');
+    assert.ok(!JSX.includes('onShowAll='), 'no onShowAll prop');
   });
 
-  it('handlers are stable class arrow fields (not inline arrows in render)', () => {
-    assert.ok(JSX.includes('_handleAgentSelect = (agent) => {'), 'class field: _handleAgentSelect');
-    assert.ok(JSX.includes('_handleAgentShowAll = () =>'), 'class field: _handleAgentShowAll');
+  it('the visibility handler is a stable class arrow field (not an inline arrow)', () => {
     assert.ok(JSX.includes('_handleActiveAgentsVisibility = (visible) => {'), 'class field: _handleActiveAgentsVisibility');
   });
 
   it('withActiveAgents padding class exists and is mutually exclusive with withRoleFilter', () => {
     assert.ok(/\.messageListWrap\.withActiveAgents > \.container/.test(CSS), 'container padding rule');
     assert.ok(/\.messageListWrap\.withActiveAgents > \.mobileVirtuoso/.test(CSS), 'virtuoso padding rule');
-    assert.ok(/padding-top:\s*36px/.test(CSS), '36px footprint (4+28+4)');
+    // Anchor the footprint to the actual .withActiveAgents rules (a whole-file
+    // scan would pass on an unrelated 40px/48px rule).
+    const desktop = CSS.match(/\.messageListWrap\.withActiveAgents > \.container,\s*\n\.messageListWrap\.withActiveAgents > \.mobileVirtuoso\s*\{([^}]*)\}/);
+    assert.ok(desktop && /padding-top:\s*40px/.test(desktop[1]), '40px collapsed footprint on the desktop rule');
+    const mobile = CSS.match(/@media\s*\(max-width:\s*768px\)\s*\{\s*\.messageListWrap\.withActiveAgents[^{]*\{[^}]*\}/);
+    assert.ok(mobile && /padding-top:\s*48px/.test(mobile[0]), '48px mobile footprint inside the media query');
     // JSX picks one or the other, never both
     assert.ok(/roleFilterBar \? `\$\{styles\.messageListWrap\} \$\{styles\.withRoleFilter\}` : \(activeAgentsBar/.test(JSX),
       'padding class chosen by a single ternary (role filter wins, else agents bar)');

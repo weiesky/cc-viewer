@@ -117,19 +117,21 @@
   padding-top: 41px; /* RoleFilterBar height */
 }
 
-/* Same compensation for the smaller active-agents strip (top:4 + height:28 + 4px
-   breathing room). Mutually exclusive with .withRoleFilter (ChatView picks one). */
+/* Same compensation for the active-agents card, reserving only its COLLAPSED
+   footprint (top:4 + header ≈30 + 6px breathing room); expanding overlays the
+   top of the conversation (the card is frosted and collapses). Mutually
+   exclusive with .withRoleFilter (ChatView picks one). */
 .messageListWrap.withActiveAgents > .container,
 .messageListWrap.withActiveAgents > .mobileVirtuoso {
-  padding-top: 36px; /* ActiveAgentsBar footprint */
+  padding-top: 40px; /* ActiveAgentsBar collapsed footprint */
 }
 
-/* Mobile enlarges the strip to top:6 + height:40 (footprint 46px) — match it so
-   the first row isn't tucked under the bar. */
+/* Mobile enlarges the card header (top:6 + padding/font bumps) — match it so
+   the first row isn't tucked under the card. */
 @media (max-width: 768px) {
   .messageListWrap.withActiveAgents > .container,
   .messageListWrap.withActiveAgents > .mobileVirtuoso {
-    padding-top: 46px;
+    padding-top: 48px;
   }
 }
 

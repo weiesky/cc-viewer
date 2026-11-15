@@ -129,7 +129,9 @@ export function applyFrame(frame) {
           existing.promptSnippet = frame.prompt.slice(0, AGENT_PROMPT_SNIPPET_LEN);
         }
         existing.status = 'in_progress';
-        existing.createdAt = Date.now();
+        // Keep the original start stamp so the active-agents card's elapsed
+        // clock doesn't reset on an idempotent re-fire.
+        if (!Number.isFinite(existing.createdAt)) existing.createdAt = Date.now();
         _publish();
         return;
       }
@@ -142,7 +144,7 @@ export function applyFrame(frame) {
         owner: null,
         teammateName: null,
         agentId: null,
-        // Agent-identity fields for the active-agents strip. toolUseId joins the
+        // Agent-identity fields for the active-agents card. toolUseId joins the
         // MainAgent's Agent/Task tool_use block (exact match) for the real
         // name/subagent_type; promptSnippet is the prompt-prefix fallback. Only
         // agent taskTypes carry a prompt worth retaining (bounded).
@@ -223,12 +225,12 @@ export function resetForView() {
 }
 
 /**
- * Reset on a session boundary WITHIN the same workspace (review: stale-strip).
+ * Reset on a session boundary WITHIN the same workspace (review: stale-card).
  * /clear or an in-place resume/fork replaces the session but may emit no sdk-task
  * frame for a while; without a reset the previous session's in_progress agents
- * would linger in the store (strip never auto-hides, focus never clears). ChatView
- * calls this when sdk-session-state reports a sessionId different from the last one
- * it saw. The next sdk-task frame re-seeds via the owner/session-change branch.
+ * would linger in the store (the card never auto-hides). ChatView calls this
+ * when sdk-session-state reports a sessionId different from the last one it
+ * saw. The next sdk-task frame re-seeds via the owner/session-change branch.
  */
 export function resetForSession() {
   _tasks = new Map();
@@ -244,7 +246,7 @@ export function resetForSession() {
  * its bounded table and the client REPLACES its view. This is the authoritative
  * source: it both resurrects tasks whose started-frame was missed AND (critically)
  * drops tasks the server no longer tracks (a lost terminal frame, or a session the
- * server switched away from), so the active-agents strip can no longer linger.
+ * server switched away from), so the active-agents card can no longer linger.
  *
  * Tasks with `skipTranscript === true` are ambient/housekeeping and excluded, same
  * as the live task_started path.
@@ -275,7 +277,12 @@ export function applySnapshot(frame) {
         ? t.promptSnippet.slice(0, AGENT_PROMPT_SNIPPET_LEN)
         : null,
       taskType: t.taskType ?? null,
+      // Snapshot replay resets the client clock: createdAt is "when this client
+      // first saw the task" and the server's table carries no start timestamp, so
+      // after a WS reconnect the card's elapsed restarts here. Carry the live
+      // lastToolName through, though, so the doing pill survives the replay.
       createdAt: Date.now(),
+      ...(typeof t.lastToolName === 'string' ? { lastToolName: t.lastToolName } : {}),
       ...(t.usage ? { usage: t.usage } : {}),
     });
   }
