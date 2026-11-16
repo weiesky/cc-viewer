@@ -22,7 +22,8 @@ import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeam
 import { extractQueuedPromptWireMessage, queuedPromptDisplayText } from '@ccv/core/queued-prompt';
 import { queuedPromptsAfterIndex, queuedPromptsSignature } from './queuedPromptDisplay';
 import { reconcileOptimisticQueueMessages, captureOptimisticQueueTextCounts } from './optimisticQueueMessage';
-import { selectionInSingleAssistantQuoteRegion, selectionPopupPosition, buildQuotePrefix, isSlashCommandText, truncateQuote } from './selectionQuote';
+import { selectionInSingleAssistantQuoteRegion, selectionInSingleAssistantMarkdown, selectionPopupPosition, buildQuotePrefix, isSlashCommandText, truncateQuote } from './selectionQuote';
+import { htmlToMarkdown } from '../../utils/markdownCopy';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '@ccv/core/requestType';
 import { buildChunksForAnswer, buildBracketPasteSubmitChunks, BRACKET_PASTE_SUBMIT_SETTLE_MS } from '../../utils/ptyChunkBuilder';
 import { isPlanApprovalPrompt, isDangerousOperationPrompt, pickPlanApproveOptionNumber } from '../../utils/promptClassifier';
@@ -4722,6 +4723,31 @@ class ChatView extends React.Component {
     }
   };
 
+  // Intercept copy events whose selection sits entirely inside one assistant bubble's
+  // .chat-md markdown body, and write both markdown source (text/plain) and the original
+  // rendered HTML (text/html) to the clipboard. Selections outside .chat-md (user bubbles,
+  // diff cards, cross-bubble selections) fall through to the native copy behavior.
+  handleMessageListCopy = (e) => {
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (!selectionInSingleAssistantMarkdown(sel)) return;
+    const cd = e.clipboardData;
+    if (!cd) return;
+    let markdown, html;
+    try {
+      const div = document.createElement('div');
+      div.appendChild(sel.getRangeAt(0).cloneContents());
+      html = div.innerHTML;
+      markdown = htmlToMarkdown(html);
+    } catch (err) {
+      reportSwallowed('chat.copy-markdown', err);
+      return;
+    }
+    if (!markdown.trim()) return;
+    e.preventDefault();
+    cd.setData('text/plain', markdown);
+    try { cd.setData('text/html', html); } catch { /* some browsers restrict text/html */ }
+  };
+
   // ── markdown codespan 路径探测(渲染期打标 data-md-path-candidate → 异步验证) ──
   // 渲染管线是纯同步+按原文缓存的,存在性检查不能进去;这里挂载后扫描 DOM,
   // 批量 POST /api/files-exists,存在则补 data-md-file-verified(点击/CSS 的锚点)。
@@ -5437,7 +5463,7 @@ class ChatView extends React.Component {
         {stickyBtn}
       </div>
     ) : (
-      <div className={roleFilterBar ? `${styles.messageListWrap} ${styles.withRoleFilter}` : (activeAgentsBar && this.state.activeAgentsBarVisible ? `${styles.messageListWrap} ${styles.withActiveAgents}` : styles.messageListWrap)} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} onMouseDown={this._onMessageListMouseDown} onMouseUp={this._onMessageListMouseUp} ref={this._mdProbeWrapRef}>
+      <div className={roleFilterBar ? `${styles.messageListWrap} ${styles.withRoleFilter}` : (activeAgentsBar && this.state.activeAgentsBarVisible ? `${styles.messageListWrap} ${styles.withActiveAgents}` : styles.messageListWrap)} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} onMouseDown={this._onMessageListMouseDown} onMouseUp={this._onMessageListMouseUp} onCopy={this.handleMessageListCopy} ref={this._mdProbeWrapRef}>
         {roleFilterBar}
         {activeAgentsBar}
         {this.state.mdLightboxSrc && (

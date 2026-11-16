@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **框选 assistant 消息复制自动转回 markdown** — 在 assistant 消息正文选中片段复制时,自动把渲染后 HTML 转回 markdown 写入 `text/plain`(并保留渲染后 HTML 到 `text/html` 供富文本目标);支持 GFM 表格、删除线、代码块(带语言)、有序/无序列表;`data-md-file` 本地文件链接还原为角括号包裹的 `[text](<path> "title")`,消毒控制字符防止 markdown 注入。用户气泡/跨气泡/工具卡选区仍走原生复制。Coverage: `markdown-copy.test.js`.
+
 - feat(web): **「添加到对话」覆盖 diff、工具参数区与 AskUserQuestion 卡片** — 除 markdown 正文外，Edit/Write 工具卡片的代码 diff、工具卡片参数区（Agent 等的 prompt/description 等 KV 文本）、以及交互中的 AskUserQuestion 卡片（问题 + 选项文本）都可选中后点「添加到对话」引用；diff 按选中可见纯代码文本（不含行号、+/- 前缀与文件路径）。diff header 与行号 gutter、选项的 ◉/☑ 字形不作为选区内容；选项行拖选文本时不会误触切换选项；跨区域（markdown↔diff↔KV↔ask）选中不触发；portaled 的简化 pill / 审批弹层不受影响。Coverage: `chat-quote-i18n.test.js`.
 
 - feat(web): **选中助手回复文字 →「添加到对话」引用 chip** — 在助手回复气泡内选中一段文字（正文/表格/代码均可）会浮出「添加到对话」按钮，点击后把选中文本作为引用 chip 插入输入框上方（可删除、点击预览全文）；发送时该引用以 `> ` 引用块拼在用户消息前一并发给 agent。slash 命令（如 `/clear`）时不拼接引用以免破坏命令识别；多行引用经 bracketed-paste 发送避免 PTY 把换行当提交。Coverage: `chat-quote-i18n.test.js`.

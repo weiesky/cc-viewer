@@ -67,7 +67,7 @@ export default defineConfig(() => {
             'vendor-antd':       ['antd'],
             'vendor-virtuoso':   ['react-virtuoso'],
             'vendor-highlight':  ['highlight.js'],
-            'vendor-markdown':   ['marked', 'dompurify'],
+            'vendor-markdown':   ['marked', 'dompurify', 'turndown', 'turndown-plugin-gfm'],
             'vendor-qrcode':     ['qrcode.react'],
             'vendor-xterm': [
               '@xterm/xterm',

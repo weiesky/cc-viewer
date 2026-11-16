@@ -9832,6 +9832,26 @@ const i18nData = {
     "tr": "Claude'a mesaj yazın...",
     "uk": "Введіть повідомлення для Claude..."
   },
+  "ui.chatInput.markdownAriaLabel": {
+    "zh": "消息输入框(支持 Markdown)",
+    "en": "Message input, Markdown supported",
+    "zh-TW": "訊息輸入框(支援 Markdown)",
+    "ko": "메시지 입력(Markdown 지원)",
+    "ja": "メッセージ入力(Markdown 対応)",
+    "de": "Nachrichteneingabe (Markdown unterstützt)",
+    "es": "Entrada de mensaje (compatible con Markdown)",
+    "fr": "Saisie de message (Markdown pris en charge)",
+    "it": "Campo messaggio (supporta Markdown)",
+    "da": "Beskedfelt (understøtter Markdown)",
+    "pl": "Pole wiadomości (obsługa Markdown)",
+    "ru": "Поле сообщения (поддержка Markdown)",
+    "ar": "حقل الرسالة (يدعم Markdown)",
+    "no": "Meldingsfelt (Markdown støttes)",
+    "pt-BR": "Campo de mensagem (com suporte a Markdown)",
+    "th": "ช่องข้อความ (รองรับ Markdown)",
+    "tr": "Mesaj girişi (Markdown destekli)",
+    "uk": "Поле повідомлення (підтримка Markdown)"
+  },
   "ui.chatInput.removeImage": {
     "zh": "移除图片", "en": "Remove image", "zh-TW": "移除圖片",
     "ko": "이미지 제거", "ja": "画像を削除", "de": "Bild entfernen",

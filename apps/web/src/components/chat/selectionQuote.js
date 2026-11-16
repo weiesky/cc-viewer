@@ -31,6 +31,22 @@ function sharedClosest(startEl, endEl, sel) {
   return a && a === b ? a : null;
 }
 
+// True when a non-collapsed single-range selection's endpoints share the SAME assistant
+// bubble AND the SAME `.chat-md` markdown body. Stricter than
+// selectionInSingleAssistantQuoteRegion: [data-ccv-quotable] (diff/KV/ask) regions are
+// rejected because they are not a lossless HTML→Markdown source.
+export function selectionInSingleAssistantMarkdown(selection) {
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return false;
+  const range = selection.getRangeAt(0);
+  const startEl = toElement(range.startContainer);
+  const endEl = toElement(range.endContainer);
+  if (!startEl || !endEl) return false;
+  const startBubble = startEl.closest(ASSISTANT_SEL);
+  const endBubble = endEl.closest(ASSISTANT_SEL);
+  if (!startBubble || !endBubble || startBubble !== endBubble) return false;
+  return !!sharedClosest(startEl, endEl, MD_SEL);
+}
+
 // True when every selection endpoint sits inside the SAME assistant bubble AND the SAME
 // quotable region (a `.chat-md` markdown body, or a `[data-ccv-quotable]` region: Edit/Write
 // diff code, tool-card KV params, or the AskUserQuestion card). User bubbles, cross-message,
