@@ -1,0 +1,68 @@
+apps/web/test/chat-quote-i18n.test.js
+  s_c3ff3298c2341a::t_d7624d85333cfa 328-331
+  s_c3ff3298c2341a::t_668f9af1d83008 147-156
+  s_c3ff3298c2341a::t_d92e56fc31d8a6 130-146,157-163
+  s_c3ff3298c2341a::t_19bc8360c06928 198-202,208
+  s_c3ff3298c2341a::t_43535a75612093 321-322,325-327
+  s_c3ff3298c2341a::t_7840c92e06fcb3 323-324
+  s_c3ff3298c2341a::t_2d7c3ef5c48103 338-343,348,352
+  s_c3ff3298c2341a::t_fa3776d3b06915 13
+  s_c3ff3298c2341a::t_2093e527d712b2 303-305
+  s_c3ff3298c2341a::t_2cba8b1da74125 2-4,6
+  s_c3ff3298c2341a::t_39286505c2dee2 50
+  s_c3ff3298c2341a::t_84ffc9777497c7 310,312,314-315
+  s_c3ff3298c2341a::t_f4bd44f0e8eff0 222,225-230
+  s_c3ff3298c2341a::t_3d50378cb17f87 255,332-337,344-347,349-351,353-354
+  s_c3ff3298c2341a::t_06643129a9ffe6 299
+  s_c3ff3298c2341a::t_78cee7a3c414fa 256-298,300-302,306-309,311,313,316-320
+  s_c3ff3298c2341a::t_6da808f59154a3 221,223-224,234,240,244,248,254
+apps/web/src/components/chat/selectionQuote.js
+  s_c3ff3298c2341a::t_47dea64c422e11 101
+  s_c3ff3298c2341a::t_3e582df7a0a991 40-43
+  s_c3ff3298c2341a::t_931df21338853b 35-38
+  s_c3ff3298c2341a::t_c04c231a6150cc 10-13
+  s_c3ff3298c2341a::t_cee64149b99069 8-9,23-34,39,48-49,51
+  s_c3ff3298c2341a::t_aabc8ee9d4aaa8 94-100,102-103
+apps/web/src/components/chat/ChatMessage.jsx
+  s_c3ff3298c2341a::t_fcfedbf1ff0c8f 953-954,958
+  s_c3ff3298c2341a::t_032596bea1756a 955-957
+apps/web/src/components/chat/ChatMessage.module.css
+  s_c3ff3298c2341a::t_c59edc618123b7 1301-1305
+  s_c3ff3298c2341a::t_c26316133154b7 1335-1337
+apps/web/src/components/chat/DiffView.module.css
+  s_c3ff3298c2341a::t_74a88fbe86ab25 75
+apps/web/src/components/chat/ChatView.jsx
+  s_c3ff3298c2341a::t_94eeda3dff78df 25
+  s_c3ff3298c2341a::t_6a18a323b5677d 1809-1810,1816
+  s_c3ff3298c2341a::t_3bfb1dd516277d 1738-1739
+apps/web/src/components/chat/AskQuestionForm.jsx
+  s_c3ff3298c2341a::t_0e77fb0075c28e 247-248,252
+  s_c3ff3298c2341a::t_5235fa2740bde8 10-16
+  s_c3ff3298c2341a::t_548fb6ba0687eb 128,153,188,213
+  s_c3ff3298c2341a::t_d74e7b7347be4a 249-251
+  s_c3ff3298c2341a::t_a884d221cf3626 5
+apps/web/src/components/chat/DiffView.jsx
+  s_c3ff3298c2341a::t_8602df9c3f90fe 96-99
+.changeset/chat-quote-diff-selection.md
+  s_c3ff3298c2341a::t_596a392caa1c5b 5
+  s_c3ff3298c2341a::t_e26743dd41e0d6 1-4
+history.md
+  s_c3ff3298c2341a::t_cc512c5aa14719 5
+  s_c3ff3298c2341a::t_57da6ab426ef11 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1b3c2268e3bd0e73ffef043bf450662d01a28371",
+  "prompts": {},
+  "sessions": {
+    "s_c3ff3298c2341a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "53778334-9e70-4633-94bb-d1f579043afc",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
