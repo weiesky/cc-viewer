@@ -950,7 +950,12 @@ class ChatMessage extends React.Component {
         </div>
       );
     });
-    return this._toolBox(tu, toolLabel, <div className={styles.kvContainer}>{items}</div>);
+    // data-ccv-quotable marks the KV params region (e.g. an Agent card's prompt/description) as
+    // quotable by the selection→quote feature. The marker only takes effect when the card renders
+    // inline inside an assistant bubble; simplified pills portal their card to document.body
+    // (except on Android phones, where the popover mounts into the bubble), which normally has no
+    // [data-ccv-role="assistant"] ancestor, so those stay non-quotable.
+    return this._toolBox(tu, toolLabel, <div className={styles.kvContainer} data-ccv-quotable="tool-kv">{items}</div>);
   }
 
   renderDangerApproval(toolId, dangerPrompt) {
@@ -1034,7 +1039,9 @@ class ChatMessage extends React.Component {
     const cls = `${bubbleClass}${highlight === 'active' ? ' ' + styles.bubbleHighlight : ''}${highlight === 'fading' ? ' ' + styles.bubbleHighlightFading : ''}`;
     const isUser = bubbleClass === styles.bubbleUser;
     return (
-      <div className={`${cls} ${styles.bubbleRelative}`}>
+      // data-ccv-role is a build-stable hook (CSS-module class names get hashed) used by
+      // ChatView's "add selection to chat" popup to scope text selection to assistant bubbles.
+      <div className={`${cls} ${styles.bubbleRelative}`} data-ccv-role={isUser ? 'user' : 'assistant'}>
         {(highlight === 'active' || highlight === 'fading') && (
           <svg className={`${styles.borderSvg}${highlight === 'fading' ? ' ' + styles.borderSvgFading : ''}`} preserveAspectRatio="none">
             <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="8" ry="8"

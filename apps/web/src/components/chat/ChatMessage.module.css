@@ -1298,7 +1298,11 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  user-select: none;
+  /* Allow selecting the option text so it can be quoted via "add to chat"; the radio/checkbox
+     dot glyph stays non-selectable (see .askRadioDot) so it never pollutes the quoted string.
+     The row's click-toggle is guarded against an active text selection in AskQuestionForm. */
+  user-select: text;
+  -webkit-user-select: text;
   border-radius: 6px;
   transition: background 0.12s ease, color 0.12s ease;
   outline: none;
@@ -1328,6 +1332,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* The ◉/○/☑/☐ glyph is a control affordance, not content — keep it out of text selections. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .askOptionBody {

@@ -311,6 +311,17 @@
   height: 16px;
 }
 
+/* Composer-hosted prompt-nav button: the trigger is the user's avatar (same asset as the
+   sidebar's navAvatarImg), kept circular inside the 28px round button. 16px matches the
+   SVG glyph size used by sibling .plusBtn buttons. */
+.plusBtnAvatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
 /* AgentTeam 子菜单内预设项：限宽防长描述撑宽悬浮面板（对齐终端 presetMenuItem 的 260px） */
 .quickMenuPresetItem {
   max-width: 260px;
@@ -581,6 +592,47 @@
 
 .filePreviewClose:hover {
   color: var(--text-primary);
+}
+
+/* Selected-text quote chip: shares the file chip layout via composes so the mobile/pad
+   responsive overrides for the strip apply uniformly. */
+.quotePreviewChip {
+  composes: filePreviewChip;
+  cursor: pointer;
+}
+
+.quotePreviewChip svg {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.quotePreviewName {
+  composes: filePreviewName;
+  max-width: 160px;
+}
+
+/* Full-text preview Popover content. */
+.quotePreviewBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 400px;
+}
+
+.quotePreviewTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.quotePreviewText {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 /* ─── 移动端放大输入区域 (x1.3) ─── */

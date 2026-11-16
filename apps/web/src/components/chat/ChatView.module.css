@@ -477,6 +477,38 @@
   display: flex;
 }
 
+/* Floating "add to chat" button over an assistant text selection. Portaled to document.body
+   and position:fixed against the viewport (inline left/top from the selection rect), so the
+   mobile zoom/transform ancestor and the floating .inputStack do not clip or misplace it.
+   z-index sits above .inputStack(15) / .overlayPanel(20); the transform centers it on `left`. */
+.selectionQuoteBtn {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  z-index: 40;
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px var(--overlay-dark-light);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.selectionQuoteBtn:hover {
+  background: var(--bg-surface);
+  border-color: var(--color-primary-pale);
+}
+
+/* Near the viewport top there is no room above the selection: render the button below the
+   rect instead (inline `top` is already the selection's bottom edge), so don't flip up. */
+.selectionQuoteBtnBelow {
+  transform: translate(-50%, 0);
+}
+
 /* SDK 模式 scratch-only 子终端容器：贴底、横向占满，高度由 scratchWrap 自身(可拖拽)决定 */
 .sdkScratchWrap {
   flex-shrink: 0;

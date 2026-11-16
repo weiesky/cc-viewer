@@ -1,5 +1,28 @@
 import { getSlashCommandLabel } from './slashCommandLabels.js';
 
+// Whether the "User Prompt Nav" entry should live inside the chat composer (as a button +
+// click Popover) instead of the left sidebar avatar. Single source of truth shared by
+// ChatView (sidebar gate + composer prop wiring) and ChatInputBar (button render).
+//
+// True only on desktop-class clients (isMobile=false) in --sdk mode (composer always
+// mounted; terminalVisible is the scratch toggle) or in --terminal mode while the PTY
+// terminal is hidden (chat-only layout aligned with --sdk). False on mobile/pad
+// (Mobile shell has its own prompt-list entry) and false in --terminal with the PTY
+// shown (composer yields to the terminal, sidebar keeps the avatar entry).
+//
+// Note: similar to but NOT identical to ProxyChip's showProxyChip — that predicate also
+// excludes isPad and isElectronTab. Do not unify them blindly.
+//
+// @param {{ isMobile: boolean, sdkMode: boolean, terminalVisible: boolean, cliMode: boolean }} p
+// @returns {boolean}
+export function shouldUseComposerPromptNav({ isMobile, sdkMode, terminalVisible, cliMode }) {
+  // cliMode=false is the read-only log viewer: ChatView early-returns the non-cli branch
+  // and never mounts ChatInputBar, so the composer entry cannot render there.
+  if (!cliMode) return false;
+  if (isMobile) return false;
+  return sdkMode || !terminalVisible;
+}
+
 // buildPromptNavItems：从「当前可见项」与权威的 mainAgentSessions 计算用户 Prompt 导航的数据项。
 // 纯函数（无 React/DOM），渲染留在 ChatView——便于单测覆盖会话边界标记、去重与无 ts 容错。
 //

@@ -2,9 +2,17 @@ import React from 'react';
 import { Checkbox, Input } from 'antd';
 import { t } from '../../i18n';
 import { optionAriaLabel, hasOptionDescription } from '../../utils/askOptionDesc';
+import { hasActiveTextSelection } from './selectionQuote';
 import AskTimeoutCountdown from './AskTimeoutCountdown';
 import AskAutoHostCountdown from './AskAutoHostCountdown';
 import styles from './ChatMessage.module.css';
+
+// Wrap an option-row activate() so a click that lands while the user is drag-selecting the
+// row's text (rows are text-selectable for the quote feature) does not also toggle the option.
+// Keyboard activation (Enter/Space) bypasses this — it never creates a text selection.
+function guardWhileSelecting(fn) {
+  return () => { if (!hasActiveTextSelection()) fn(); };
+}
 
 /**
  * Self-contained AskUserQuestion interactive form.
@@ -117,7 +125,7 @@ export default class AskQuestionForm extends React.Component {
                         tabIndex={0}
                         aria-label={optionAriaLabel(opt)}
                         className={`${styles.askRadioItem}${isSelected ? ' ' + styles.askRadioItemSelected : ''}`}
-                        onClick={activate}
+                        onClick={guardWhileSelecting(activate)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
                       >
                         <span className={styles.askRadioDot}>{isSelected ? '◉' : '○'}</span>
@@ -142,7 +150,7 @@ export default class AskQuestionForm extends React.Component {
                         tabIndex={0}
                         aria-label={t('ui.askOther')}
                         className={`${styles.askRadioItem}${otherActive[qi] ? ' ' + styles.askRadioItemSelected : ''}`}
-                        onClick={activate}
+                        onClick={guardWhileSelecting(activate)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
                       >
                         <span className={styles.askRadioDot}>{otherActive[qi] ? '◉' : '○'}</span>
@@ -177,7 +185,7 @@ export default class AskQuestionForm extends React.Component {
                         tabIndex={0}
                         aria-label={optionAriaLabel(opt)}
                         className={`${styles.askRadioItem}${checked ? ' ' + styles.askRadioItemSelected : ''}`}
-                        onClick={activate}
+                        onClick={guardWhileSelecting(activate)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
                       >
                         <span className={styles.askRadioDot}>{checked ? '☑' : '☐'}</span>
@@ -202,7 +210,7 @@ export default class AskQuestionForm extends React.Component {
                         tabIndex={0}
                         aria-label={t('ui.askOther')}
                         className={`${styles.askRadioItem}${otherActive[qi] ? ' ' + styles.askRadioItemSelected : ''}`}
-                        onClick={activate}
+                        onClick={guardWhileSelecting(activate)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
                       >
                         <span className={styles.askRadioDot}>{otherActive[qi] ? '☑' : '☐'}</span>
@@ -236,7 +244,12 @@ export default class AskQuestionForm extends React.Component {
           );
 
           return (
-            <div key={qi} className={qi < questions.length - 1 ? styles.questionSpacing : undefined}>
+            // data-ccv-quotable marks the question + options text region as quotable by the
+            // selection→quote feature. It only takes effect when the form renders inline inside an
+            // assistant bubble; the approval-modal instance renders outside the chat list (no
+            // [data-ccv-role] ancestor), so it stays non-quotable. The Submit/Cancel row and
+            // countdowns sit outside this wrapper.
+            <div key={qi} data-ccv-quotable="ask-question" className={qi < questions.length - 1 ? styles.questionSpacing : undefined}>
               {headerAndQuestion}
               {hasPreview ? (
                 <div className={styles.askMarkdownLayout}>

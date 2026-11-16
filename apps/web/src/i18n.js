@@ -9832,6 +9832,26 @@ const i18nData = {
     "tr": "Claude'a mesaj yazın...",
     "uk": "Введіть повідомлення для Claude..."
   },
+  "ui.chatInput.markdownAriaLabel": {
+    "zh": "消息输入框(支持 Markdown)",
+    "en": "Message input, Markdown supported",
+    "zh-TW": "訊息輸入框(支援 Markdown)",
+    "ko": "메시지 입력(Markdown 지원)",
+    "ja": "メッセージ入力(Markdown 対応)",
+    "de": "Nachrichteneingabe (Markdown unterstützt)",
+    "es": "Entrada de mensaje (compatible con Markdown)",
+    "fr": "Saisie de message (Markdown pris en charge)",
+    "it": "Campo messaggio (supporta Markdown)",
+    "da": "Beskedfelt (understøtter Markdown)",
+    "pl": "Pole wiadomości (obsługa Markdown)",
+    "ru": "Поле сообщения (поддержка Markdown)",
+    "ar": "حقل الرسالة (يدعم Markdown)",
+    "no": "Meldingsfelt (Markdown støttes)",
+    "pt-BR": "Campo de mensagem (com suporte a Markdown)",
+    "th": "ช่องข้อความ (รองรับ Markdown)",
+    "tr": "Mesaj girişi (Markdown destekli)",
+    "uk": "Поле повідомлення (підтримка Markdown)"
+  },
   "ui.chatInput.removeImage": {
     "zh": "移除图片", "en": "Remove image", "zh-TW": "移除圖片",
     "ko": "이미지 제거", "ja": "画像を削除", "de": "Bild entfernen",
@@ -9871,6 +9891,38 @@ const i18nData = {
     "da": "Fjern denne fil?", "pl": "Usunąć ten plik?", "ru": "Удалить этот файл?",
     "ar": "إزالة هذا الملف؟", "no": "Fjerne denne filen?", "pt-BR": "Remover este arquivo?",
     "th": "ลบไฟล์นี้?", "tr": "Bu dosya kaldırılsın mı?", "uk": "Видалити цей файл?"
+  },
+  "ui.chatQuote.addToChat": {
+    "zh": "添加到对话", "en": "Add to chat", "zh-TW": "添加到對話",
+    "ko": "대화에 추가", "ja": "チャットに追加", "de": "Zum Chat hinzufügen",
+    "es": "Añadir al chat", "fr": "Ajouter au chat", "it": "Aggiungi alla chat",
+    "da": "Føj til chat", "pl": "Dodaj do czatu", "ru": "Добавить в чат",
+    "ar": "إضافة إلى المحادثة", "no": "Legg til i chat", "pt-BR": "Adicionar ao chat",
+    "th": "เพิ่มไปยังแชท", "tr": "Sohbete ekle", "uk": "Додати до чату"
+  },
+  "ui.chatQuote.previewTitle": {
+    "zh": "所选文本", "en": "Selected text", "zh-TW": "所選文字",
+    "ko": "선택한 텍스트", "ja": "選択したテキスト", "de": "Ausgewählter Text",
+    "es": "Texto seleccionado", "fr": "Texte sélectionné", "it": "Testo selezionato",
+    "da": "Valgt tekst", "pl": "Zaznaczony tekst", "ru": "Выделенный текст",
+    "ar": "النص المحدد", "no": "Valgt tekst", "pt-BR": "Texto selecionado",
+    "th": "ข้อความที่เลือก", "tr": "Seçilen metin", "uk": "Вибраний текст"
+  },
+  "ui.chatQuote.confirmRemove": {
+    "zh": "确定移除此引用？", "en": "Remove this quote?", "zh-TW": "確定移除此引用？",
+    "ko": "이 인용을 제거하시겠습니까?", "ja": "この引用を削除しますか？", "de": "Dieses Zitat entfernen?",
+    "es": "¿Eliminar esta cita?", "fr": "Supprimer cette citation ?", "it": "Rimuovere questa citazione?",
+    "da": "Fjern dette citat?", "pl": "Usunąć ten cytat?", "ru": "Удалить эту цитату?",
+    "ar": "إزالة هذا الاقتباس؟", "no": "Fjerne dette sitatet?", "pt-BR": "Remover esta citação?",
+    "th": "ลบข้อความอ้างอิงนี้?", "tr": "Bu alıntı kaldırılsın mı?", "uk": "Видалити цю цитату?"
+  },
+  "ui.chatQuote.remove": {
+    "zh": "移除引用", "en": "Remove quote", "zh-TW": "移除引用",
+    "ko": "인용 제거", "ja": "引用を削除", "de": "Zitat entfernen",
+    "es": "Eliminar cita", "fr": "Supprimer la citation", "it": "Rimuovi citazione",
+    "da": "Fjern citat", "pl": "Usuń cytat", "ru": "Удалить цитату",
+    "ar": "إزالة الاقتباس", "no": "Fjern sitat", "pt-BR": "Remover citação",
+    "th": "ลบข้อความอ้างอิง", "tr": "Alıntıyı kaldır", "uk": "Видалити цитату"
   },
   "ui.common.confirmYes": {
     "zh": "确定", "en": "Yes", "zh-TW": "確定",

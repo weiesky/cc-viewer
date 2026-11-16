@@ -63,7 +63,14 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, onAttachPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onOpenScheduleModal, onClearContext, isStreaming, turnActive, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, askAutoAnswerMinutes, onAskAutoAnswerChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, onAttachPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onOpenScheduleModal, onClearContext, isStreaming, turnActive, pendingImages, onRemovePendingImage, pendingQuotes, onRemovePendingQuote, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, askAutoAnswerMinutes, onAskAutoAnswerChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip, promptNavPopover }) {
+  // SDK-layout switch: true under --sdk (composer always mounted), or under --terminal
+  // while the PTY terminal is hidden (chat-only layout aligned with --sdk). When true,
+  // the prompt-nav button renders in the left cluster (replacing mic) and mic moves to
+  // the right cluster, between proxyChip and send. Single-sourced in
+  // utils/promptNav.shouldUseComposerPromptNav — this component just consumes the decision
+  // via the promptNavPopover prop's presence.
+  const micOnRight = !isMobile && (sdkMode || !terminalVisible);
   const [plusOpen, setPlusOpen] = useState(false);
   // 桌面四芒星菜单的级联展开行（与终端工具栏同款交互）：null | 'perm' | 'plan' | 'agentteam'
   const [quickExpanded, setQuickExpanded] = useState(null);
@@ -82,6 +89,13 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
   const [recording, setRecording] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [lightbox, setLightbox] = useState(null);
+  // Index of the quote chip whose full-text preview Popover is open (null = none).
+  const [quotePreviewIdx, setQuotePreviewIdx] = useState(null);
+  // Reset a stale open-preview index when the chip list is cleared externally (send, session
+  // switch, /clear) — otherwise the next quote added at that index would auto-open its Popover.
+  useEffect(() => {
+    if (!pendingQuotes || pendingQuotes.length === 0) setQuotePreviewIdx(null);
+  }, [pendingQuotes]);
   const recRef = useRef(null);
   const anchorRef = useRef({ prefix: '', suffix: '' });
   const rootRef = useRef(null);
@@ -305,6 +319,29 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
     if (recRef.current) stopRecording(); else startRecording();
   };
 
+  // Shared mic button element. Rendered from one of two mutually exclusive slots below:
+  // legacy layout places it in the left cluster (after UltraPlan / clear-context), SDK
+  // layout (micOnRight) places it in the right cluster (between proxyChip and send).
+  // Hoisting it here keeps the recording state, i18n keys, and aria attributes single-
+  // sourced — only one of the two sites renders at a time.
+  const micButton = SpeechRec ? (
+    <button
+      type="button"
+      className={`${styles.micBtn}${recording ? ` ${styles.micBtnRecording}` : ''}`}
+      onClick={toggleRecording}
+      title={t(recording ? 'ui.chatInput.voiceStop' : 'ui.chatInput.voiceStart')}
+      aria-label={t(recording ? 'ui.chatInput.voiceStop' : 'ui.chatInput.voiceStart')}
+      aria-pressed={recording}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+  ) : null;
+
   const handleTextareaInput = (e) => {
     if (recRef.current && e.nativeEvent?.inputType && !e.nativeEvent?.isComposing) {
       try { recRef.current.abort(); } catch {}
@@ -414,8 +451,52 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
         onDrop={handleFileDrop}
       >
         <div className={styles.chatTextareaWrap}>
-          {((pendingImages && pendingImages.length > 0) || (uploadingItems && uploadingItems.length > 0)) && (
+          {((pendingImages && pendingImages.length > 0) || (pendingQuotes && pendingQuotes.length > 0) || (uploadingItems && uploadingItems.length > 0)) && (
             <div className={styles.imagePreviewStrip}>
+              {pendingQuotes && pendingQuotes.map((q, i) => {
+                const preview = (q.text || '').replace(/\s+/g, ' ').trim();
+                return (
+                  <Popover
+                    key={`quote-${q.text}`}
+                    open={quotePreviewIdx === i}
+                    onOpenChange={(open) => setQuotePreviewIdx(open ? i : null)}
+                    trigger="click"
+                    placement="topLeft"
+                    overlayStyle={{ maxWidth: 420 }}
+                    content={
+                      <div className={styles.quotePreviewBody}>
+                        <div className={styles.quotePreviewTitle}>{t('ui.chatQuote.previewTitle')}</div>
+                        <div className={styles.quotePreviewText}>{q.text}</div>
+                      </div>
+                    }
+                  >
+                    <div
+                      className={styles.quotePreviewChip}
+                      title={preview}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('ui.chatQuote.previewTitle')}
+                      onKeyDown={(e) => {
+                        // Ignore keys from the nested remove button so its own Enter/Space activation works.
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setQuotePreviewIdx(quotePreviewIdx === i ? null : i); }
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 21c3-1 4-4 4-7H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6c0 4-2 8-6 10z" />
+                        <path d="M14 21c3-1 4-4 4-7h-3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6c0 4-2 8-6 10z" />
+                      </svg>
+                      <span className={styles.quotePreviewName}>{preview}</span>
+                      <ConfirmRemoveButton
+                        title={t('ui.chatQuote.confirmRemove')}
+                        onConfirm={() => { setQuotePreviewIdx(null); onRemovePendingQuote?.(i); }}
+                        className={styles.filePreviewClose}
+                        ariaLabel={t('ui.chatQuote.remove')}
+                      >&times;</ConfirmRemoveButton>
+                    </div>
+                  </Popover>
+                );
+              })}
               {pendingImages.map((img, i) => {
                 const fileName = img.path.split('/').pop() || img.path;
                 const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|apng|jfif)$/i.test(fileName);
@@ -700,23 +781,39 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               </Popconfirm>
             );
           })()}
-          {SpeechRec && (
-            <button
-              type="button"
-              className={`${styles.micBtn}${recording ? ` ${styles.micBtnRecording}` : ''}`}
-              onClick={toggleRecording}
-              title={t(recording ? 'ui.chatInput.voiceStop' : 'ui.chatInput.voiceStart')}
-              aria-label={t(recording ? 'ui.chatInput.voiceStop' : 'ui.chatInput.voiceStart')}
-              aria-pressed={recording}
+          {/* Left-cluster prompt-nav entry: rendered only in the SDK layout (micOnRight).
+              Click opens a Popover driven by ChatView's promptNavPopover bundle. The legacy
+              layout (--terminal with the PTY shown, mobile) keeps the mic in this slot
+              instead — the two layouts are mutually exclusive via micOnRight. */}
+          {micOnRight && promptNavPopover && (
+            <Popover
+              trigger="click"
+              placement="topLeft"
+              arrow={{ pointAtCenter: true }}
+              autoAdjustOverflow={false}
+              align={{ overflow: { adjustX: true, shiftY: true } }}
+              overlayStyle={{ maxWidth: 400 }}
+              overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}
+              open={promptNavPopover.open}
+              onOpenChange={promptNavPopover.onOpenChange}
+              content={promptNavPopover.content}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="23"/>
-                <line x1="8" y1="23" x2="16" y2="23"/>
-              </svg>
-            </button>
+              <button
+                type="button"
+                className={styles.plusBtn}
+                title={t('ui.userPromptNav')}
+                aria-label={t('ui.userPromptNav')}
+              >
+                <img
+                  src={promptNavPopover.avatarSrc}
+                  className={styles.plusBtnAvatar}
+                  alt=""
+                  aria-hidden="true"
+                />
+              </button>
+            </Popover>
           )}
+          {!micOnRight && micButton}
           </div>
           {/* Middle: blood-bar portal slot. Mounted with the composer (hidden only on pure phones);
               in SDK mode terminalVisible is the scratch toggle, so the slot survives scratch open/close
@@ -734,6 +831,10 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
           {proxyChip && (
             <div className={styles.proxyChipSlot}>{proxyChip}</div>
           )}
+          {/* SDK layout: mic moves to the right cluster, right after proxyChip and flush
+              against send. The legacy layout renders mic on the left, so it is not rendered
+              here — the two layouts are mutually exclusive via micOnRight. */}
+          {micOnRight && micButton}
           <div className={styles.sendBtnWrap}>
             {(isStreaming || turnActive) && onStop ? (
               <button
@@ -760,9 +861,9 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
             ) : (
               <button
                 type="button"
-                className={`${styles.sendBtn} ${inputEmpty && !(pendingImages?.length) ? styles.sendBtnDisabled : ''}`}
+                className={`${styles.sendBtn} ${inputEmpty && !(pendingImages?.length) && !(pendingQuotes?.length) ? styles.sendBtnDisabled : ''}`}
                 onClick={onSend}
-                disabled={inputEmpty && !(pendingImages?.length)}
+                disabled={inputEmpty && !(pendingImages?.length) && !(pendingQuotes?.length)}
                 title={t('ui.chatInput.send')}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

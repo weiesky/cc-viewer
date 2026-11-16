@@ -50,8 +50,15 @@ describe('activeAgents.js', () => {
       { mainAgent: true, response: { body: { content: [
         { type: 'tool_use', id: 'toolu_2', name: 'Task', input: { description: 'Explore codebase', subagent_type: 'Explore', prompt: 'Find all the boundary checks' } },
       ] } } },
+      // Teammate-spawned nested subagent: the row is mainAgent:false because the
+      // transcript row belongs to the teammate, but the nested task IS a real
+      // agent the card should be able to name. Indexed since the map now covers
+      // every Agent/Task block (see buildAgentToolUseMap doc).
       { mainAgent: false, response: { body: { content: [
-        { type: 'tool_use', id: 'toolu_x', name: 'Agent', input: { name: 'ignored', prompt: 'sub rows must be skipped' } },
+        { type: 'tool_use', id: 'toolu_nested', name: 'Agent', input: { name: 'nested-searcher', description: 'Nested search', subagent_type: 'Explore', prompt: 'nested: find the widget' } },
+      ] } } },
+      { mainAgent: false, response: { body: { content: [
+        { type: 'tool_use', id: 'toolu_notagent', name: 'Bash', input: { command: 'ls' } },
       ] } } },
     ];
 
@@ -63,9 +70,14 @@ describe('activeAgents.js', () => {
       assert.equal(byPromptPrefix.get(prefix).name, 'readme-sync');
     });
 
-    it('skips non-main-agent rows and non-Agent/Task blocks', () => {
-      const { byToolUseId } = buildAgentToolUseMap(requests);
-      assert.ok(!byToolUseId.has('toolu_x'));
+    it('indexes nested subagent spawns (mainAgent:false) but skips non-Agent/Task blocks', () => {
+      const { byToolUseId, byPromptPrefix } = buildAgentToolUseMap(requests);
+      // Teammate-spawned Agent blocks ARE indexed — nested subagents get real names.
+      assert.equal(byToolUseId.get('toolu_nested')?.name, 'nested-searcher');
+      const nestedPrefix = 'nested: find the widget'.trimStart().slice(0, PROMPT_PREFIX_LEN);
+      assert.equal(byPromptPrefix.get(nestedPrefix)?.name, 'nested-searcher');
+      // Non-Agent/Task tool_use blocks are never indexed regardless of row owner.
+      assert.ok(!byToolUseId.has('toolu_notagent'));
     });
 
     it('tolerates malformed input', () => {
@@ -77,7 +89,12 @@ describe('activeAgents.js', () => {
   });
 
   describe('deriveActiveAgents', () => {
-    const base = { taskId: 't1', status: 'in_progress' };
+    // True Agent-tool spawns carry promptSnippet (captured by sdkTaskTracker from
+    // task_started.prompt). Pseudo-tasks emitted for a teammate's internal tool
+    // calls have description but no prompt — deriveActiveAgents must drop them or
+    // the active-agents card over-counts (each tool call would render as its own
+    // "active agent" row).
+    const base = { taskId: 't1', status: 'in_progress', promptSnippet: 'do something' };
     it('keeps only agent taskTypes with non-terminal status', () => {
       const agents = deriveActiveAgents([
         { ...base, taskType: 'local_agent', toolUseId: 'a' },
@@ -87,6 +104,8 @@ describe('activeAgents.js', () => {
         { ...base, taskId: 't5', taskType: 'local_agent', status: 'completed' }, // terminal
         { ...base, taskId: 't6', taskType: 'local_agent', status: 'failed' },    // terminal
         { ...base, taskId: 't7', taskType: undefined },             // excluded: no taskType
+        { taskId: 't8', taskType: 'local_agent', status: 'in_progress' }, // excluded: no promptSnippet (tool-call pseudo-task)
+        { taskId: 't9', taskType: 'in_process_teammate', status: 'in_progress', promptSnippet: '' }, // excluded: empty promptSnippet
       ]);
       assert.deepEqual(agents.map(a => a.taskId), ['t1', 't2']);
       assert.equal(agents[0].kind, 'subagent');
@@ -94,7 +113,7 @@ describe('activeAgents.js', () => {
     });
 
     it('treats pending as active', () => {
-      const agents = deriveActiveAgents([{ taskId: 't1', taskType: 'local_agent', status: 'pending' }]);
+      const agents = deriveActiveAgents([{ taskId: 't1', taskType: 'local_agent', status: 'pending', promptSnippet: 'p' }]);
       assert.equal(agents.length, 1);
     });
 
@@ -109,8 +128,8 @@ describe('activeAgents.js', () => {
 
     it('carries the live per-task fields (lastToolName / createdAt) for the card', () => {
       const agents = deriveActiveAgents([
-        { taskId: 't1', taskType: 'local_agent', status: 'in_progress', lastToolName: 'Bash', createdAt: 123 },
-        { taskId: 't2', taskType: 'local_agent', status: 'in_progress' }, // no live fields → null, not undefined
+        { taskId: 't1', taskType: 'local_agent', status: 'in_progress', lastToolName: 'Bash', createdAt: 123, promptSnippet: 'p' },
+        { taskId: 't2', taskType: 'local_agent', status: 'in_progress', promptSnippet: 'p' }, // no live fields → null, not undefined
       ]);
       assert.equal(agents[0].lastToolName, 'Bash');
       assert.equal(agents[0].createdAt, 123);
@@ -122,6 +141,7 @@ describe('activeAgents.js', () => {
       assert.deepEqual(deriveActiveAgents([]), []);
       assert.deepEqual(deriveActiveAgents(null), []);
       assert.deepEqual(deriveActiveAgents([null, {}, { taskType: 'local_agent' }]), []); // missing taskId
+      assert.deepEqual(deriveActiveAgents([{ taskId: 't1', taskType: 'local_agent' }]), []); // missing promptSnippet (pseudo-task)
     });
   });
 
