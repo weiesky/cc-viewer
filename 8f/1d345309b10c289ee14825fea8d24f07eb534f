@@ -1,0 +1,64 @@
+.changeset/active-agents-count-fix.md
+  s_4f80f4628c136e::t_4ab3dec6914a13 5
+  s_4f80f4628c136e::t_e3847d4f3cf01d 1-4
+history.md
+  s_4f80f4628c136e::t_61894540fbfa2d 7
+  s_4f80f4628c136e::t_5441c9ee0ebf47 6
+  s_4f80f4628c136e::t_1b66cf8a140907 8
+  s_4f80f4628c136e::t_06bce65726951a 5
+apps/web/src/components/chat/ChatInputBar.module.css
+  s_4f80f4628c136e::t_cf0c3d6b800bad 314-324
+apps/web/src/utils/activeAgents.js
+  s_4f80f4628c136e::t_f2fdd2feb76853 6-10,19-22
+  s_4f80f4628c136e::t_32be1041346b38 145-151
+  s_4f80f4628c136e::t_b18767ed55c859 49-51,54-64,74
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_4f80f4628c136e::t_291e1d1a24bd0b 322-344
+  s_4f80f4628c136e::t_93fc816091a829 66,73
+  s_4f80f4628c136e::t_7f4279e30e0f4f 784-787,807-812
+  s_4f80f4628c136e::t_f7643abddcd01a 788-799,801-806,813-814
+  s_4f80f4628c136e::t_79ea4459c4a23a 816
+  s_4f80f4628c136e::t_b82c3dd214f86b 67-72
+  s_4f80f4628c136e::t_682a5446f043fb 834-836
+  s_4f80f4628c136e::t_018b838efceb07 837
+apps/web/src/utils/promptNav.js
+  s_4f80f4628c136e::t_f96ebdec50b371 3-25
+.changeset/sdk-composer-prompt-nav.md
+  s_4f80f4628c136e::t_3fdc679e5a87fa 5
+  s_4f80f4628c136e::t_b3fcaa8566b4a0 1-4
+apps/web/src/components/chat/ChatView.jsx
+  s_4f80f4628c136e::t_b066ca6fd21ff5 5985-5988,5992
+  s_4f80f4628c136e::t_0cc084d236fd51 5099-5101
+  s_4f80f4628c136e::t_78f59c961abafa 5030-5034
+  s_4f80f4628c136e::t_dc1855424eb67f 5989-5991
+  s_4f80f4628c136e::t_38a59de23771de 832-837
+  s_4f80f4628c136e::t_d2f143deffefd7 364,366-367
+  s_4f80f4628c136e::t_9651e287e7da47 4979-4999,5007
+  s_4f80f4628c136e::t_4de6c4d371ca5e 15
+  s_4f80f4628c136e::t_0a219d41567482 368
+  s_4f80f4628c136e::t_01df2d51b14af5 4975-4978,5004-5006,5008-5013
+  s_4f80f4628c136e::t_a8c5f3a2c36578 5017-5023
+  s_4f80f4628c136e::t_23fb123f543244 5049
+  s_4f80f4628c136e::t_ea097e6fed8593 5014-5015
+apps/web/test/activeAgents.test.js
+  s_4f80f4628c136e::t_9775fab9827b3b 53-56,58-61,73-80
+  s_4f80f4628c136e::t_6d175eb409ad84 92-97,107-108,116,131-132,144
+apps/web/src/components/chat/ActiveAgentsBar.jsx
+  s_4f80f4628c136e::t_6fe0d9a9a9de40 20-22,24-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8f1d345309b10c289ee14825fea8d24f07eb534f",
+  "prompts": {},
+  "sessions": {
+    "s_4f80f4628c136e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1372a795-47c4-4946-a789-fedb389801a7",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
