@@ -72,6 +72,7 @@
 .gutter {
   flex-shrink: 0;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .gutterRow {

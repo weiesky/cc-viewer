@@ -950,7 +950,12 @@ class ChatMessage extends React.Component {
         </div>
       );
     });
-    return this._toolBox(tu, toolLabel, <div className={styles.kvContainer}>{items}</div>);
+    // data-ccv-quotable marks the KV params region (e.g. an Agent card's prompt/description) as
+    // quotable by the selection→quote feature. The marker only takes effect when the card renders
+    // inline inside an assistant bubble; simplified pills portal their card to document.body
+    // (except on Android phones, where the popover mounts into the bubble), which normally has no
+    // [data-ccv-role="assistant"] ancestor, so those stay non-quotable.
+    return this._toolBox(tu, toolLabel, <div className={styles.kvContainer} data-ccv-quotable="tool-kv">{items}</div>);
   }
 
   renderDangerApproval(toolId, dangerPrompt) {

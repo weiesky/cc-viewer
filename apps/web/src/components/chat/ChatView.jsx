@@ -22,7 +22,7 @@ import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeam
 import { extractQueuedPromptWireMessage, queuedPromptDisplayText } from '@ccv/core/queued-prompt';
 import { queuedPromptsAfterIndex, queuedPromptsSignature } from './queuedPromptDisplay';
 import { reconcileOptimisticQueueMessages, captureOptimisticQueueTextCounts } from './optimisticQueueMessage';
-import { selectionInSingleAssistantMd, selectionPopupPosition, buildQuotePrefix, isSlashCommandText, truncateQuote } from './selectionQuote';
+import { selectionInSingleAssistantQuoteRegion, selectionPopupPosition, buildQuotePrefix, isSlashCommandText, truncateQuote } from './selectionQuote';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '@ccv/core/requestType';
 import { buildChunksForAnswer, buildBracketPasteSubmitChunks, BRACKET_PASTE_SUBMIT_SETTLE_MS } from '../../utils/ptyChunkBuilder';
 import { isPlanApprovalPrompt, isDangerousOperationPrompt, pickPlanApproveOptionNumber } from '../../utils/promptClassifier';
@@ -1735,7 +1735,8 @@ class ChatView extends React.Component {
 
   // ── Selection → quote chips ─────────────────────────────────────────────────
   // A floating "add to chat" button (i18n key ui.chatQuote.addToChat) appears when the user
-  // selects text inside a single assistant bubble's markdown. Clicking it pushes the selection
+  // selects text inside a single assistant bubble's quotable region (markdown `.chat-md`, or a
+  // `[data-ccv-quotable]` region such as Edit/Write diff code). Clicking it pushes the selection
   // into pendingQuotes; the chips ride the composer attachment strip and are sent as a `> `
   // blockquote prefix.
   //
@@ -1805,13 +1806,14 @@ class ChatView extends React.Component {
     });
   };
 
-  // Single show/sync path: validate the selection against a single assistant bubble's markdown,
+  // Single show/sync path: validate the selection against a single assistant bubble's quotable
+  // region (markdown `.chat-md`, or a `[data-ccv-quotable]` region such as Edit/Write diff code),
   // then write the ref-held text + popup position. Returns true when the popup is showing.
   // The click handler reads the ref-held text (not the live selection, which collapses on click),
   // so `_selQuoteText` always tracks the selection that the popup currently points at.
   _syncQuotePopup = () => {
     const sel = window.getSelection();
-    if (selectionInSingleAssistantMd(sel)) {
+    if (selectionInSingleAssistantQuoteRegion(sel)) {
       const text = sel.toString();
       const pos = selectionPopupPosition(sel);
       if (text.trim() && pos) {

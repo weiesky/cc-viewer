@@ -5,6 +5,12 @@
 // build time and cannot be matched with `closest('.bubbleAssistant')`. Selection anchor/focus
 // are usually Text nodes, which have no `.closest`, so they are normalized to their parent
 // element before matching.
+//
+// A selection is quotable when both endpoints share the same assistant bubble AND the same
+// quotable region: `.chat-md` for markdown prose/thinking, or a `[data-ccv-quotable]` element —
+// Edit/Write diff code lines (DiffView.codeWrap), tool-card KV params (ChatMessage kvContainer),
+// or the AskUserQuestion card's question+options (AskQuestionForm). The bubble-scope check alone
+// is not enough — tool cards render outside `.chat-md`.
 
 // Normalize a Selection/Range node (often a Text node) to an Element for `.closest`.
 export function toElement(node) {
@@ -14,20 +20,35 @@ export function toElement(node) {
   return node.nodeType === 1 ? node : null;
 }
 
-// True when every selection endpoint sits inside the SAME assistant bubble's markdown body
-// (`.chat-md`). User bubbles and cross-message selections are rejected.
-export function selectionInSingleAssistantMd(selection) {
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+const ASSISTANT_SEL = '[data-ccv-role="assistant"]';
+const MD_SEL = '.chat-md';
+const QUOTABLE_SEL = '[data-ccv-quotable]';
+
+// The closest `sel` ancestor shared by BOTH endpoints, or null when they don't share one.
+function sharedClosest(startEl, endEl, sel) {
+  const a = startEl.closest(sel);
+  const b = endEl.closest(sel);
+  return a && a === b ? a : null;
+}
+
+// True when every selection endpoint sits inside the SAME assistant bubble AND the SAME
+// quotable region (a `.chat-md` markdown body, or a `[data-ccv-quotable]` region: Edit/Write
+// diff code, tool-card KV params, or the AskUserQuestion card). User bubbles, cross-message,
+// and cross-region (markdown↔diff↔KV↔ask, or two different diff cards) selections are rejected.
+// The `[data-ccv-quotable]` attribute is presence-only — its value is just a debug label.
+export function selectionInSingleAssistantQuoteRegion(selection) {
+  // rangeCount > 1 (e.g. a Firefox Ctrl+drag multi-range) is rejected: only range[0] is checked
+  // here, but toString() would concatenate every range, so a second out-of-region range would
+  // otherwise leak into the quote.
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return false;
   const range = selection.getRangeAt(0);
   const startEl = toElement(range.startContainer);
   const endEl = toElement(range.endContainer);
   if (!startEl || !endEl) return false;
-  const startBubble = startEl.closest('[data-ccv-role="assistant"]');
-  const endBubble = endEl.closest('[data-ccv-role="assistant"]');
+  const startBubble = startEl.closest(ASSISTANT_SEL);
+  const endBubble = endEl.closest(ASSISTANT_SEL);
   if (!startBubble || !endBubble || startBubble !== endBubble) return false;
-  const startMd = startEl.closest('.chat-md');
-  const endMd = endEl.closest('.chat-md');
-  return !!(startMd && endMd && startMd === endMd);
+  return !!(sharedClosest(startEl, endEl, MD_SEL) || sharedClosest(startEl, endEl, QUOTABLE_SEL));
 }
 
 // Viewport-fixed position for the floating button: horizontally centered over the selection,
@@ -68,6 +89,16 @@ export function buildQuotePrefix(quotes) {
 // a slash command — prefixing would break CLI/SDK command recognition (incl. /clear).
 export function isSlashCommandText(userText) {
   return /^\s*\//.test(userText || '');
+}
+
+// True when the current selection is a real (non-collapsed) text selection. Clickable rows that
+// become text-selectable (e.g. AskUserQuestion option rows) use this to skip their click-toggle
+// while the user is actually drag-selecting text, so selecting an option's label does not also
+// toggle that option.
+export function hasActiveTextSelection() {
+  if (typeof window === 'undefined' || !window.getSelection) return false;
+  const sel = window.getSelection();
+  return !!(sel && !sel.isCollapsed && sel.rangeCount > 0 && sel.toString().trim().length > 0);
 }
 
 // Cap a single quote's size so selecting an entire long answer cannot produce a multi-MB

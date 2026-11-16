@@ -93,7 +93,10 @@ function DiffView({ file_path, old_string, new_string, startLine = 1, onOpenFile
             })}
           </div>
           {/* Scrollable code area */}
-          <div className={styles.codeWrap}>
+          {/* data-ccv-quotable is a build-stable hook (CSS-module classes are hashed) marking the
+              only quotable region of this card: the code lines. The header (file path/summary/
+              toggle) and the line-number gutter stay outside it, so they can never anchor a quote. */}
+          <div className={styles.codeWrap} data-ccv-quotable="diff-code">
             <div className={styles.codeInner}>
               {diffLines.map((dl, i) => (
                 <div key={i} className={`${styles.codeLine} ${rowCls(dl.type)}`}>
