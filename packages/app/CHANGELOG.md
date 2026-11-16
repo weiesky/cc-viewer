@@ -1,5 +1,15 @@
 # cc-viewer
 
+## 1.9.29
+
+### Patch Changes
+
+- 8f1d345: fix(web): 活跃代理卡片显示修复——(1) `deriveActiveAgents` 新增防御性过滤，无 `promptSnippet` 的 agent task 不计入活跃集合；(2) `buildAgentToolUseMap` 索引整个 transcript 的 Agent/Task tool_use（含 teammate 派生的嵌套 subagent），嵌套 subagent 现在显示真实名字而非短 description。
+- 478268a: feat(web): 框选 assistant 消息复制时自动转回 markdown 源码(text/plain)+ 渲染 HTML(text/html);`data-md-file` 本地链接还原为角括号包裹的 `[text](<path>)`。Coverage: `markdown-copy.test.js`.
+- 1b3c226: feat(web): 「添加到对话」覆盖 Edit/Write 代码 diff、工具卡片参数区（Agent 等的 prompt/description 等 KV 文本）与 AskUserQuestion 交互卡片（问题 + 选项文本）；diff 按选中可见纯代码文本引用（不含行号/+/- 前缀与文件路径）；选项行拖选文本时不会误触切换选项。Coverage: `chat-quote-i18n.test.js`.
+- 2e09d30: feat(web): 选中助手回复文字弹出「添加到对话」，作为引用 chip 插入输入框并随消息以 `> ` 引用块发送。Coverage: `chat-quote-i18n.test.js`.
+- 8f1d345: feat(web): --sdk 模式（及 --terminal 终端隐藏时）将「用户 Prompt 导航」入口从左侧栏移至对话输入框内（点击弹 Popover），语音输入按钮从输入框左侧移到右侧模型 chip 与发送按钮之间；--terminal 终端显示时与移动端布局保持原状。
+
 ## 1.9.28
 
 ### Patch Changes
