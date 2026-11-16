@@ -1,0 +1,45 @@
+apps/web/package.json
+  s_7dd59ac52adaeb::t_3bf3323989eb0f 54-55
+apps/web/src/components/chat/ChatView.jsx
+  s_7dd59ac52adaeb::t_23bb2207c28c4e 4726-4750
+  s_7dd59ac52adaeb::t_03d82ed23b6390 25-26
+  s_7dd59ac52adaeb::t_dc142795e15cec 5466
+apps/web/src/components/chat/selectionQuote.js
+  s_7dd59ac52adaeb::t_b4f109349c6e9e 34-49
+apps/web/src/i18n.js
+  s_7dd59ac52adaeb::t_7416163c873241 9835-9854
+apps/web/test/markdown-copy.test.js
+  s_7dd59ac52adaeb::t_21c1856501f10f 71,76
+  s_7dd59ac52adaeb::t_cd4a4bb4dbd66f 1-38,40-52,55-59,63-70,72-75,77-81,85-89,91-97,115-310
+  s_7dd59ac52adaeb::t_b291e68dbeabd7 82-84,90,98-114
+  s_7dd59ac52adaeb::t_b06f069633c319 39,53-54,60-62
+history.md
+  s_7dd59ac52adaeb::t_a51caf27fcf8c7 6
+  s_7dd59ac52adaeb::t_9474eaa6d9bb0c 5
+apps/web/vite.config.js
+  s_7dd59ac52adaeb::t_5012585f1ad698 70
+apps/web/src/utils/markdownCopy.js
+  s_7dd59ac52adaeb::t_8e14e1d8bc4d6e 24-31,43-47,54-57,61-63,65-70
+  s_7dd59ac52adaeb::t_07914962e9f22e 14-18,22,32-42,48,50,52-53,58-60,64,71-77,80
+  s_7dd59ac52adaeb::t_51560b84aefcbf 1-13,19-21,23,49,51,78-79,81
+.changeset/chat-copy-as-markdown.md
+  s_7dd59ac52adaeb::t_b097173726b6a3 1-5
+pnpm-lock.yaml
+  s_7dd59ac52adaeb::t_60cc8496b0016e 242-247,1157-1159,4419-4425,6036-6037,9801-9806
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "478268a4db5aadb50be1396207b2c54093824c58",
+  "prompts": {},
+  "sessions": {
+    "s_7dd59ac52adaeb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "540c00e1-4e66-4807-b82d-ca679a6ef321",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
