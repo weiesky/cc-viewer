@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix(web): **活跃代理卡片显示错位/多计修复** — (1) `deriveActiveAgents` 不再统计无 `promptSnippet` 的 agent task（防御性过滤：SDK schema 中 prompt 为可选字段，缺失时视为非真实 Agent 派生）；(2) `buildAgentToolUseMap` 扩展为索引整个 transcript 中的 Agent/Task tool_use（而非仅 mainAgent 行），teammate 派生的嵌套 subagent 现在能 join 到真实名字而非回落到短 description（之前形如 "Read X" 的无名行）。Coverage: `activeAgents.test.js`。
+
+- feat(web): **`--sdk` 模式输入框布局调整：导航入口内移、语音输入右移** — `--sdk` 布局下，左侧栏的「用户 Prompt 导航」头像入口移除，改为对话输入框底部左侧的圆形头像按钮（点击弹 Popover，样式与侧栏一致）；「语音输入」麦克风按钮从输入框左侧移到右侧（模型 chip 右边、发送按钮左边）。`--terminal` 模式下终端面板隐藏时行为对齐 `--sdk`；终端显示时与移动端布局保持原状。
+
 - feat(web): **框选 assistant 消息复制自动转回 markdown** — 在 assistant 消息正文选中片段复制时,自动把渲染后 HTML 转回 markdown 写入 `text/plain`(并保留渲染后 HTML 到 `text/html` 供富文本目标);支持 GFM 表格、删除线、代码块(带语言)、有序/无序列表;`data-md-file` 本地文件链接还原为角括号包裹的 `[text](<path> "title")`,消毒控制字符防止 markdown 注入。用户气泡/跨气泡/工具卡选区仍走原生复制。Coverage: `markdown-copy.test.js`.
 
 - feat(web): **「添加到对话」覆盖 diff、工具参数区与 AskUserQuestion 卡片** — 除 markdown 正文外，Edit/Write 工具卡片的代码 diff、工具卡片参数区（Agent 等的 prompt/description 等 KV 文本）、以及交互中的 AskUserQuestion 卡片（问题 + 选项文本）都可选中后点「添加到对话」引用；diff 按选中可见纯代码文本（不含行号、+/- 前缀与文件路径）。diff header 与行号 gutter、选项的 ◉/☑ 字形不作为选区内容；选项行拖选文本时不会误触切换选项；跨区域（markdown↔diff↔KV↔ask）选中不触发；portaled 的简化 pill / 审批弹层不受影响。Coverage: `chat-quote-i18n.test.js`.

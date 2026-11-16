@@ -311,6 +311,17 @@
   height: 16px;
 }
 
+/* Composer-hosted prompt-nav button: the trigger is the user's avatar (same asset as the
+   sidebar's navAvatarImg), kept circular inside the 28px round button. 16px matches the
+   SVG glyph size used by sibling .plusBtn buttons. */
+.plusBtnAvatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
 /* AgentTeam 子菜单内预设项：限宽防长描述撑宽悬浮面板（对齐终端 presetMenuItem 的 260px） */
 .quickMenuPresetItem {
   max-width: 260px;

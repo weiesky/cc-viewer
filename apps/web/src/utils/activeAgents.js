@@ -3,7 +3,11 @@
  * imports), so this module is directly loadable by node:test.
  *
  * Active set = sdkTaskTracker tasks whose taskType is an agent task
- * (local_agent / in_process_teammate) and whose status is not terminal.
+ * (local_agent / in_process_teammate), whose status is not terminal, AND which
+ * carry a non-empty promptSnippet. The promptSnippet gate is defensive: the
+ * Agent-tool spawn prompt is an optional field in the SDK schema, so a missing
+ * snippet means the task is not a real user-spawned agent (or the producer
+ * failed to forward the prompt) and should not be counted.
  * Two consumers: the active-agent card (ActiveAgentsBar — identity resolution
  * for display) and the SDK task tracker (sdkTaskTracker — the AGENT_TASK_TYPES
  * gate). The click-to-filter matching helpers used to live here and were
@@ -12,9 +16,10 @@
  * Identity resolution does NOT trust the task_started description prefix
  * ("name: prompt..."): real Agent-tool descriptions are short blurbs without a
  * "name:" prefix, and teammate names may contain spaces. The reliable source is
- * the MainAgent's Agent/Task tool_use block, joined by toolUseId (exact) or by
- * prompt prefix (PROMPT_PREFIX_LEN chars, the same heuristic resolveTeammateNames
- * uses in @ccv/core/contentFilter). The description prefix is only a last-resort
+ * any Agent/Task tool_use block in the transcript (including teammate-spawned
+ * nested subagents), joined by toolUseId (exact) or by prompt prefix
+ * (PROMPT_PREFIX_LEN chars, the same heuristic resolveTeammateNames uses in
+ * @ccv/core/contentFilter). The description prefix is only a last-resort
  * fallback.
  */
 
@@ -41,10 +46,21 @@ const TERMINAL_STATUSES = new Set(['completed', 'failed']);
 const NAME_PREFIX_RE = /^(.{1,64}?)\s*[:：]\s*\S/;
 
 /**
- * Build a lookup of the MainAgent's Agent/Task tool_use blocks, keyed by BOTH
- * toolUseId (exact) and prompt prefix (first PROMPT_PREFIX_LEN chars), so an
- * active agent task can be joined back to its spawn input for the real
+ * Build a lookup of Agent/Task tool_use blocks across the whole transcript, keyed
+ * by BOTH toolUseId (exact) and prompt prefix (first PROMPT_PREFIX_LEN chars), so
+ * an active agent task can be joined back to its spawn input for the real
  * name / subagent_type / description.
+ *
+ * Why not mainAgent-only: in SDK mode a teammate can itself invoke the Agent tool
+ * (spawning a nested subagent — teammates cannot spawn further teammates, but
+ * subagents are allowed). Those nested spawn blocks land in the teammate's own
+ * request rows (mainAgent === false), and the nested task's task_started frame is
+ * still relayed under the main session. Indexing only mainAgent rows would leave
+ * nested subagents unmatched, so their card rows would fall back to the short
+ * Agent-tool description (e.g. "Read X") and inflate the visible agent count with
+ * unnamed lookalikes. Indexing every Agent/Task block is safe: toolUseId is
+ * globally unique, and prompt-prefix collisions resolve to the latest block
+ * (same as resolveTeammateNames).
  *
  * @param {Array<object>} requests - the transcript request list (v1 shape).
  * @returns {{byToolUseId: Map<string, object>, byPromptPrefix: Map<string, object>}}
@@ -55,7 +71,7 @@ export function buildAgentToolUseMap(requests) {
   const byPromptPrefix = new Map();
   if (!Array.isArray(requests)) return { byToolUseId, byPromptPrefix };
   for (const req of requests) {
-    if (!req || req.mainAgent === false) continue; // only the main agent spawns
+    if (!req) continue;
     const content = req.response?.body?.content;
     if (!Array.isArray(content)) continue;
     for (const block of content) {
@@ -126,6 +142,13 @@ export function deriveActiveAgents(tasks) {
     if (TERMINAL_STATUSES.has(task.status)) continue;
     const taskId = String(task.taskId ?? '');
     if (!taskId) continue;
+    // Only true Agent-tool spawns (subagent / teammate) carry the original prompt
+    // (captured into promptSnippet by sdkTaskTracker). Pseudo-tasks emitted by the
+    // SDK for a teammate's internal tool calls (description-only, e.g. "Read X",
+    // "Check Y") have no prompt — without this filter the card counts every
+    // teammate-internal tool call as its own "active agent" and the count
+    // inflates well past the real teammate count.
+    if (!task.promptSnippet) continue;
     out.push({
       taskId,
       toolUseId: task.toolUseId != null ? String(task.toolUseId) : null,

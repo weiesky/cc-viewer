@@ -17,12 +17,17 @@ import styles from './ActiveAgentsBar.module.css';
  * Data: the SDK relays task_started/progress/updated/notification as WS
  * `sdk-task` frames → sdkTaskTracker → taskStore. This component derives the
  * active agent set from the taskStore snapshot (taskType ∈ {local_agent,
- * in_process_teammate}, non-terminal status) and auto-hides (returns null) when
- * there is nothing active.
+ * in_process_teammate}, non-terminal status, non-empty promptSnippet — see
+ * utils/activeAgents.js) and auto-hides (returns null) when there is nothing
+ * active.
  *
- * Identity: each agent's display name comes from joining the spawn Agent/Task
- * tool_use block (by toolUseId, else prompt prefix) — the task frame alone has
- * no reliable name. The join needs the transcript, so ChatView passes `requests`.
+ * Identity: each agent's display name comes from joining any Agent/Task
+ * tool_use block in the transcript (by toolUseId, else prompt prefix) — the
+ * task frame alone has no reliable name. Nested subagents spawned by a
+ * teammate are indexed too (their spawn rows carry mainAgent:false), so a
+ * teammate-internal Agent call still resolves to its real name instead of
+ * falling back to the short Agent-tool description. ChatView passes `requests`
+ * for the transcript.
  *
  * Interaction: read-only. The header toggles collapse.
  */

@@ -12,7 +12,7 @@ import GitDiffView from '../git/GitDiffView';
 import ToolApprovalPanel from '../approval/ToolApprovalPanel';
 import { getModelInfo, getEffectiveModel, resolveProducerModelInfo, AUTO_APPROVE_INSTANT, isInstantAutoApproveValue } from '../../utils/helpers';
 import { formatPromptNavTime, formatHms } from '../../utils/formatters';
-import { buildPromptNavItems } from '../../utils/promptNav';
+import { buildPromptNavItems, shouldUseComposerPromptNav } from '../../utils/promptNav';
 import { getTeammateAvatar } from '../../utils/teammateAvatars';
 import { applyAvatarAnimationTargets } from '../../utils/avatarAnimationPostPass';
 import { mergeToolRuns } from '../../utils/toolRunMerge';
@@ -361,8 +361,11 @@ class ChatView extends React.Component {
       activeAgentsBarVisible: false,
       teamModalSession: null,
       workflowModalRun: null,
-      // 用户 Prompt 汇总弹窗（侧栏头像导航气泡「more」入口打开）
+      // User-prompt aggregate modal (opened from the nav popover's "more" entry)
       userPromptsModalOpen: false,
+      // Composer-hosted user-prompt-nav Popover open state (only used in the --sdk /
+      // terminal-hidden composer layout; sidebar hover popover is uncontrolled).
+      promptNavOpen: false,
       mdLightboxSrc: null,
       streamingFading: false,
       stopOptimistic: false, // 点「停止」后乐观置 true：按钮/指示器立即切非运行态，真实 isStreaming 翻 false 或兜底超时后清除
@@ -826,6 +829,12 @@ class ChatView extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    // Reset the composer-hosted nav popover when the layout predicate flips off (terminal
+    // opened in --terminal, sdkMode/cliMode flipped, etc.) — otherwise the flag survives
+    // the popover's unmount and the popover re-opens on its own when the layout returns.
+    if (this.state.promptNavOpen && !this._useComposerPromptNav()) {
+      this.setState({ promptNavOpen: false });
+    }
     // Sharding (2026-11): a "load earlier history" prepend landed — expand the
     // render window by the number of items it added and anchor the viewport, or
     // the older history lands above the visible tail and the click looks like a
@@ -4963,42 +4972,66 @@ class ChatView extends React.Component {
         </Popover>
         <TeamButton requests={this.props.requests} onOpenSession={(session) => this.setState({ teamModalSession: session })} navBtnClass={styles.navBtn} />
         <WorkflowButton requests={this.props.requests} onOpenRun={(run) => this.setState({ workflowModalRun: run })} navBtnClass={styles.navBtn} />
-        <Popover
-          content={this._buildUserPromptNav()}
-          trigger="hover"
-          placement="right"
-          arrow={{ pointAtCenter: true }}
-          autoAdjustOverflow={false}
-          align={{ overflow: { adjustX: true, shiftY: true } }}
-          overlayStyle={{ maxWidth: 400 }}
-          overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}
-        >
-          <button className={styles.navBtn} title={t('ui.userPromptNav')}>
-            <img
-              src={this.props.userProfile?.avatar || defaultAvatarUrl}
-              className={styles.navAvatarImg}
-              alt="User"
-              onError={(e) => { e.target.onerror = null; e.target.src = defaultAvatarUrl; }}
-            />
-          </button>
-        </Popover>
+        {/* Sidebar avatar entry: kept only when the composer cannot host the nav entry —
+            i.e. --terminal with the PTY shown (input bar yields to the terminal) and the
+            read-only log viewer (no composer at all). In --sdk or --terminal-with-terminal-
+            hidden the entry moves into ChatInputBar (see the promptNavPopover prop). */}
+        {!this._useComposerPromptNav() && (
+          <Popover
+            content={this._buildUserPromptNav()}
+            trigger="hover"
+            placement="right"
+            arrow={{ pointAtCenter: true }}
+            autoAdjustOverflow={false}
+            align={{ overflow: { adjustX: true, shiftY: true } }}
+            overlayStyle={{ maxWidth: 400 }}
+            overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}
+          >
+            <button className={styles.navBtn} title={t('ui.userPromptNav')}>
+              <img
+                src={this.props.userProfile?.avatar || defaultAvatarUrl}
+                className={styles.navAvatarImg}
+                alt="User"
+                onError={(e) => { e.target.onerror = null; e.target.src = defaultAvatarUrl; }}
+              />
+            </button>
+          </Popover>
+        )}
       </div>
     );
   }
 
+  // Whether the "User Prompt Nav" entry lives inside the chat composer (true) or stays as
+  // the sidebar avatar (false). Thin wrapper over utils/promptNav.shouldUseComposerPromptNav
+  // so the predicate stays single-sourced and unit-testable.
+  _useComposerPromptNav() {
+    return shouldUseComposerPromptNav({
+      isMobile,
+      sdkMode: this.props.sdkMode,
+      terminalVisible: this.props.terminalVisible,
+      cliMode: this.props.cliMode,
+    });
+  }
+
   /**
-   * 构建用户 Prompt 导航列表（侧边栏 hover popover 内容）
-   * 基于 _currentVisible（当前可见 items），保证每一项都能精确定位和高亮
+   * Build the user-prompt nav list content. Two call sites: the sidebar avatar's hover
+   * popover (_renderNavSidebar) and the composer-hosted button's click popover
+   * (promptNavPopover prop on ChatInputBar). Both share the same content; only the
+   * trigger and placement differ.
+   *
+   * Items are based on _currentVisible (currently rendered items), so every entry has a
+   * stable visibleIdx that can be scrolled to and highlighted precisely.
    */
   _buildUserPromptNav() {
     const visible = this._currentVisible;
     if (!visible || visible.length === 0) return null;
 
     // Cache keyed on a content fingerprint, NOT the `visible` reference: render() rebuilds
-    // `visible` via filteredItems.slice() every pass (ChatView.jsx:3437), so a reference
-    // compare would never hit and buildPromptNavItems — which now walks every assistant
-    // bubble's content blocks — would re-run on every render / streaming token. The key is
-    // computed once per render in render() (this._navCacheKey) from the stable inputs.
+    // `visible` via filteredItems.slice() every pass (see this._currentVisible assignment in
+    // render), so a reference compare would never hit and buildPromptNavItems — which now
+    // walks every assistant bubble's content blocks — would re-run on every render /
+    // streaming token. The key is computed once per render in render() (this._navCacheKey)
+    // from the stable inputs.
     const cacheKey = this._navCacheKey;
     if (cacheKey != null && this._navCacheKeyUsed === cacheKey && this._navCacheResult) return this._navCacheResult;
 
@@ -5013,7 +5046,7 @@ class ChatView extends React.Component {
           <button
             type="button"
             className={styles.userPromptNavMore}
-            onClick={() => this.setState({ userPromptsModalOpen: true })}
+            onClick={() => this.setState({ userPromptsModalOpen: true, promptNavOpen: false })}
           >
             {t('ui.more')}
           </button>
@@ -5063,6 +5096,9 @@ class ChatView extends React.Component {
    */
   _scrollToUserPrompt(visibleIdx, timestamp) {
     if (visibleIdx == null || visibleIdx < 0) return;
+    // Close the composer-hosted nav popover on selection. The legacy sidebar hover
+    // popover dismisses itself on mouse-out and is unaffected by this flag flip.
+    if (this.state.promptNavOpen) this.setState({ promptNavOpen: false });
     // 触发高亮（有 timestamp 时显示蓝色虚线动画）
     if (timestamp) {
       this.setState({ highlightTs: timestamp, highlightFading: false, highlightVisibleIdx: visibleIdx }, () => {
@@ -5946,6 +5982,14 @@ class ChatView extends React.Component {
               viewProject={this.props.viewProject}
               attachedSid={this.props.attachedSid}
               proxyChip={proxyChipNode}
+              promptNavPopover={this._useComposerPromptNav() ? {
+                open: this.state.promptNavOpen,
+                onOpenChange: (open) => this.setState({ promptNavOpen: open }),
+                content: this._buildUserPromptNav(),
+                // Same avatar asset as the sidebar entry — keeps the "this is your prompts"
+                // visual metaphor after the move into the composer.
+                avatarSrc: this.props.userProfile?.avatar || defaultAvatarUrl,
+              } : null}
             />
             </div>
             {/* On pure phones the chip never renders, so this ProxyModal can never open — phones use
