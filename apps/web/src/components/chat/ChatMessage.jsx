@@ -1034,7 +1034,9 @@ class ChatMessage extends React.Component {
     const cls = `${bubbleClass}${highlight === 'active' ? ' ' + styles.bubbleHighlight : ''}${highlight === 'fading' ? ' ' + styles.bubbleHighlightFading : ''}`;
     const isUser = bubbleClass === styles.bubbleUser;
     return (
-      <div className={`${cls} ${styles.bubbleRelative}`}>
+      // data-ccv-role is a build-stable hook (CSS-module class names get hashed) used by
+      // ChatView's "add selection to chat" popup to scope text selection to assistant bubbles.
+      <div className={`${cls} ${styles.bubbleRelative}`} data-ccv-role={isUser ? 'user' : 'assistant'}>
         {(highlight === 'active' || highlight === 'fading') && (
           <svg className={`${styles.borderSvg}${highlight === 'fading' ? ' ' + styles.borderSvgFading : ''}`} preserveAspectRatio="none">
             <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="8" ry="8"

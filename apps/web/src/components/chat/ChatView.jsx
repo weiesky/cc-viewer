@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { Empty, Typography, Divider, Popover, Modal, message } from 'antd';
 import ChatMessage from './ChatMessage';
 import TerminalPanel, { uploadFileAndGetPath } from '../terminal/TerminalPanel';
@@ -21,6 +22,7 @@ import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeam
 import { extractQueuedPromptWireMessage, queuedPromptDisplayText } from '@ccv/core/queued-prompt';
 import { queuedPromptsAfterIndex, queuedPromptsSignature } from './queuedPromptDisplay';
 import { reconcileOptimisticQueueMessages, captureOptimisticQueueTextCounts } from './optimisticQueueMessage';
+import { selectionInSingleAssistantMd, selectionPopupPosition, buildQuotePrefix, isSlashCommandText, truncateQuote } from './selectionQuote';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '@ccv/core/requestType';
 import { buildChunksForAnswer, buildBracketPasteSubmitChunks, BRACKET_PASTE_SUBMIT_SETTLE_MS } from '../../utils/ptyChunkBuilder';
 import { isPlanApprovalPrompt, isDangerousOperationPrompt, pickPlanApproveOptionNumber } from '../../utils/promptClassifier';
@@ -211,6 +213,12 @@ class ChatView extends React.Component {
     this._mdProbeObserver = null;
     this._mdProbeObservedEl = null;
     this._mdProbeRaf = 0;
+    // Selection→quote popup imperative fields (see the "Selection → quote chips" section).
+    this._selQuoteBound = false;   // listeners bound
+    this._selQuoteText = '';       // ref-held selection text read by the button's click
+    this._selQuoteTextPrev = '';   // last text written to state, to skip no-op setState
+    this._selMouseDown = false;    // a mouse-driven selection drag is in progress
+    this._selQuoteRaf = 0;         // pending selectionchange debounce rAF
 
     // 增量 tool result 状态
     this._incToolState = null;
@@ -371,6 +379,8 @@ class ChatView extends React.Component {
       pendingPtyPlan: null, // { id, prompt } — active plan approval. id 与 ExitPlanMode tool_use id (lastPendingPlanId) 同源，由 componentDidUpdate 从 _currentLastPendingPlanId 派生（cliMode 守卫 + _resolvedPlanIds 短暂窗口守卫）。
       planAutoApproveCountdown: null, // number|null — Remaining seconds for the active PTY/SDK plan countdown, rendered on the plan card.
       pendingImages: [], // [{ path, source, isDir }] — uploaded/pasted files or dragged explorer folders
+      pendingQuotes: [], // [{ text }] — assistant-reply selections added via the "add to chat" popup
+      selectionPopup: null, // { left, top, above } — floating "add to chat" button position over a valid assistant selection (text lives in the _selQuoteText ref)
       uploadingItems: [], // [{ id, name, previewUrl }] — 上传在途的占位项(路径还没 resolve);预览条只从 pendingImages 渲染缩略图,故占位需独立 state
       sendDeferred: false, // 仅渲染用:有上传在途时按了发送 → 缓发态(发送按钮 spinner)。权威双发标志是实例字段 _sendDeferred
       // Optimistic: agent-teams is on by default at launch, so assume enabled until
@@ -673,6 +683,7 @@ class ChatView extends React.Component {
     }
     this._bindInputStackRO();
     this._bindChatScrollbarRO();
+    this._bindSelectionQuoteListeners();
     // 初始化时吸附到 60cols(SDK 模式无主 PTY 面板可吸附,跳过)
     if (this.state.needsInitialSnap && this.props.cliMode && this.props.terminalVisible && !this.props.sdkMode) {
       this._snapToInitialPosition();
@@ -1299,7 +1310,7 @@ class ChatView extends React.Component {
       // viewSwitched predicate from above so a null→real async instance init
       // does not count as a switch. attachedSid changes are user-driven or a
       // terminal-side boundary release (_detachedView) — both real switches.
-      if (viewSwitched || prevProps.attachedSid !== this.props.attachedSid) this._clearPendingImages();
+      if (viewSwitched || prevProps.attachedSid !== this.props.attachedSid) { this._clearPendingImages(); this._clearPendingQuotes(); this._hideSelectionPopup(); this._selQuoteText = ''; }
     }
     if (prevProps.sessionUpperBoundTs !== this.props.sessionUpperBoundTs) {
       this._reconcileOptimisticQueueMessages();
@@ -1324,7 +1335,7 @@ class ChatView extends React.Component {
         const tailUnchanged = prevIds.length > 0 && nextIds.length >= prevIds.length
           && prevIds[prevIds.length - 1] === nextIds[nextIds.length - 1];
         if (prevIds.length > 0 && !(shardPrepended && tailUnchanged)
-          && this._sessionListIdentityChanged(prevIds, nextIds)) this._clearPendingImages();
+          && this._sessionListIdentityChanged(prevIds, nextIds)) { this._clearPendingImages(); this._clearPendingQuotes(); this._hideSelectionPopup(); this._selQuoteText = ''; }
         this._prevStableIds = nextIds;
       }
       // sessions 引用变化 → 仅在 session 对象真正变化时重置增量状态
@@ -1564,6 +1575,7 @@ class ChatView extends React.Component {
     document.documentElement.style.removeProperty('--chat-scrollbar-width');
     if (this._unsubWsHandler) { try { this._unsubWsHandler(); } catch {} this._unsubWsHandler = null; }
     if (this._unsubWsState) { try { this._unsubWsState(); } catch {} this._unsubWsState = null; }
+    this._unbindSelectionQuoteListeners();
   }
 
   startRender() {
@@ -1720,6 +1732,164 @@ class ChatView extends React.Component {
       this.setState({ pendingImages: [] });
     }
   };
+
+  // ── Selection → quote chips ─────────────────────────────────────────────────
+  // A floating "add to chat" button (i18n key ui.chatQuote.addToChat) appears when the user
+  // selects text inside a single assistant bubble's markdown. Clicking it pushes the selection
+  // into pendingQuotes; the chips ride the composer attachment strip and are sent as a `> `
+  // blockquote prefix.
+  //
+  // The mouse show path is `mouseup` (so the button does not dance mid-drag); touch and
+  // keyboard selections never fire a list mouseup, so `selectionchange` (debounced) shows the
+  // popup for them once the mouse-drag flag is clear. scroll/resize/pointerdown-outside hide it.
+
+  _bindSelectionQuoteListeners = () => {
+    if (this._selQuoteBound) return;
+    this._selQuoteBound = true;
+    this._onSelChange = () => this._handleSelectionChange();
+    this._onSelScroll = (e) => this._handleSelScroll(e);
+    this._onSelResize = () => this._hideSelectionPopup();
+    // Reset the mouse-drag flag even when the button is released outside the message list.
+    this._onSelDocMouseUp = () => { this._selMouseDown = false; };
+    // Dismiss the popup when the user presses anywhere outside the floating button (e.g. opening
+    // a sidebar file overlay, clicking the header/terminal). The button is portaled to body and
+    // marked with data-ccv-selection-quote-btn so we can exclude it. This is pointerdown (not click)
+    // because a text selection survives button clicks, so selectionchange alone won't dismiss.
+    this._onSelDocPointerDown = (e) => {
+      if (!this.state.selectionPopup) return;
+      const t0 = e && e.target;
+      if (t0 && t0 instanceof Element && t0.closest('[data-ccv-selection-quote-btn]')) return;
+      this._hideSelectionPopup();
+    };
+    document.addEventListener('selectionchange', this._onSelChange);
+    // capture phase so the inner Virtuoso / .container scroller's scroll reaches us.
+    document.addEventListener('scroll', this._onSelScroll, true);
+    document.addEventListener('mouseup', this._onSelDocMouseUp);
+    document.addEventListener('pointerdown', this._onSelDocPointerDown, true);
+    window.addEventListener('resize', this._onSelResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', this._onSelResize);
+  };
+
+  _unbindSelectionQuoteListeners = () => {
+    if (!this._selQuoteBound) return;
+    this._selQuoteBound = false;
+    document.removeEventListener('selectionchange', this._onSelChange);
+    document.removeEventListener('scroll', this._onSelScroll, true);
+    document.removeEventListener('mouseup', this._onSelDocMouseUp);
+    document.removeEventListener('pointerdown', this._onSelDocPointerDown, true);
+    window.removeEventListener('resize', this._onSelResize);
+    if (window.visualViewport) window.visualViewport.removeEventListener('resize', this._onSelResize);
+    if (this._selQuoteRaf) { cancelAnimationFrame(this._selQuoteRaf); this._selQuoteRaf = 0; }
+  };
+
+  // selectionchange: keep an already-shown popup in sync (hide when the selection becomes
+  // invalid), AND surface the popup for non-mouse selections (touch long-press + selection
+  // handles, keyboard Shift+arrow) which never fire a list `mouseup`. The mouse path stays on
+  // mouseup so a mid-drag selection doesn't make the button dance; this debounce (rAF + a
+  // trailing validity re-check) only *shows* when no popup is up yet.
+  _handleSelectionChange = () => {
+    if (this._selQuoteRaf) cancelAnimationFrame(this._selQuoteRaf);
+    this._selQuoteRaf = requestAnimationFrame(() => {
+      this._selQuoteRaf = 0;
+      if (this._unmounted) return;
+      if (this.state.selectionPopup) {
+        // Already shown: track the live selection (touch-handle drags / Shift+arrow change it
+        // without any list mouseup). The rAF debounce absorbs per-move jitter.
+        this._syncQuotePopup();
+        return;
+      }
+      // Not shown: surface for keyboard/touch selections. Skip while a mouse drag is in
+      // progress (mousedown tracked via _selMouseDown) so desktop drag stays on mouseup.
+      if (this._selMouseDown) return;
+      this._syncQuotePopup();
+    });
+  };
+
+  // Single show/sync path: validate the selection against a single assistant bubble's markdown,
+  // then write the ref-held text + popup position. Returns true when the popup is showing.
+  // The click handler reads the ref-held text (not the live selection, which collapses on click),
+  // so `_selQuoteText` always tracks the selection that the popup currently points at.
+  _syncQuotePopup = () => {
+    const sel = window.getSelection();
+    if (selectionInSingleAssistantMd(sel)) {
+      const text = sel.toString();
+      const pos = selectionPopupPosition(sel);
+      if (text.trim() && pos) {
+        this._selQuoteText = text;
+        // Skip the setState when nothing moved, so a steady selection doesn't re-render ChatView.
+        const cur = this.state.selectionPopup;
+        if (!cur || cur.left !== pos.left || cur.top !== pos.top || cur.above !== pos.above || text !== this._selQuoteTextPrev) {
+          this._selQuoteTextPrev = text;
+          this.setState({ selectionPopup: { left: pos.left, top: pos.top, above: pos.above } });
+        }
+        return true;
+      }
+    }
+    this._hideSelectionPopup();
+    return false;
+  };
+
+  // The capture-phase scroll listener hears EVERY document scroll, including the xterm
+  // viewport (terminal streaming) and unrelated panels. Only a scroll inside the chat message
+  // list invalidates the selection's viewport rect, so ignore anything outside it — otherwise
+  // the popup dies within a frame whenever the terminal or live answer is streaming.
+  _handleSelScroll = (e) => {
+    if (!this.state.selectionPopup) return;
+    const wrap = this._mdProbeWrapRef && this._mdProbeWrapRef.current;
+    const target = e && e.target;
+    if (wrap && target && target instanceof Node && wrap.contains(target)) this._hideSelectionPopup();
+  };
+
+  _onMessageListMouseDown = () => {
+    // Mark a mouse-driven selection drag; the selectionchange show path stays quiet until
+    // mouseup so the button does not dance mid-drag. Reset on the next mouseup anywhere.
+    this._selMouseDown = true;
+  };
+
+  _onMessageListMouseUp = () => {
+    this._selMouseDown = false;
+    this._syncQuotePopup();
+  };
+
+  _hideSelectionPopup = () => {
+    if (this.state.selectionPopup) this.setState({ selectionPopup: null });
+  };
+
+  // Floating button click. The button uses onMouseDown preventDefault so the selection (and
+  // this popup) survive until the click fires; we read the ref-held text, not the live
+  // selection, which may already be collapsing.
+  _handleAddQuoteFromPopup = () => {
+    const text = this._selQuoteText;
+    this._hideSelectionPopup();
+    const sel = window.getSelection();
+    if (sel) sel.removeAllRanges();
+    if (text && text.trim()) this._addPendingQuote(text);
+  };
+
+  _addPendingQuote = (text) => {
+    // Cap/truncate a single quote so selecting an entire long answer cannot produce a huge
+    // bracketed paste / oversized optimistic bubble. No user feedback on cap/dedup, mirroring
+    // pendingImages.
+    const trimmed = truncateQuote(text);
+    if (!trimmed) return;
+    this.setState(prev => {
+      if (prev.pendingQuotes.length >= 20) return null; // cap, mirrors pendingImages
+      if (prev.pendingQuotes.some(q => q.text === trimmed)) return null; // dedup
+      return { pendingQuotes: [...prev.pendingQuotes, { text: trimmed }] };
+    });
+  };
+
+  _removePendingQuote = (index) => {
+    this.setState(prev => ({ pendingQuotes: prev.pendingQuotes.filter((_, i) => i !== index) }));
+  };
+
+  _clearPendingQuotes = () => {
+    if (this.state.pendingQuotes.length > 0) {
+      this.setState({ pendingQuotes: [] });
+    }
+  };
+
+
 
   // True when the session LIST identity changed (session switch / new session
   // appended), not merely session object identities: same-conversation rebuilds
@@ -2879,7 +3049,7 @@ class ChatView extends React.Component {
     // setState 提交后再发 → handleInputSend 守卫看到 uploadingItems 为空,不会 defer。
     this._clearDeferSend();
     for (const u of this.state.uploadingItems) { if (u.previewUrl) { try { URL.revokeObjectURL(u.previewUrl); } catch {} } }
-    this.setState({ inputEmpty: false, pendingImages: [], uploadingItems: [] }, () => this.handleInputSend());
+    this.setState({ inputEmpty: false, pendingImages: [], pendingQuotes: [], uploadingItems: [] }, () => this.handleInputSend());
     this.props.onClearContextOptimistic?.();
   };
 
@@ -4136,7 +4306,7 @@ class ChatView extends React.Component {
     }
   };
 
-  _sendUserMessageImmediate = (text, textareaToReset, skipUiState) => {
+  _sendUserMessageImmediate = (text, textareaToReset, skipUiState, clearQuotes = true) => {
     if (!text) return;
     this._closeSlashMenu();
     const ws = this._inputWs;
@@ -4159,12 +4329,28 @@ class ChatView extends React.Component {
       // view), sessionId is null and the send goes to that project's live PTY —
       // NOT into the attached historical conversation (which has no live turn).
       const anchor = this._terminalAnchor();
-      ws.send(JSON.stringify({ type: 'input', data: text, project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
-      setTimeout(() => {
-        if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-          this._inputWs.send(JSON.stringify({ type: 'input', data: '\r', project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
-        }
-      }, 50);
+      if (text.includes('\n')) {
+        // Multi-line content (a quote prefix always introduces newlines): a raw `input`
+        // frame would let the Ink TUI read each `\n` as a submit. Reuse the bracketed-paste
+        // path (already used for preset/terminal sends), which makes the TUI treat the whole
+        // block as a literal paste and submits atomically; the paste boundary sequences are
+        // stripped to prevent paste-injection.
+        ws.send(JSON.stringify({
+          type: 'input-sequential',
+          chunks: buildBracketPasteSubmitChunks(text),
+          settleMs: BRACKET_PASTE_SUBMIT_SETTLE_MS,
+          project: anchor.project,
+          sessionId: anchor.sessionId,
+          ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}),
+        }));
+      } else {
+        ws.send(JSON.stringify({ type: 'input', data: text, project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
+        setTimeout(() => {
+          if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+            this._inputWs.send(JSON.stringify({ type: 'input', data: '\r', project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
+          }
+        }, 50);
+      }
     }
     if (textareaToReset) {
       textareaToReset.value = '';
@@ -4173,6 +4359,8 @@ class ChatView extends React.Component {
     }
     if (!skipUiState) {
       this._clearPendingImages();
+      // Quote prefix was only embedded for non-slash text; on a slash send keep the chips.
+      if (clearQuotes) this._clearPendingQuotes();
       this.setState({ inputEmpty: true, pendingInput: text, inputSuggestion: null }, () => this.scrollToBottom());
     }
   };
@@ -4248,7 +4436,11 @@ class ChatView extends React.Component {
     // 拼接 pendingImages 路径（发送时才注入，支持用户删除后不发）。slash 命令必须保持在
     // 消息开头，图片路径排在其后；普通文本维持图片在前的旧行为。
     const imagePaths = this.state.pendingImages.map(img => `"${img.path.replace(/"/g, '')}"`).join(' ');
-    const text = composeOutgoingText(userText, imagePaths);
+    // Quote prefix goes before everything for ordinary text, but NEVER before a slash command:
+    // prefixing would break CLI/SDK command recognition (incl. /clear). Slash → keep chips, skip prefix.
+    const isSlash = isSlashCommandText(userText);
+    const quotePrefix = isSlash ? '' : buildQuotePrefix(this.state.pendingQuotes);
+    const text = quotePrefix + composeOutgoingText(userText, imagePaths);
     if (!text) return;
     this._closeSlashMenu();
 
@@ -4266,6 +4458,9 @@ class ChatView extends React.Component {
       textarea.value = '';
       resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
       this._clearPendingImages();
+      // Slash send never embeds the quote prefix, so keep the chips for the next message
+      // instead of silently discarding the user's selection.
+      if (!isSlash) this._clearPendingQuotes();
       this.setState({ inputEmpty: true, pendingInput: userText || imagePaths, inputSuggestion: null }, () => this.scrollToBottom());
       this.handleAskCancel(askId, 'Interrupted by user');
       // 数组队列代替 Map[askId] 索引：连续两次 typed-interrupt < 500ms 时（handleAskCancel 内
@@ -4303,6 +4498,7 @@ class ChatView extends React.Component {
       textarea.value = '';
       resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
       this._clearPendingImages();
+      if (!isSlash) this._clearPendingQuotes();
       this.setState({ inputEmpty: true, inputSuggestion: null });
       if (this.props.sdkMode) {
         // sdk-manager self-queues when busy and broadcasts queue-state.
@@ -4315,7 +4511,7 @@ class ChatView extends React.Component {
       return;
     }
 
-    this._sendUserMessageImmediate(text, textarea);
+    this._sendUserMessageImmediate(text, textarea, false, !isSlash);
   };
 
   handleInputKeyDown = (e) => {
@@ -4862,6 +5058,30 @@ class ChatView extends React.Component {
     }
   }
 
+  // Floating "add to chat" button (ui.chatQuote.addToChat) over a valid assistant selection.
+  // Portaled to document.body so it is positioned against the viewport (unaffected by the mobile
+  // zoom/transform ancestor or the floating .inputStack) and so its own mouseup does not bubble
+  // back into the message list's onMouseUp handler. onMouseDown preventDefault keeps the
+  // selection alive until the click reads the ref-held text (mousedown would otherwise collapse
+  // the selection → selectionchange hides the popup → the click never fires).
+  _renderSelectionQuotePopup() {
+    const popup = this.state.selectionPopup;
+    if (!popup) return null;
+    return ReactDOM.createPortal(
+      <button
+        type="button"
+        data-ccv-selection-quote-btn
+        className={`${styles.selectionQuoteBtn}${popup.above ? '' : ` ${styles.selectionQuoteBtnBelow}`}`}
+        style={{ left: popup.left, top: popup.top }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={this._handleAddQuoteFromPopup}
+      >
+        {t('ui.chatQuote.addToChat')}
+      </button>,
+      document.body
+    );
+  }
+
   render() {
     const { mainAgentSessions, cliMode, terminalVisible, onToggleTerminal } = this.props;
     const { allItems, visibleCount, loading, terminalWidth, sidebarWidth, lastResponseItems } = this.state;
@@ -5215,7 +5435,7 @@ class ChatView extends React.Component {
         {stickyBtn}
       </div>
     ) : (
-      <div className={roleFilterBar ? `${styles.messageListWrap} ${styles.withRoleFilter}` : (activeAgentsBar && this.state.activeAgentsBarVisible ? `${styles.messageListWrap} ${styles.withActiveAgents}` : styles.messageListWrap)} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} ref={this._mdProbeWrapRef}>
+      <div className={roleFilterBar ? `${styles.messageListWrap} ${styles.withRoleFilter}` : (activeAgentsBar && this.state.activeAgentsBarVisible ? `${styles.messageListWrap} ${styles.withActiveAgents}` : styles.messageListWrap)} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} onMouseDown={this._onMessageListMouseDown} onMouseUp={this._onMessageListMouseUp} ref={this._mdProbeWrapRef}>
         {roleFilterBar}
         {activeAgentsBar}
         {this.state.mdLightboxSrc && (
@@ -5311,6 +5531,7 @@ class ChatView extends React.Component {
         <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} isHistoryLog={this._getIsHistoryLog()} lang={this.props.lang} onClose={() => this.setState({ teamModalSession: null })} />
         <WorkflowRunsModal run={this.state.workflowModalRun} onClose={() => this.setState({ workflowModalRun: null })} />
         <UserPromptsModal open={this.state.userPromptsModalOpen} requests={this.props.requests} onClose={() => this.setState({ userPromptsModalOpen: false })} />
+        {this._renderSelectionQuotePopup()}
       </>);
     }
 
@@ -5679,6 +5900,8 @@ class ChatView extends React.Component {
               turnActive={this.props.turnActive && !this.state.stopOptimistic}
               pendingImages={this.state.pendingImages}
               onRemovePendingImage={this._removePendingImage}
+              pendingQuotes={this.state.pendingQuotes}
+              onRemovePendingQuote={this._removePendingQuote}
               uploadingItems={this.state.uploadingItems}
               sendDeferred={this.state.sendDeferred}
               onUploadStart={this.handleUploadStart}
@@ -5842,6 +6065,7 @@ class ChatView extends React.Component {
         serverTimezone={this.props.serverTimezone || null}
         onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
       />
+      {this._renderSelectionQuotePopup()}
     </>);
   }
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **选中助手回复文字 →「添加到对话」引用 chip** — 在助手回复气泡内选中一段文字（正文/表格/代码均可）会浮出「添加到对话」按钮，点击后把选中文本作为引用 chip 插入输入框上方（可删除、点击预览全文）；发送时该引用以 `> ` 引用块拼在用户消息前一并发给 agent。slash 命令（如 `/clear`）时不拼接引用以免破坏命令识别；多行引用经 bracketed-paste 发送避免 PTY 把换行当提交。Coverage: `chat-quote-i18n.test.js`.
+
 - feat(web): **`--sdk` 活跃 SubAgent/Teammate 浮条改为可折叠卡片列表** — 对话面板右上角浮层由头像条改为标题 + 数量 + 行列表（状态点 / 名称 / 当前工具 / 耗时）；移除 (ALL) 与点击头像过滤对话；有活跃代理即显示、结束自动消失，与角色筛选互斥；WS 重连后保留当前工具标签且不重置已运行耗时。Coverage: `active-agents-bar.test.js`, `chat-active-agents-wiring.test.js`, `activeAgents.test.js`, `sdkTaskTracker.test.js`, `new-ui-i18n.test.js`.
 
 - fix(web): **SDK 模式代理热切换隐藏 Teammate 角色** — `ccv --sdk` 无 PTY、无法唤起 Teammate，角色分工区与其徽章在该模式下不再渲染 Teammate 行，仅保留主 Agent / 子 Agent；PTY 模式行为不变。

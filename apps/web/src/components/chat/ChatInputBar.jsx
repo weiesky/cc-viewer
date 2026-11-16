@@ -63,7 +63,7 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, onAttachPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onOpenScheduleModal, onClearContext, isStreaming, turnActive, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, askAutoAnswerMinutes, onAskAutoAnswerChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, onAttachPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onOpenScheduleModal, onClearContext, isStreaming, turnActive, pendingImages, onRemovePendingImage, pendingQuotes, onRemovePendingQuote, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, askAutoAnswerMinutes, onAskAutoAnswerChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip }) {
   const [plusOpen, setPlusOpen] = useState(false);
   // 桌面四芒星菜单的级联展开行（与终端工具栏同款交互）：null | 'perm' | 'plan' | 'agentteam'
   const [quickExpanded, setQuickExpanded] = useState(null);
@@ -82,6 +82,13 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
   const [recording, setRecording] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [lightbox, setLightbox] = useState(null);
+  // Index of the quote chip whose full-text preview Popover is open (null = none).
+  const [quotePreviewIdx, setQuotePreviewIdx] = useState(null);
+  // Reset a stale open-preview index when the chip list is cleared externally (send, session
+  // switch, /clear) — otherwise the next quote added at that index would auto-open its Popover.
+  useEffect(() => {
+    if (!pendingQuotes || pendingQuotes.length === 0) setQuotePreviewIdx(null);
+  }, [pendingQuotes]);
   const recRef = useRef(null);
   const anchorRef = useRef({ prefix: '', suffix: '' });
   const rootRef = useRef(null);
@@ -414,8 +421,52 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
         onDrop={handleFileDrop}
       >
         <div className={styles.chatTextareaWrap}>
-          {((pendingImages && pendingImages.length > 0) || (uploadingItems && uploadingItems.length > 0)) && (
+          {((pendingImages && pendingImages.length > 0) || (pendingQuotes && pendingQuotes.length > 0) || (uploadingItems && uploadingItems.length > 0)) && (
             <div className={styles.imagePreviewStrip}>
+              {pendingQuotes && pendingQuotes.map((q, i) => {
+                const preview = (q.text || '').replace(/\s+/g, ' ').trim();
+                return (
+                  <Popover
+                    key={`quote-${q.text}`}
+                    open={quotePreviewIdx === i}
+                    onOpenChange={(open) => setQuotePreviewIdx(open ? i : null)}
+                    trigger="click"
+                    placement="topLeft"
+                    overlayStyle={{ maxWidth: 420 }}
+                    content={
+                      <div className={styles.quotePreviewBody}>
+                        <div className={styles.quotePreviewTitle}>{t('ui.chatQuote.previewTitle')}</div>
+                        <div className={styles.quotePreviewText}>{q.text}</div>
+                      </div>
+                    }
+                  >
+                    <div
+                      className={styles.quotePreviewChip}
+                      title={preview}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('ui.chatQuote.previewTitle')}
+                      onKeyDown={(e) => {
+                        // Ignore keys from the nested remove button so its own Enter/Space activation works.
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setQuotePreviewIdx(quotePreviewIdx === i ? null : i); }
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 21c3-1 4-4 4-7H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6c0 4-2 8-6 10z" />
+                        <path d="M14 21c3-1 4-4 4-7h-3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6c0 4-2 8-6 10z" />
+                      </svg>
+                      <span className={styles.quotePreviewName}>{preview}</span>
+                      <ConfirmRemoveButton
+                        title={t('ui.chatQuote.confirmRemove')}
+                        onConfirm={() => { setQuotePreviewIdx(null); onRemovePendingQuote?.(i); }}
+                        className={styles.filePreviewClose}
+                        ariaLabel={t('ui.chatQuote.remove')}
+                      >&times;</ConfirmRemoveButton>
+                    </div>
+                  </Popover>
+                );
+              })}
               {pendingImages.map((img, i) => {
                 const fileName = img.path.split('/').pop() || img.path;
                 const isImage = !img.isDir && /\.(png|jpe?g|gif|svg|bmp|webp|avif|ico|apng|jfif)$/i.test(fileName);
@@ -760,9 +811,9 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
             ) : (
               <button
                 type="button"
-                className={`${styles.sendBtn} ${inputEmpty && !(pendingImages?.length) ? styles.sendBtnDisabled : ''}`}
+                className={`${styles.sendBtn} ${inputEmpty && !(pendingImages?.length) && !(pendingQuotes?.length) ? styles.sendBtnDisabled : ''}`}
                 onClick={onSend}
-                disabled={inputEmpty && !(pendingImages?.length)}
+                disabled={inputEmpty && !(pendingImages?.length) && !(pendingQuotes?.length)}
                 title={t('ui.chatInput.send')}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

@@ -583,6 +583,47 @@
   color: var(--text-primary);
 }
 
+/* Selected-text quote chip: shares the file chip layout via composes so the mobile/pad
+   responsive overrides for the strip apply uniformly. */
+.quotePreviewChip {
+  composes: filePreviewChip;
+  cursor: pointer;
+}
+
+.quotePreviewChip svg {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.quotePreviewName {
+  composes: filePreviewName;
+  max-width: 160px;
+}
+
+/* Full-text preview Popover content. */
+.quotePreviewBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 400px;
+}
+
+.quotePreviewTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.quotePreviewText {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 /* ─── 移动端放大输入区域 (x1.3) ─── */
 @media (max-width: 768px) {
   .chatInputBar {
