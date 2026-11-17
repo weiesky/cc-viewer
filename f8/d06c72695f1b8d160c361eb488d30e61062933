@@ -1,0 +1,21 @@
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_c3f2634813979b::t_a927d056909c25 793-815
+apps/web/src/components/chat/ChatInputBar.module.css
+  s_c3f2634813979b::t_f79166d2ca7313 315-316,318-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f8d06c72695f1b8d160c361eb488d30e61062933",
+  "prompts": {},
+  "sessions": {
+    "s_c3f2634813979b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f9face8-b7aa-479f-9863-5718489ba482",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
