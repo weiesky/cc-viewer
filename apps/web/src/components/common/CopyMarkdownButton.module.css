@@ -1,13 +1,15 @@
-/* Title-inline "copy markdown source" icon button. Sits flush next to a
-   heading without adding width beyond the glyph itself. */
+/* Title-inline "copy markdown source" icon button. 24×24 hit area meets
+   WCAG 2.5.8 AA minimum target size for touch; the glyph stays 12px so the
+   title rhythm is preserved. */
 .btn {
   align-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   padding: 0;
+  margin: -3px 0; /* bleed the extra hit area vertically so the title row doesn't grow */
   border-radius: 4px;
   color: var(--text-secondary);
   cursor: pointer;
