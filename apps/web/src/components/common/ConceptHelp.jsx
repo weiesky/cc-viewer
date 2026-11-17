@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Modal } from 'antd';
 import Loading from './Loading';
+import CopyMarkdownButton from './CopyMarkdownButton';
 import { renderMarkdown } from '../../utils/markdown';
 import { apiUrl } from '../../utils/apiUrl';
 import { getLang } from '../../i18n';
@@ -21,6 +22,10 @@ export default function ConceptHelp({ doc, zIndex, children }) {
   const [loading, setLoading] = useState(false);
   const [html, setHtml] = useState('');
   const [title, setTitle] = useState('');
+  // Keep the raw markdown alongside the rendered HTML so the title-adjacent
+  // copy button can write the source (not the post-render plaintext) to the
+  // clipboard — matches the parameter-docs modal's copy affordance.
+  const [markdown, setMarkdown] = useState('');
 
   // 未知 doc：若有 children，原样返回（chip 等调用方退化为纯展示）；否则不渲染
   if (!doc || !KNOWN_DOCS.has(doc)) return children || null;
@@ -29,6 +34,7 @@ export default function ConceptHelp({ doc, zIndex, children }) {
     setOpen(true);
     setLoading(true);
     setHtml('');
+    setMarkdown('');
     setTitle(doc);
 
     const lang = getLang();
@@ -46,6 +52,7 @@ export default function ConceptHelp({ doc, zIndex, children }) {
     if (md) {
       const firstLine = md.match(/^#\s+(.+)/m);
       if (firstLine) setTitle(firstLine[1]);
+      setMarkdown(md);
       setHtml(renderMarkdown(md));
     } else {
       setHtml('<p>Document not found.</p>');
@@ -77,7 +84,12 @@ export default function ConceptHelp({ doc, zIndex, children }) {
           })
         : <span className={styles.helpBtn} {...triggerHandlers}>?</span>}
         <Modal
-          title={title}
+          title={(
+            <span className={styles.titleRow}>
+              {title}
+              {markdown ? <CopyMarkdownButton getText={() => markdown} /> : null}
+            </span>
+          )}
           open={open}
           onCancel={() => setOpen(false)}
           footer={null}

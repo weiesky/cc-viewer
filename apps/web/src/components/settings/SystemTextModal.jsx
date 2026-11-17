@@ -9,6 +9,7 @@ import { collectModelSuggestions } from '../../utils/modelSuggestions';
 import { isBuiltinEntryDisabled, builtinTargetScope, builtinToggleScopes, isBuiltinShadowed } from '../../utils/builtinPromptTabs';
 import { BLUR_MASK_STYLE } from '../../utils/modalMask';
 import ModelPromptTabs from './ModelPromptTabs';
+import CopyMarkdownButton from '../common/CopyMarkdownButton';
 import styles from './SystemTextModal.module.css';
 
 // 「系统提示词修改」模态（偏好设置 → 专家设置）。self-contained：打开时自取、保存时自存。
@@ -489,10 +490,20 @@ export default function SystemTextModal({ open, onClose, project, instance }) {
       </Loading>
     </Modal>
 
-    {/* 参数文档二级弹窗：渲染 ${...} 变量参考(只读)。 */}
+    {/* 参数文档二级弹窗：渲染 ${...} 变量参考(只读)。标题旁的 [复制] 把 markdown 原文写进剪贴板。 */}
     <Modal
       open={docOpen}
-      title={t('ui.expert.systemText.paramDocTitle')}
+      title={(
+        <span className={styles.titleRow}>
+          {t('ui.expert.systemText.paramDocTitle')}
+          {variablesDoc ? (
+            <CopyMarkdownButton
+              getText={() => variablesDoc}
+              title={t('ui.copy')}
+            />
+          ) : null}
+        </span>
+      )}
       onCancel={() => setDocOpen(false)}
       footer={null}
       width="min(760px, 92vw)"

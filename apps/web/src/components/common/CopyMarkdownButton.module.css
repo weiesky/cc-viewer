@@ -1,0 +1,39 @@
+/* Title-inline "copy markdown source" icon button. Sits flush next to a
+   heading without adding width beyond the glyph itself. */
+.btn {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+  transition: color 0.15s, background 0.15s;
+}
+.btn:hover {
+  color: var(--color-primary);
+  background: var(--bg-surface);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* Brief post-copy tint: check glyph takes the success color so the inline
+   feedback is visible alongside the global toast. */
+.btnCopied {
+  color: var(--color-success, #52c41a);
+}
+.btnCopied:hover {
+  color: var(--color-success, #52c41a);
+  background: transparent;
+}
+
+.glyph {
+  font-size: 12px;
+}

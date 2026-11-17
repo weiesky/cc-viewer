@@ -21,6 +21,14 @@
   background: var(--border-secondary);
 }
 
+/* Modal title row: doc title + copy-markdown icon side by side (matches the
+   SystemTextModal .titleRow / .paramDocBtn pattern). */
+.titleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Match FileContentView markdownPreview styles */
 .modalBody {
   max-height: 60vh;
