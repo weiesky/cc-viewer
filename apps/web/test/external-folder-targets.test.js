@@ -12,6 +12,9 @@ const desktop = src('components/dashboard/AppHeader.jsx');
 const mobile = src('Mobile.jsx');
 const browser = src('components/files/FileBrowserModal.jsx');
 const viewer = src('components/files/FileContentView.jsx');
+const cachePopover = src('components/dashboard/CachePopoverContent.jsx');
+const liveTag = src('components/dashboard/LiveTagPopover.jsx');
+const apiUrl = src('utils/apiUrl.js');
 
 describe('CLAUDE.md and skill folder-entry wiring', () => {
   it('puts the CLAUDE.md folder icon before its title, never in memory-detail mode', () => {
@@ -132,5 +135,56 @@ describe('target-scoped file browser boundaries (menu/preview enabled, drag/uplo
     assert.match(browser, /FileContentView filePath=\{previewFile\}.*readOnly=\{false\}/);
     assert.match(browser, /zIndex=\{zIndex \+ 20\}/);
     assert.match(browser, /styles\.treePaneMobile/);
+  });
+});
+
+describe('memory folder target wiring', () => {
+  it('passes a kind=memory target from both desktop and mobile open handlers', () => {
+    // AppHeader/Mobile must each expose openMemoryFolder that pushes the same
+    // { kind: 'memory' } target into _targetBrowser (driving FileBrowserModal).
+    // Any drift between the two handlers silently breaks one of the two UIs.
+    for (const host of [desktop, mobile]) {
+      assert.match(host, /openMemoryFolder = \(\) => \{/);
+      assert.match(host, /target: \{ kind: 'memory' \}/);
+      assert.match(host, /label: t\('ui\.persistentMemory'\)/);
+    }
+  });
+
+  it('threads onOpenMemoryFolder through the popover chain (LiveTag → Cache) and the mobile drawer', () => {
+    // The folder icon inside CachePopoverContent must prefer the in-app
+    // browser (onOpenMemoryFolder) over the legacy OS-open apiEndpoint.
+    assert.match(cachePopover, /onOpenMemoryFolder/);
+    assert.match(cachePopover, /<OpenFolderIcon title=\{t\('ui\.memoryOpenDir'\)\} size=\{14\} onClick=\{onOpenMemoryFolder\} \/>/);
+    // LiveTagPopover is the desktop portal that hosts CachePopoverContent —
+    // it must accept and forward the prop.
+    assert.match(liveTag, /onOpenMemoryFolder/);
+    assert.match(liveTag, /onOpenMemoryFolder=\{onOpenMemoryFolder\}/);
+    // AppHeader passes its method down to LiveTagPopover.
+    assert.match(desktop, /onOpenMemoryFolder=\{this\.openMemoryFolder\}/);
+    // Mobile passes its method down to CachePopoverContent directly (no
+    // LiveTagPopover in the drawer path).
+    assert.match(mobile, /onOpenMemoryFolder=\{this\.openMemoryFolder\}/);
+  });
+
+  it('keeps memory out of the withTargetParams identity params', () => {
+    // The server's memory branch derives the dir from cwd — sending
+    // source/targetPath/id would be either a 400 (skill-shape validation)
+    // or, worse, silently ignored. Lock the no-op branch in so a future
+    // refactor can't re-add them.
+    assert.match(apiUrl, /else if \(target\.kind === 'memory'\)/);
+    // The kind dispatch must appear BEFORE the generic skill branch.
+    const memoryIdx = apiUrl.indexOf("target.kind === 'memory'");
+    const skillIdx = apiUrl.indexOf("params.set('source', target.source)");
+    assert.ok(memoryIdx > 0 && memoryIdx < skillIdx, 'memory branch must precede the skill param builder');
+  });
+
+  it('accepts kind=memory in FileBrowserModal.validTarget and emits only the kind param', () => {
+    // validTarget must accept the memory shape (no id/source/path required).
+    assert.match(browser, /\(target\.kind === 'memory'\)/);
+    // targetFilesUrl must not append identity params for memory.
+    const t = browser.slice(browser.indexOf('function targetFilesUrl'), browser.indexOf('function parentPathOf'));
+    assert.match(t, /else if \(target\.kind === 'memory'\)/);
+    // And the skill branch must still be the else fallback (sanity).
+    assert.match(t, /params\.set\('source', target\.source\)/);
   });
 });

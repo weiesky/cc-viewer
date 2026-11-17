@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync, mkdtempSync, symlinkSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, rmSync, mkdtempSync, symlinkSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -206,6 +206,56 @@ describe('GET /api/target-files', { concurrency: false }, () => {
       process.env.CLAUDE_CONFIG_DIR = previous;
       const { _resetCacheForTests } = await import('../server/lib/file-access-policy.js');
       _resetCacheForTests();
+    }
+  });
+
+  it('resolves kind=memory to the per-project memory directory (auto-created, anchored at the memory dir itself)', async () => {
+    // Memory dir lives at <config>/projects/<encoded-cwd>/memory. The encoded
+    // cwd strips trailing separators before encoding — match the live server
+    // behavior so this test guards against the historical "raw bound cwd with
+    // a trailing /" 404.
+    const encoded = PROJECT.replace(/[^a-zA-Z0-9-]/g, '-');
+    const memoryDir = join(CONFIG, 'projects', encoded, 'memory');
+    mkdirSync(memoryDir, { recursive: true });
+    writeFileSync(join(memoryDir, 'MEMORY.md'), '# memory');
+    // A sibling inside <encoded>/ but outside memory/ must NOT be reachable
+    // through the memory target's navigation (policy denylist only exempts
+    // the memory subtree).
+    mkdirSync(join(CONFIG, 'projects', encoded, 'transcripts'), { recursive: true });
+    writeFileSync(join(CONFIG, 'projects', encoded, 'transcripts', 'session.jsonl'), '{}');
+
+    const res = get('/api/target-files?kind=memory');
+    assert.equal(res.status, 200, res.body);
+    const data = res.json();
+    assert.equal(data.rootKind, 'target');
+    assert.equal(data.targetPath, '');
+    assert.equal(data.targetKind, 'memory');
+    // Entries are the memory dir's own children.
+    assert.ok(data.entries.some(entry => entry.name === 'MEMORY.md'));
+    // Sibling sensitive dirs under <encoded>/ are never shipped.
+    assert.ok(!data.entries.some(entry => entry.name === 'transcripts'));
+  });
+
+  it('auto-creates a missing memory dir so a fresh project can open the browser', () => {
+    // Regression: the legacy /api/open-memory-dir did mkdirSync(recursive)
+    // before opening Finder. The in-app browser must keep that affordance —
+    // otherwise projects that have never written memory land on a permanent
+    // "load failed" state (and the /api/target-* write routes 404 too,
+    // blocking first-MEMORY.md creation entirely).
+    const encoded = OTHER.replace(/[^a-zA-Z0-9-]/g, '-');
+    const memoryDir = join(CONFIG, 'projects', encoded, 'memory');
+    rmSync(memoryDir, { recursive: true, force: true });
+    const previous = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = OTHER;
+    try {
+      const res = get('/api/target-files?kind=memory');
+      assert.equal(res.status, 200, res.body);
+      assert.equal(res.json().rootKind, 'target');
+      assert.equal(res.json().targetPath, '');
+      // The directory was created as a side effect, mirroring openMemoryDir.
+      assert.equal(existsSync(memoryDir), true);
+    } finally {
+      process.env.CCV_PROJECT_DIR = previous;
     }
   });
 

@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- fix(server): **应用内自更新在 tnpm 等 302 重定向 registry 上必失败修复** — `downloadRelease` 之前用 `redirect: 'error'` 拉取 `.tgz`，遇 302 → OSS 重定向时被 undici 抛 `unexpected redirect`，顶层表现为 `fetch failed`。改为 `redirect: 'follow'`，安全性由既有 `verifyDigest` 完整性校验兜底。Coverage: `update-job.test.js`。
+- feat(web+server): **持久记忆文件夹改为应用内文件浏览器打开** — 缓存面板「持久记忆」区的文件夹图标改为在内置 FileBrowserModal 中打开项目 memory 目录（根目录即 memory 目录），不再调起 OS 资源管理器；远程/无 GUI 服务器也可用。目录不存在时自动创建（与原 OS-open 行为一致）。Coverage: `api-target-files.test.js`, `external-folder-targets.test.js`。
+
+- feat(web): **概念文档弹窗标题新增「复制 Markdown」按钮** — UltraPlan、Tools、CustomUltraplanExpert 等 ConceptHelp 弹窗与系统提示词「参数文档」弹窗的标题旁出现小复制图标，点击把该文档的 markdown 原文写入剪贴板。LAN HTTP 场景经 `copyTextToClipboard` 兜底。Coverage: `copy-markdown-button.test.js`。
+
+- fix(server): **应用内自更新在会 302 的 npm 镜像上不再失败** — 下载改为 `redirect: 'follow'`,安装包完整性校验不变。Coverage: `update-job.test.js`。
 
 - fix(web): **活跃代理卡片显示错位/多计修复** — (1) `deriveActiveAgents` 不再统计无 `promptSnippet` 的 agent task（防御性过滤：SDK schema 中 prompt 为可选字段，缺失时视为非真实 Agent 派生）；(2) `buildAgentToolUseMap` 扩展为索引整个 transcript 中的 Agent/Task tool_use（而非仅 mainAgent 行），teammate 派生的嵌套 subagent 现在能 join 到真实名字而非回落到短 description（之前形如 "Read X" 的无名行）。Coverage: `activeAgents.test.js`。
 

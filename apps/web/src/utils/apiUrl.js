@@ -59,6 +59,7 @@ export function withTargetParams(path, target) {
   if (!target) return path;
   const params = new URLSearchParams({ kind: target.kind });
   if (target.kind === 'claude-md') params.set('id', target.id);
+  else if (target.kind === 'memory') { /* memory carries no extra identity — the server derives the dir from cwd */ }
   else { params.set('source', target.source); params.set('targetPath', target.path); }
   return `${path}${path.includes('?') ? '&' : '?'}${params.toString()}`;
 }

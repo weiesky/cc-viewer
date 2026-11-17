@@ -13,10 +13,12 @@
 import { realpathSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { homedir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { isReadAllowed, reasonToStatus } from './file-access-policy.js';
 import { listSkills } from './skills-api.js';
 import { discoverClaudeMdCandidates } from './claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
+import { memoryDirFor } from './memory-scope.js';
 
 export function targetError(status, message) {
   return Object.assign(new Error(message), { status });
@@ -118,13 +120,27 @@ export function resolveTargetRoot(parsedUrl, cwd) {
     return { ...targetScope(realDirectory(dirname(candidate.realPath), 'Directory'), cwd), targetKind: 'claude-md' };
   }
   // Memory kind: resolve the per-project MEMORY.md directory
-  // ($CLAUDE_CONFIG_DIR/projects/<encoded-cwd>/memory) and navigate from
-  // there. Derivation matches routes/files-fs.js#openMemoryDir — keep both
-  // in sync if either side changes.
+  // ($CLAUDE_CONFIG_DIR/projects/<encoded-cwd>/memory). Pin the navigation
+  // root AT the memory dir itself (rootKind 'target', targetPath '') —
+  // navigating from $HOME would surface the .claude/projects/<encoded>
+  // ancestors, which file-access-policy denies (only .../memory is
+  // exempt), leaving Up/breadcrumb 403s and an unrenderable tree.
+  // Mirrors routes/files-fs.js#openMemoryDir's mkdir-first behavior so a
+  // project with no memory yet can still land in the browser (the
+  // /api/target-* write routes share resolveTargetRoot via
+  // resolveTargetWriteScope, so this also keeps first-MEMORY.md creation
+  // reachable from the UI).
   if (kind === 'memory') {
-    const encoded = cwd.replace(/[^a-zA-Z0-9-]/g, '-');
-    const memoryDir = join(getClaudeConfigDir(), 'projects', encoded, 'memory');
-    return { ...targetScope(realDirectory(memoryDir, 'Memory directory'), cwd), targetKind: 'memory' };
+    const memoryDir = memoryDirFor(cwd);
+    // Auto-create on first open, same contract as openMemoryDir.
+    mkdirSync(memoryDir, { recursive: true, mode: 0o700 });
+    const memoryReal = realDirectory(memoryDir, 'Memory directory');
+    // Anchor: the resolved realpath must stay inside <config>/projects —
+    // a symlinked memory dir (or any parent segment) must not redirect
+    // the writable scope elsewhere.
+    const projectsReal = realDirectory(join(getClaudeConfigDir(), 'projects'), 'Claude projects');
+    if (!insidePath(memoryReal, projectsReal)) throw targetError(403, 'Memory directory resolves outside the Claude projects root');
+    return { rootReal: memoryReal, rootKind: 'target', targetPath: '', targetKind: 'memory' };
   }
   if (kind !== 'skill') throw targetError(400, 'Invalid target kind');
   const source = parsedUrl.searchParams.get('source');
