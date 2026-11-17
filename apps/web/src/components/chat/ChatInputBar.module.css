@@ -312,11 +312,11 @@
 }
 
 /* Composer-hosted prompt-nav button: the trigger is the user's avatar (same asset as the
-   sidebar's navAvatarImg), kept circular inside the 28px round button. 16px matches the
-   SVG glyph size used by sibling .plusBtn buttons. */
+   sidebar's navAvatarImg), kept circular inside the 28px round button. 22px gives the
+   avatar more presence than the 16px SVG glyph size used by sibling .plusBtn buttons. */
 .plusBtnAvatar {
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   object-fit: cover;
   display: block;

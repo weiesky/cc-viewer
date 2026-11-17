@@ -758,29 +758,6 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               <UltraplanIcon />
             </button>
           ))}
-          {!isMobile && onClearContextNow && (() => {
-            // 与终端工具栏清空按钮同款 Popconfirm 气泡确认（非居中 Modal）：
-            // i18n 是单句 "X？Y。" 结构，按 ? / ？ 拆成 title + description 以换行呈现
-            const confirmFull = t('ui.chatInput.clearContextConfirm');
-            const qIdx = Math.max(confirmFull.indexOf('？'), confirmFull.indexOf('?'));
-            const confirmTitle = qIdx > 0 ? confirmFull.slice(0, qIdx + 1) : confirmFull;
-            const confirmDesc = qIdx > 0 ? confirmFull.slice(qIdx + 1).trim() : null;
-            return (
-              <Popconfirm
-                title={confirmTitle}
-                description={confirmDesc}
-                okText={t('ui.chatInput.clearContext')}
-                cancelText={t('ui.common.confirmCancel')}
-                okButtonProps={{ danger: true }}
-                placement="top"
-                onConfirm={onClearContextNow}
-              >
-                <button className={styles.plusBtn} title={t('ui.chatInput.clearContext')}>
-                  <TrashIcon />
-                </button>
-              </Popconfirm>
-            );
-          })()}
           {/* Left-cluster prompt-nav entry: rendered only in the SDK layout (micOnRight).
               Click opens a Popover driven by ChatView's promptNavPopover bundle. The legacy
               layout (--terminal with the PTY shown, mobile) keeps the mic in this slot
@@ -813,6 +790,29 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               </button>
             </Popover>
           )}
+          {!isMobile && onClearContextNow && (() => {
+            // 与终端工具栏清空按钮同款 Popconfirm 气泡确认（非居中 Modal）：
+            // i18n 是单句 "X？Y。" 结构，按 ? / ？ 拆成 title + description 以换行呈现
+            const confirmFull = t('ui.chatInput.clearContextConfirm');
+            const qIdx = Math.max(confirmFull.indexOf('？'), confirmFull.indexOf('?'));
+            const confirmTitle = qIdx > 0 ? confirmFull.slice(0, qIdx + 1) : confirmFull;
+            const confirmDesc = qIdx > 0 ? confirmFull.slice(qIdx + 1).trim() : null;
+            return (
+              <Popconfirm
+                title={confirmTitle}
+                description={confirmDesc}
+                okText={t('ui.chatInput.clearContext')}
+                cancelText={t('ui.common.confirmCancel')}
+                okButtonProps={{ danger: true }}
+                placement="top"
+                onConfirm={onClearContextNow}
+              >
+                <button className={styles.plusBtn} title={t('ui.chatInput.clearContext')}>
+                  <TrashIcon />
+                </button>
+              </Popconfirm>
+            );
+          })()}
           {!micOnRight && micButton}
           </div>
           {/* Middle: blood-bar portal slot. Mounted with the composer (hidden only on pure phones);
