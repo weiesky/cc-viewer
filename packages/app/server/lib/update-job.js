@@ -87,7 +87,11 @@ export async function downloadRelease({ release, directory, fetchImpl = fetch, o
     output = handle.createWriteStream();
     output.on('error', (err) => { outputError = err; });
     const streamDone = finishedImpl(output).catch((err) => { outputError ??= err; });
-    const response = await fetchImpl(url, { signal: controller.signal, redirect: 'error' });
+    // tnpm-style registries 302 the .tgz to an OSS CDN; redirect:'error' would
+    // surface that as "unexpected redirect" → top-level "fetch failed". Content
+    // integrity is still enforced by verifyDigest, so following the redirect
+    // does not widen the attack surface.
+    const response = await fetchImpl(url, { signal: controller.signal, redirect: 'follow' });
     if (!response.ok || !response.body) throw new Error(`Download failed: HTTP ${response.status}`);
     const total = Number(response.headers.get('content-length')) || null;
     let downloaded = 0;

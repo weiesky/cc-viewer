@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(server): **应用内自更新在 tnpm 等 302 重定向 registry 上必失败修复** — `downloadRelease` 之前用 `redirect: 'error'` 拉取 `.tgz`，遇 302 → OSS 重定向时被 undici 抛 `unexpected redirect`，顶层表现为 `fetch failed`。改为 `redirect: 'follow'`，安全性由既有 `verifyDigest` 完整性校验兜底。Coverage: `update-job.test.js`。
+
 - fix(web): **活跃代理卡片显示错位/多计修复** — (1) `deriveActiveAgents` 不再统计无 `promptSnippet` 的 agent task（防御性过滤：SDK schema 中 prompt 为可选字段，缺失时视为非真实 Agent 派生）；(2) `buildAgentToolUseMap` 扩展为索引整个 transcript 中的 Agent/Task tool_use（而非仅 mainAgent 行），teammate 派生的嵌套 subagent 现在能 join 到真实名字而非回落到短 description（之前形如 "Read X" 的无名行）。Coverage: `activeAgents.test.js`。
 
 - feat(web): **`--sdk` 模式输入框布局调整：导航入口内移、语音输入右移** — `--sdk` 布局下，左侧栏的「用户 Prompt 导航」头像入口移除，改为对话输入框底部左侧的圆形头像按钮（点击弹 Popover，样式与侧栏一致）；「语音输入」麦克风按钮从输入框左侧移到右侧（模型 chip 右边、发送按钮左边）。`--terminal` 模式下终端面板隐藏时行为对齐 `--sdk`；终端显示时与移动端布局保持原状。

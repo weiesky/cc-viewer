@@ -49,6 +49,19 @@ describe('update-job release verification', () => {
     const noLength = await downloadRelease({ release: release(content), directory: dir, fetchImpl: async () => response(content, false) });
     assert.equal(await readFile(noLength, 'utf8'), content.toString());
   });
+  it('passes redirect:follow to fetch so tnpm-style 302-to-OSS registries work', async (t) => {
+    // Regression: downloadRelease used to fetch with redirect:'error', which undici
+    // rejects on ANY 302 ("unexpected redirect" → top-level "fetch failed"). tnpm's
+    // .tgz endpoint always 302s to OSS, so the in-app update was deterministically
+    // broken there. Lock the flag in so it cannot regress.
+    const content = Buffer.from('package-via-cdn');
+    const dir = await temp(t);
+    const seen = [];
+    const fetchImpl = async (url, opts) => { seen.push({ url, opts }); return response(content); };
+    await downloadRelease({ release: release(content), directory: dir, fetchImpl });
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].opts?.redirect, 'follow');
+  });
   it('returns a bounded error when the package file cannot be opened', async (t) => {
     const dir = await temp(t);
     const name = 'file-open-failed';
