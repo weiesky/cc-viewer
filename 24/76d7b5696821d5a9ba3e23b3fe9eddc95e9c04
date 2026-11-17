@@ -1,0 +1,32 @@
+apps/web/src/components/common/ConceptHelp.jsx
+  s_c3f2634813979b::t_8c8f9b74c362a5 87-92
+  s_c3f2634813979b::t_2f72a028a5c9ec 25-28,37,55
+  s_c3f2634813979b::t_b762becb5ec131 4
+apps/web/src/components/common/CopyMarkdownButton.jsx
+  s_c3f2634813979b::t_41063d98a3e3d9 1,4-8,15-36,39-40,53-54
+  s_c3f2634813979b::t_61312ea4faa5c7 2-3,9-14,37-38,41-52
+apps/web/src/components/common/ConceptHelp.module.css
+  s_c3f2634813979b::t_2aebf80e879ca8 24-31
+apps/web/src/components/common/CopyMarkdownButton.module.css
+  s_c3f2634813979b::t_66df3e228d7408 3-7,13-15,17-19,21-26,29,39
+  s_c3f2634813979b::t_c3daf87468b6e3 1-2,8-12,16,20,27-28,30-38
+apps/web/src/components/settings/SystemTextModal.jsx
+  s_c3f2634813979b::t_a67ed4c70c5036 493,496-506
+  s_c3f2634813979b::t_80216f2cf77e0a 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2476d7b5696821d5a9ba3e23b3fe9eddc95e9c04",
+  "prompts": {},
+  "sessions": {
+    "s_c3f2634813979b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f9face8-b7aa-479f-9863-5718489ba482",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
