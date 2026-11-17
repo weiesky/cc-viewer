@@ -1,0 +1,41 @@
+packages/app/test/api-target-files.test.js
+  s_c3f2634813979b::t_1b56e6021cd385 239
+  s_c3f2634813979b::t_db13ced9a42063 212-238,240-255,257-261
+  s_c3f2634813979b::t_e20405ed568eda 3
+  s_c3f2634813979b::t_40008e0fcf1872 256
+packages/app/test/memory-scope.test.js
+  s_c3f2634813979b::t_1e67c2f182801c 45,47
+  s_c3f2634813979b::t_4b651d04b2e944 1-44,46,48-55
+packages/app/server/lib/target-scope.js
+  s_c3f2634813979b::t_24f45bb2c8d90e 16,21
+  s_c3f2634813979b::t_3600162039f8e9 123-132,134-143
+packages/app/server/lib/memory-scope.js
+  s_c3f2634813979b::t_f28543683558c2 1-20
+apps/web/src/utils/apiUrl.js
+  s_c3f2634813979b::t_16606ed6a217e4 62
+.changeset/memory-folder-in-app-browser.md
+  s_c3f2634813979b::t_1272e9e395d4d4 1-5
+history.md
+  s_c3f2634813979b::t_658059b7c6d83a 5-9
+apps/web/test/external-folder-targets.test.js
+  s_c3f2634813979b::t_22908fa37c9d15 15-17
+  s_c3f2634813979b::t_e618ff35ae4d04 140-190
+scripts/tarball-baseline.json
+  s_c3f2634813979b::t_59411729878095 1464
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "495931dfb0f081032b0137bfed27f5932c17e917",
+  "prompts": {},
+  "sessions": {
+    "s_c3f2634813979b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f9face8-b7aa-479f-9863-5718489ba482",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
