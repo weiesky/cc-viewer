@@ -31,6 +31,7 @@ import styles from './FileBrowserModal.module.css';
 function targetFilesUrl(target, path) {
   const params = new URLSearchParams({ kind: target.kind });
   if (target.kind === 'claude-md') params.set('id', target.id);
+  else if (target.kind === 'memory') { /* memory needs no extra identity params — the server derives the dir from cwd */ }
   else {
     params.set('source', target.source);
     params.set('targetPath', target.path);
@@ -372,6 +373,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   const validTarget = !target || (
     (target.kind === 'claude-md' && /^[0-9a-f]{12}$/i.test(target.id || ''))
     || (target.kind === 'skill' && ['user', 'project', 'plugin'].includes(target.source) && typeof target.path === 'string' && target.path)
+    || (target.kind === 'memory')
   );
   const [currentPath, setCurrentPath] = useState('');
   const [expandedPaths, setExpandedPaths] = useState(() => new Set());

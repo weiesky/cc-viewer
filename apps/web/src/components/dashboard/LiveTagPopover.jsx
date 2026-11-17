@@ -35,6 +35,7 @@ function LiveTagPopover({
   onOpenMemoryDetail,
   onOpenClaudeMd,
   onOpenSkillsModal,
+  onOpenMemoryFolder,
   onRefreshMemory,
   onToolsCatalogOpenChange,
   projectName,
@@ -79,6 +80,7 @@ function LiveTagPopover({
           onOpenMemoryDetail={onOpenMemoryDetail}
           onOpenClaudeMd={onOpenClaudeMd}
           onOpenSkillsModal={onOpenSkillsModal}
+          onOpenMemoryFolder={onOpenMemoryFolder}
           onSkillImported={onSkillImported}
           onRefreshMemory={onRefreshMemory}
           onToolsCatalogOpenChange={onToolsCatalogOpenChange}

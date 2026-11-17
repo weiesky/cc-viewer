@@ -48,6 +48,7 @@ export default function CachePopoverContent({
   onOpenMemoryDetail,
   onOpenClaudeMd,
   onOpenSkillsModal,
+  onOpenMemoryFolder,
   onRefreshMemory,
   onSkillImported,
   onToolsCatalogOpenChange,
@@ -578,7 +579,11 @@ export default function CachePopoverContent({
         <div className={`${styles.cacheSection} ${styles.cacheSectionBordered}`}>
           <div className={styles.cacheSectionHeader}>
             <div className={`${styles.cacheSectionLabel} ${styles.memoryLabelWithIcon}`}>
-              <OpenFolderIcon apiEndpoint={apiUrl('/api/open-memory-dir')} title={t('ui.memoryOpenDir')} size={14} />
+              {onOpenMemoryFolder ? (
+                <OpenFolderIcon title={t('ui.memoryOpenDir')} size={14} onClick={onOpenMemoryFolder} />
+              ) : (
+                <OpenFolderIcon apiEndpoint={apiUrl('/api/open-memory-dir')} title={t('ui.memoryOpenDir')} size={14} />
+              )}
               {t('ui.persistentMemory')}{memoryCount !== null ? ` (${memoryCount})` : ''}
               {memoryUsage.totalTokens !== null && <span className={styles.sectionTokenTotal} title={t('ui.contextUsage.totalScope')}>{tokenLabel(memoryUsage.totalTokens)}</span>}
             </div>

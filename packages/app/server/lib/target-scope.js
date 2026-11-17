@@ -117,6 +117,15 @@ export function resolveTargetRoot(parsedUrl, cwd) {
     if (!candidate || basename(candidate.realPath) !== 'CLAUDE.md') throw targetError(404, 'Target not found');
     return { ...targetScope(realDirectory(dirname(candidate.realPath), 'Directory'), cwd), targetKind: 'claude-md' };
   }
+  // Memory kind: resolve the per-project MEMORY.md directory
+  // ($CLAUDE_CONFIG_DIR/projects/<encoded-cwd>/memory) and navigate from
+  // there. Derivation matches routes/files-fs.js#openMemoryDir — keep both
+  // in sync if either side changes.
+  if (kind === 'memory') {
+    const encoded = cwd.replace(/[^a-zA-Z0-9-]/g, '-');
+    const memoryDir = join(getClaudeConfigDir(), 'projects', encoded, 'memory');
+    return { ...targetScope(realDirectory(memoryDir, 'Memory directory'), cwd), targetKind: 'memory' };
+  }
   if (kind !== 'skill') throw targetError(400, 'Invalid target kind');
   const source = parsedUrl.searchParams.get('source');
   const targetPath = parsedUrl.searchParams.get('targetPath');

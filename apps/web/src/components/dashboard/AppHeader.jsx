@@ -1213,6 +1213,10 @@ class AppHeader extends React.Component {
     if (skill?.path) this.setState({ _targetBrowser: { target: { kind: 'skill', source: skill.source, path: skill.path }, label: skill.name } });
   };
 
+  openMemoryFolder = () => {
+    this.setState({ _targetBrowser: { target: { kind: 'memory' }, label: t('ui.persistentMemory') } });
+  };
+
   closeTargetBrowser = () => this.setState({ _targetBrowser: null });
 
   // 加载明细文件：name 必须是单段 .md basename（前端先校验，server 再校验一遍）。
@@ -1992,6 +1996,7 @@ class AppHeader extends React.Component {
         onOpenMemoryDetail={this.loadMemoryDetail}
         onOpenClaudeMd={this.loadClaudeMdDetail}
         onOpenSkillsModal={this.handleOpenSkillsModal}
+        onOpenMemoryFolder={this.openMemoryFolder}
         onRefreshMemory={this.handleRefreshMemory}
         onToolsCatalogOpenChange={this._setToolsCatalogOpen}
         projectName={projectName}

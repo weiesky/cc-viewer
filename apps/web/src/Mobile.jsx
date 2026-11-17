@@ -302,6 +302,10 @@ class Mobile extends AppBase {
     if (skill?.path) this.setState({ _targetBrowser: { target: { kind: 'skill', source: skill.source, path: skill.path }, label: skill.name } });
   };
 
+  openMemoryFolder = () => {
+    this.setState({ _targetBrowser: { target: { kind: 'memory' }, label: t('ui.persistentMemory') } });
+  };
+
   closeTargetBrowser = () => this.setState({ _targetBrowser: null });
 
   componentDidMount() {
@@ -1100,6 +1104,7 @@ class Mobile extends AppBase {
                     onOpenMemoryDetail={this.loadMemoryDetail}
                     onOpenClaudeMd={this.loadClaudeMdDetail}
                     onRefreshMemory={this.handleRefreshMemory}
+                    onOpenMemoryFolder={this.openMemoryFolder}
                   />
                 )}
               </div>
