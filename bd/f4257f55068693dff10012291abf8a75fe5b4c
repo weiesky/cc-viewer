@@ -1,0 +1,34 @@
+packages/app/server/lib/target-scope.js
+  s_c3f2634813979b::t_ef0758f209d14f 120-128
+apps/web/src/components/files/FileBrowserModal.jsx
+  s_c3f2634813979b::t_ae250b50952eab 376
+  s_c3f2634813979b::t_76e30f00076b8a 34
+apps/web/src/components/dashboard/LiveTagPopover.jsx
+  s_c3f2634813979b::t_10749b9b03567f 83
+  s_c3f2634813979b::t_5d068151fc9d1a 38
+apps/web/src/components/dashboard/CachePopoverContent.jsx
+  s_c3f2634813979b::t_b21a9b1364f75c 51
+  s_c3f2634813979b::t_80924e506f2ecf 582-586
+apps/web/src/components/dashboard/AppHeader.jsx
+  s_c3f2634813979b::t_7f207301363237 1999
+  s_c3f2634813979b::t_3c7a70d7c89725 1216-1219
+apps/web/src/Mobile.jsx
+  s_c3f2634813979b::t_a2724379103050 305-308
+  s_c3f2634813979b::t_6aefb19d8fd7c4 1107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bdf4257f55068693dff10012291abf8a75fe5b4c",
+  "prompts": {},
+  "sessions": {
+    "s_c3f2634813979b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f9face8-b7aa-479f-9863-5718489ba482",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
