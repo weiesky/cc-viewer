@@ -1,5 +1,13 @@
 # cc-viewer
 
+## 1.9.30
+
+### Patch Changes
+
+- 72f0393: feat(web): add a copy-markdown button to concept-doc modal titles. Concept help popups (UltraPlan, Tools, CustomUltraplanExpert, etc.) and the system-text parameter-docs modal now show a small copy icon next to the title that writes the document's markdown source to the clipboard. Works over plain HTTP via the shared `copyTextToClipboard` helper.
+- 495931d: feat(web+server): open the persistent-memory folder in the in-app file browser. The folder icon next to "Persistent memory" now opens the project's memory directory in the built-in FileBrowserModal (rooted at the memory dir itself) instead of the OS file manager, so it works for remote/headless servers. The directory is auto-created on first open, mirroring the previous behavior.
+- 06be1ce: fix(server): in-app self-update no longer fails on registries that 302 the `.tgz` to a CDN. `downloadRelease` was fetching with `redirect: 'error'`, which undici rejects on any redirect as "unexpected redirect" → top-level "fetch failed". Now uses `redirect: 'follow'`; integrity is still enforced by the existing `verifyDigest` check, so following redirects does not widen the attack surface. Adds a regression test asserting the fetch flag.
+
 ## 1.9.29
 
 ### Patch Changes
