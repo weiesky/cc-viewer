@@ -1,0 +1,29 @@
+.changeset/update-job-redirect-follow.md
+  s_c3f2634813979b::t_3693c3a39abe0a 5
+apps/web/test/copy-markdown-button.test.js
+  s_c3f2634813979b::t_602c38920ef9ca 1-49
+apps/web/src/i18n.js
+  s_c3f2634813979b::t_3d5836d73d8bd1 4123-4162
+.changeset/copy-markdown-button.md
+  s_c3f2634813979b::t_171956ad3f290b 1-5
+apps/web/src/components/common/CopyMarkdownButton.module.css
+  s_c3f2634813979b::t_aa499a9938fe30 1-3,9-10,12
+apps/web/src/components/common/CopyMarkdownButton.jsx
+  s_c3f2634813979b::t_84d6c37aeea83c 1,5,13-16,19-26,30,33-43,45-48,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "72f0393c89f4d448e47fd754e582eaaac8a75739",
+  "prompts": {},
+  "sessions": {
+    "s_c3f2634813979b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f9face8-b7aa-479f-9863-5718489ba482",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
