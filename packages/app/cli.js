@@ -614,7 +614,7 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   serverMod.setRestartHandler(async (version) => {
     const { launchRestart } = await import('./server/lib/restart.js');
-    await launchRestart({ ...ccvLaunch, version });
+    await launchRestart({ ...ccvLaunch, version, accessToken: serverMod.getAccessToken() });
     setImmediate(cleanup);
   });
 
@@ -1058,7 +1058,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   serverMod.setRestartHandler(async (version) => {
     const { launchRestart } = await import('./server/lib/restart.js');
-    await launchRestart({ ...ccvLaunch, version });
+    await launchRestart({ ...ccvLaunch, version, accessToken: serverMod.getAccessToken() });
     setImmediate(cleanup);
   });
 }

@@ -4,17 +4,23 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { isPidAlive } from './pid-alive.js';
+import { ACCESS_TOKEN_ENV, isValidAccessToken } from './access-token.js';
 import { UPDATE_STATE_FILE, RESTART_CONFIG_FILE, RESTART_READY_FILE } from './update-job.js';
 
 export const RESTART_HELPER_PATH = fileURLToPath(new URL('./restart-helper.js', import.meta.url));
 
-export async function launchRestart({ pid = process.pid, args, cwd, version, cliPath, spawnImpl = spawn, timeoutMs = 5000 } = {}) {
+export async function launchRestart({ pid = process.pid, args, cwd, version, cliPath, accessToken, spawnImpl = spawn, timeoutMs = 5000 } = {}) {
   if (!Number.isInteger(pid) || pid <= 0 || !Array.isArray(args) || typeof cwd !== 'string' || typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version) || typeof cliPath !== 'string') {
     throw new Error('Invalid restart configuration');
   }
   const token = randomUUID();
+  // accessToken = the CURRENT ACCESS_TOKEN (the LAN gate), forwarded so the
+  // replacement accepts the token an already-open page is still using. Omitted
+  // when absent/malformed — never throws, a bad handoff must not block an update.
+  const config = { pid, args, cwd, version, cliPath, token };
+  if (isValidAccessToken(accessToken)) config.accessToken = accessToken;
   await mkdir(dirname(RESTART_CONFIG_FILE), { recursive: true, mode: 0o700 });
-  await writeFile(RESTART_CONFIG_FILE, JSON.stringify({ pid, args, cwd, version, cliPath, token }), { mode: 0o600 });
+  await writeFile(RESTART_CONFIG_FILE, JSON.stringify(config), { mode: 0o600 });
   await rm(RESTART_READY_FILE, { force: true });
   let child;
   try {
@@ -72,7 +78,12 @@ export async function waitForExit(pid, { alive = isPidAlive, sleep = (ms) => new
 
 export async function restartFromHelper(config, { spawnImpl = spawn, wait = waitForExit } = {}) {
   await wait(config.pid);
-  const child = spawnImpl(process.execPath, [config.cliPath, ...config.args], { cwd: config.cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: false, env: { ...process.env, CCV_NO_OPEN: '1' } });
+  const env = { ...process.env, CCV_NO_OPEN: '1' };
+  // Forward the previous ACCESS_TOKEN so the replacement accepts the token an
+  // already-open page is still using; drop any stale handoff when none is valid.
+  if (isValidAccessToken(config.accessToken)) env[ACCESS_TOKEN_ENV] = config.accessToken;
+  else delete env[ACCESS_TOKEN_ENV];
+  const child = spawnImpl(process.execPath, [config.cliPath, ...config.args], { cwd: config.cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: false, env });
   child.stdout?.on('data', (chunk) => { try { process.stdout.write(chunk); } catch { } });
   child.stderr?.on('data', (chunk) => { try { process.stderr.write(chunk); } catch { } });
   console.error(`[CC Viewer] Restarted in the background with PID ${child.pid}. Stop it with: kill ${child.pid}`);

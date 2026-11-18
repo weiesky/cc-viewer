@@ -55,6 +55,7 @@ import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
 import { reportSwallowed } from './lib/error-report.js';
+import { takeInheritedAccessToken } from './lib/access-token.js';
 import { cancelAutoApproveState } from './lib/auto-approve.js';
 import { cancelAskAutoAnswerState, replayAskAutoAnswerFields } from './lib/ask-auto-answer.js';
 import { initScheduledTaskScheduler, startScheduledTaskScheduler, stopScheduledTaskScheduler } from './lib/scheduled-task-scheduler.js';
@@ -407,8 +408,15 @@ const MAX_PORT = parseInt(process.env.CCV_MAX_PORT) || 7049;
 // 主进程默认仍绑 0.0.0.0 以支持手机/局域网访问。
 const HOST = process.env.CCV_HOST || '0.0.0.0';
 
-// 局域网访问 token（本地 127.0.0.1 免验证）
-const ACCESS_TOKEN = randomBytes(16).toString('hex');
+// 局域网访问 token（本地 127.0.0.1 免验证）。
+// Self-update handoff: the restart helper passes the previous boot's token via
+// CCV_ACCESS_TOKEN so an already-open page (?token= URL, /api/version-info poll,
+// ccv_auth cookie) keeps working across the in-app restart. Consumed-and-deleted
+// at module evaluation, trusted only in the exact shape this server generates;
+// absent/malformed falls back to a fresh random token. Never stored in
+// preferences.json — only handed transiently through restart-config.json on an
+// in-app self-update — and still rotated on a manual restart.
+const ACCESS_TOKEN = takeInheritedAccessToken() || randomBytes(16).toString('hex');
 // Internal token used ONLY for bridge → server calls (env-leaked to the spawned
 // claude process via pty-manager). Separate from ACCESS_TOKEN so the LAN URL
 // token can't double as a bridge auth bypass for same-host CSRF (round-3 P1).
@@ -436,8 +444,9 @@ if (process.env.CCV_USE_PASSWORD === '1') {
   saveAuthConfig({ enabled: true, password }, { scope, projectDir: AUTH_PROJECT });
   authConfig = loadAuthConfig(AUTH_PROJECT);
 }
-// 钩子已消费完毕：清掉这两个 env，避免明文密码随 {...process.env} 泄漏进 spawn 出的 Claude 子进程
-// （与刻意不把 ACCESS_TOKEN 放进 env 的策略一致）。此后无人再读它们（仅上面这段读取）。
+// 钩子已消费完毕：清掉这两个 env，避免明文密码随 {...process.env} 泄漏进 spawn 出的 Claude 子进程。
+// ACCESS_TOKEN 同理：自更新交接用的 CCV_ACCESS_TOKEN 已在上面 takeInheritedAccessToken() 读取即删除，
+// 此后运行期进程 env 中不再保留该 token，spawn 出的 Claude 子进程也拿不到。此后无人再读它们（仅上面这段读取）。
 delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;
 

@@ -1,7 +1,8 @@
 // Password-based LAN auth — pure logic, heavily unit-tested.
 //
 // cc-viewer's original LAN gate is URL `?token=<32-hex>` (server.js ACCESS_TOKEN,
-// random per boot, never persisted). This module adds an OPTIONAL second path:
+// random per boot — preserved only across an in-app self-update restart via the
+// restart handoff — never persisted). This module adds an OPTIONAL second path:
 // a password that, once verified, is stored in a cookie (value = ACCESS_TOKEN).
 // Both paths coexist — token and cookie are equivalent.
 //

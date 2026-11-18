@@ -585,6 +585,29 @@ describeCli('ccv -logger: shell hook template invariants', () => {
   });
 });
 
+// ─── self-update restart handoff: both restart handlers forward the access token ───
+// The ACCESS_TOKEN handoff is the ONLY production producer of `accessToken` into
+// launchRestart, and cli.js is not unit-testable past its early-exit paths. If either
+// handler drops `accessToken: serverMod.getAccessToken()`, every behavioral test stays
+// green while the feature silently no-ops (the open page 401s after an in-app update).
+// These are source-grep contracts (same convention as the shell-hook invariants above):
+// they pin the wiring until runCliMode/runSdkMode become extractable/unit-testable.
+describeCli('self-update restart handoff: ACCESS_TOKEN forwarding wiring', () => {
+  const source = readFileSync(CLI_PATH, 'utf-8');
+
+  it('both PTY and SDK restart handlers pass accessToken from getAccessToken()', () => {
+    const occurrences = source.split('launchRestart({ ...ccvLaunch, version, accessToken: serverMod.getAccessToken() })').length - 1;
+    assert.equal(occurrences, 2,
+      `expected both restart handlers (PTY + SDK) to forward accessToken, found ${occurrences}`);
+  });
+
+  it('no restart handler launches without the accessToken handoff', () => {
+    // Guard against a regression to the bare `launchRestart({ ...ccvLaunch, version })` form.
+    assert.ok(!source.includes('launchRestart({ ...ccvLaunch, version })'),
+      'a restart handler must not drop the accessToken handoff');
+  });
+});
+
 // ─── uninstall tombstone vs -logger ───
 // The tombstone check runs before -logger's mode detection, so these tests do
 // not require a claude installation. CLAUDE_CONFIG_DIR is pinned to a shared
