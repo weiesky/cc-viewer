@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.9.31
+
+### Patch Changes
+
+- 73b9a1d: Sidebar scheduled-task quick list with live countdown, UI polish, and updated auto-approve defaults.
+
 ## 1.9.30
 
 ### Patch Changes
