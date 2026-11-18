@@ -1,0 +1,76 @@
+packages/app/server/lib/restart-helper.js
+  s_e7de6cfadb3e0b::t_2076032a952295 2
+  s_e7de6cfadb3e0b::t_b1f660c71e51fa 26-32
+  s_e7de6cfadb3e0b::t_6bf1729ed752ce 68-69
+  s_e7de6cfadb3e0b::t_c420dfe4fcf1bb 16-22
+packages/app/test/access-token.test.js
+  s_e7de6cfadb3e0b::t_0a62a3794ca492 66,68
+  s_e7de6cfadb3e0b::t_5289e29794a6e2 1-33,35,48-65,67,69-72
+  s_e7de6cfadb3e0b::t_c8aa9337d4ad57 34,36-47
+packages/app/cli.js
+  s_e7de6cfadb3e0b::t_5b50b33ef3a9ee 1061
+  s_e7de6cfadb3e0b::t_47c7c7ee410f2d 617
+packages/app/test/cli.test.js
+  s_e7de6cfadb3e0b::t_228cd559f9d662 588-610
+scripts/tarball-baseline.json
+  s_e7de6cfadb3e0b::t_23daef148a0f42 1394
+packages/app/server/lib/auth.js
+  s_e7de6cfadb3e0b::t_e4ed43a7bf94c7 4-5
+packages/app/test/server-access-token-env.test.js
+  s_e7de6cfadb3e0b::t_4474bd53ca86d4 22-23,27-30,33-34
+  s_e7de6cfadb3e0b::t_77c11f7f9467e8 13
+  s_e7de6cfadb3e0b::t_c172532e38b65b 1-12,14-21,24-26,31-32,35-39,41,47-75
+  s_e7de6cfadb3e0b::t_5c67907147f4d5 40,42-46
+packages/app/server/server.js
+  s_e7de6cfadb3e0b::t_3683e722a2f54d 58
+  s_e7de6cfadb3e0b::t_e30fe52ba4b45e 415-418
+  s_e7de6cfadb3e0b::t_c2f5d17a030966 411-414
+  s_e7de6cfadb3e0b::t_3d354a2435778b 419
+  s_e7de6cfadb3e0b::t_f54951aefa19ae 449
+  s_e7de6cfadb3e0b::t_d8809e996f52ce 447-448
+packages/app/test/restart-helper.test.js
+  s_e7de6cfadb3e0b::t_d660e53b63369a 46-51,63-73
+  s_e7de6cfadb3e0b::t_3aa2e226ef570d 45,104,107-109,111-112,134,136-148,163
+  s_e7de6cfadb3e0b::t_c8691567dd2b5b 12-15,17
+  s_e7de6cfadb3e0b::t_791084b5fb7588 113-127,129
+  s_e7de6cfadb3e0b::t_1a363d6049342b 97-103,105-106,110,128,130-133,135,149-162
+  s_e7de6cfadb3e0b::t_a3f7417746de55 24,30-31
+  s_e7de6cfadb3e0b::t_32b8bc151c8815 32-34,40-44
+  s_e7de6cfadb3e0b::t_4eeeeb591a2da2 3
+  s_e7de6cfadb3e0b::t_87ac2c5c352b66 164,167,171-175,178-181
+packages/app/server/lib/restart.js
+  s_e7de6cfadb3e0b::t_82a54ffc93e9c4 7
+  s_e7de6cfadb3e0b::t_6097bdc2481736 12,17-20,23
+  s_e7de6cfadb3e0b::t_ffacbae16591f9 21
+  s_e7de6cfadb3e0b::t_db074f0ef38b85 81-83,86
+  s_e7de6cfadb3e0b::t_4a3571cfe526cd 84
+  s_e7de6cfadb3e0b::t_7dec97086cd54c 85
+packages/app/server/lib/access-token.js
+  s_e7de6cfadb3e0b::t_b6c0bd9d027e8a 4-6
+  s_e7de6cfadb3e0b::t_2b1f994282061b 1,7-10,18-26,29
+  s_e7de6cfadb3e0b::t_8cfb4ab2f79904 28
+  s_e7de6cfadb3e0b::t_04cdcdb93ca175 27
+  s_e7de6cfadb3e0b::t_4bc864426b7121 11-17
+  s_e7de6cfadb3e0b::t_82644949d1ee3e 2-3
+packages/app/CHANGELOG.md
+  s_e7de6cfadb3e0b::t_6b9bd02f72b2a1 3-10
+history.md
+  s_e7de6cfadb3e0b::t_fe7d9c7b45ff45 5
+  s_e7de6cfadb3e0b::t_bb4ad2e6209289 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "56c799c6f72c392c1a558e094983595ad2466281",
+  "prompts": {},
+  "sessions": {
+    "s_e7de6cfadb3e0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "04d6b1c6-1626-4e6d-aef6-82ad7d5272da",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
