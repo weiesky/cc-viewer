@@ -1,5 +1,13 @@
 # cc-viewer
 
+## 1.9.33
+
+### Patch Changes
+
+- Preserve the LAN `ACCESS_TOKEN` across an in-app self-update restart so an already-open page keeps working after the update. Previously the replacement process generated a fresh random token, so the old page's `?token=` URL, its `/api/version-info` recovery poll, and the `ccv_auth` login cookie were all rejected — the restart spinner hung and a manual refresh 401/502'd. The current token is now handed to the restart helper through `restart-config.json` (mode `0600`, deleted by the helper after it is read into memory, before the ready signal and `install`) and forwarded to the replacement as `CCV_ACCESS_TOKEN`; `server.js` adopts it only in the exact `randomBytes(16).toString('hex')` shape, strips the env key at module load (so the spawned `claude` child never inherits it), and falls back to a fresh random token when absent or malformed. The token is never written to `preferences.json`.
+  
+  Notes: preservation first takes effect from the *second* in-app update (the one that installs this change is orchestrated by the previous build). As with any value passed via exec env, the token is visible to same-user processes in the replacement's exec-time environment block and in the brief pre-import `npm root -g`/`which` probes; same-user processes already have full loopback access, so no privilege boundary is crossed. A side effect of honoring the env var is that exporting `CCV_ACCESS_TOKEN` manually would pin the token across starts (rotation only resumes once it is unset); otherwise the token still rotates on a manual stop/start. Adds `lib/access-token.js` plus `access-token.test.js`, `server-access-token-env.test.js`, and extended `restart-helper.test.js` coverage.
+
 ## 1.9.32
 
 ### Patch Changes

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(server): **自更新重启保留 ACCESS_TOKEN，已打开页面平滑恢复** — 自更新重启时把当前 token 经 `restart-config.json`（0600，helper 读入内存即删）交接给新进程（env `CCV_ACCESS_TOKEN`），新进程仅在严格 32 位小写 hex 校验通过时采用、模块加载即读即删 env、缺失/非法回退随机；不写 `preferences.json`，手动重启仍轮换。仅自更新重启生效（首次由旧版本发起的更新除外）。Coverage: `access-token.test.js`, `server-access-token-env.test.js`, `restart-helper.test.js`。
+
 - feat(web+server): **文件浏览器导航与视图增强** — 弹窗文件浏览器（FileBrowserModal）新增前进/后退历史（Alt+←/→、Cmd/Ctrl+[/]）、地址栏（双击面包屑空白 / Ctrl/Cmd+L 编辑，支持相对与绝对路径、文件路径定位并预览）、列表/网格视图切换（每目录记忆）、按名称/大小/修改时间排序（列表列头可点击，目录始终置顶）、当前目录文件名过滤（输入即时过滤并高亮命中）。`/api/files` 与 `/api/target-files` 新增 `size`/`mtimeMs` 字段和 `?sort=&order=` 参数（不传保持现有行为）；`/api/resolve-path` 与 `/api/target-resolve-path` 新增 `absolutePath` 分支（admin + same-origin 门禁，realpath + containment 校验）。Coverage: `fileBrowserHistory.test.js`, `fileBrowserPrefs.test.js`, `fileBrowserFilter.test.js`, `formatters-gap.test.js`, `file-sort-lib.test.js`, `api-files-fs.test.js`, `api-target-files.test.js`, `api-target-files-fs.test.js`, `file-browser-modal.test.js`。
 
 - feat(web): **定时任务侧边栏快捷列表** — 左侧导航栏新增时钟图标，hover/click 弹出等待执行的任务列表（内容预览 + 实时倒计时），点击某行打开定时任务弹层并自动定位（选中 + 滚动）到该任务。数据经 SSE 自动刷新。Coverage: `schedule-nav-button.test.js`。

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { restartFromHelper, waitForExit } from './restart.js';
@@ -13,10 +13,23 @@ process.stderr.on('error', () => {});
 export async function runRestartHelper({ stateFile = process.argv[2], configFile = process.argv[3], config, install = installStagedUpdate, restart = restartFromHelper, log = console.error } = {}) {
   let staged;
   try {
-    config ||= readRestartConfig(configFile);
+    // Read the config in its own try/catch: it now carries the live ACCESS_TOKEN, and a raw
+    // JSON.parse error message can embed a ~20-char snippet of the offending input — which
+    // would then be persisted to update-state.json.error and logged. Rethrow a fixed message.
+    if (!config) {
+      try { config = readRestartConfig(configFile); }
+      catch { throw new Error('Invalid restart config'); }
+    }
     if (!Number.isInteger(config.pid) || config.pid <= 0 || !Array.isArray(config.args) || typeof config.cwd !== 'string' || typeof config.cliPath !== 'string' || !/^\d+\.\d+\.\d+$/.test(config.version)) throw new Error('Invalid arguments');
     staged = JSON.parse(readFileSync(stateFile, 'utf8'));
     if (staged.version !== config.version) throw new Error('Staged update does not match the requested version');
+    // The config now carries the live ACCESS_TOKEN handoff — erase the file as soon
+    // as it has been read into memory. The finally-block rm stays as the safety net,
+    // and the in-memory `config` still backs the install-failure restore path below.
+    if (configFile) {
+      try { rmSync(configFile, { force: true }); }
+      catch (err) { log(`[CC Viewer] Failed to remove restart config (holds the access token): ${err.message}`); }
+    }
     mkdirSync(dirname(RESTART_READY_FILE), { recursive: true, mode: 0o700 });
     writeFileSync(RESTART_READY_FILE, JSON.stringify({ token: config.token }), { mode: 0o600 });
     await waitForExit(config.pid);
@@ -52,7 +65,8 @@ export async function runRestartHelper({ stateFile = process.argv[2], configFile
   } finally {
     if (configFile) {
       const { rm } = await import('node:fs/promises');
-      await rm(configFile, { force: true }).catch(() => {});
+      // Best-effort safety net; the file may hold the live token, so surface a failure.
+      await rm(configFile, { force: true }).catch((err) => log(`[CC Viewer] Failed to clean up restart config: ${err.message}`));
     }
   }
 }
