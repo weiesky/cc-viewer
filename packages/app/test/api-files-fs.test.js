@@ -543,6 +543,74 @@ describe('/api/files', () => {
     assert.deepEqual(data, []);
     assert.equal(called, false, 'git check-ignore skipped for empty listing');
   });
+
+  // ── List-view / sort-driven fields (size + mtimeMs + ?sort=&order=) ──────
+  it('every entry carries size + mtimeMs; directories have size null', async () => {
+    mkdirSync(join(projectDir, 'metadir'));
+    writeFileSync(join(projectDir, 'metafile.txt'), 'hello');
+    const { status, data } = await callGet(handler(), { path: '.' });
+    assert.equal(status, 200);
+    const dir = data.find((d) => d.name === 'metadir');
+    const file = data.find((d) => d.name === 'metafile.txt');
+    assert.ok(dir && file);
+    assert.equal(dir.size, null);
+    assert.equal(typeof dir.mtimeMs, 'number');
+    assert.equal(file.size, 5);
+    assert.equal(typeof file.mtimeMs, 'number');
+  });
+
+  it('?sort=size&order=desc keeps directories first, then files by descending size', async () => {
+    mkdirSync(join(projectDir, 'sizedir'));
+    writeFileSync(join(projectDir, 'small.txt'), 'x');
+    writeFileSync(join(projectDir, 'large.txt'), 'x'.repeat(100));
+    writeFileSync(join(projectDir, 'mid.txt'), 'x'.repeat(10));
+    const { status, data } = await callGet(handler(), { path: '.', sort: 'size', order: 'desc' });
+    assert.equal(status, 200);
+    // First entry must be the directory regardless of the file sort.
+    const firstDirIdx = data.findIndex((d) => d.type === 'file');
+    assert.ok(firstDirIdx > 0, 'at least one directory before any file');
+    const files = data.filter((d) => d.type === 'file').map((d) => d.name);
+    assert.deepEqual(files, ['large.txt', 'mid.txt', 'small.txt']);
+  });
+
+  it('?sort=name&order=desc reverses file order but keeps directories first', async () => {
+    mkdirSync(join(projectDir, 'ndir'));
+    writeFileSync(join(projectDir, 'a.txt'), 'x');
+    writeFileSync(join(projectDir, 'z.txt'), 'x');
+    const { status, data } = await callGet(handler(), { path: '.', sort: 'name', order: 'desc' });
+    assert.equal(status, 200);
+    const files = data.filter((d) => d.type === 'file').map((d) => d.name);
+    // Files must be reversed relative to asc, directories still lead the list.
+    assert.ok(files.indexOf('z.txt') < files.indexOf('a.txt'));
+    assert.equal(data[0].type, 'directory');
+  });
+
+  it('?sort=mtime&order=asc sorts files oldest-first; dirs stay first', async () => {
+    mkdirSync(join(projectDir, 'mdir'));
+    writeFileSync(join(projectDir, 'new.txt'), 'x');
+    writeFileSync(join(projectDir, 'old.txt'), 'x');
+    // Force distinct mtimes so the comparator must pick a side.
+    const { utimesSync } = await import('node:fs');
+    const now = Date.now() / 1000;
+    utimesSync(join(projectDir, 'old.txt'), now - 100, now - 100);
+    utimesSync(join(projectDir, 'new.txt'), now, now);
+    const { status, data } = await callGet(handler(), { path: '.', sort: 'mtime', order: 'asc' });
+    assert.equal(status, 200);
+    const files = data.filter((d) => d.type === 'file').map((d) => d.name);
+    assert.ok(files.indexOf('old.txt') < files.indexOf('new.txt'));
+    assert.equal(data[0].type, 'directory');
+  });
+
+  it('unknown sort/order silently fall back to the default name/asc behavior', async () => {
+    mkdirSync(join(projectDir, 'fbdir'));
+    writeFileSync(join(projectDir, 'b.txt'), 'x');
+    writeFileSync(join(projectDir, 'a.txt'), 'x');
+    const { status, data } = await callGet(handler(), { path: '.', sort: 'bogus', order: 'sideways' });
+    assert.equal(status, 200);
+    assert.equal(data[0].type, 'directory');
+    const files = data.filter((d) => d.type === 'file').map((d) => d.name);
+    assert.deepEqual(files, ['a.txt', 'b.txt']);
+  });
 });
 
 // ───────────────────────────── /api/resolve-path ─────────────────────────────
@@ -574,6 +642,56 @@ describe('/api/resolve-path', () => {
     const { status, data } = await callBody(handler(), { path: '' });
     assert.equal(status, 200);
     assert.equal(data.fullPath, projectDir);
+  });
+
+  // Address-bar branch: absolute host paths resolve to a root-relative relPath
+  // (with entry type), and anything outside the viewed root is rejected. The
+  // { path } branch above is unchanged (no existence check); this branch does
+  // realpath + containment because the address bar navigates with the result.
+  it('200 resolves an absolute path inside the project to a relPath + type', async () => {
+    mkdirSync(join(projectDir, 'addrdir'), { recursive: true });
+    writeFileSync(join(projectDir, 'addrdir', 'f.txt'), 'x');
+    const absDir = join(projectDir, 'addrdir');
+    const absFile = join(projectDir, 'addrdir', 'f.txt');
+    const dirRes = await callBody(handler(), { absolutePath: absDir });
+    assert.equal(dirRes.status, 200);
+    assert.equal(dirRes.data.ok, true);
+    assert.equal(dirRes.data.relPath, 'addrdir');
+    assert.equal(dirRes.data.type, 'directory');
+    const fileRes = await callBody(handler(), { absolutePath: absFile });
+    assert.equal(fileRes.status, 200);
+    assert.equal(fileRes.data.relPath, 'addrdir/f.txt');
+    assert.equal(fileRes.data.type, 'file');
+  });
+
+  it('200 resolves the project root itself to relPath "" + type directory', async () => {
+    const { status, data } = await callBody(handler(), { absolutePath: projectDir });
+    assert.equal(status, 200);
+    assert.equal(data.relPath, '');
+    assert.equal(data.type, 'directory');
+  });
+
+  it('400 on an absolute path outside the project root', async () => {
+    const outside = join(tmpDir, 'outside.txt');
+    writeFileSync(outside, 'x');
+    const { status, data } = await callBody(handler(), { absolutePath: outside });
+    assert.equal(status, 400);
+    assert.equal(data.error, 'Path traversal not allowed');
+  });
+
+  it('404 when the absolute path does not exist', async () => {
+    const ghost = join(projectDir, 'ghost-sub', 'f.txt');
+    const { status, data } = await callBody(handler(), { absolutePath: ghost });
+    assert.equal(status, 404);
+    assert.equal(data.error, 'Path not found');
+  });
+
+  it('400 on relative / empty / over-long absolutePath values', async () => {
+    assert.equal((await callBody(handler(), { absolutePath: 'rel/x' })).status, 400);
+    assert.equal((await callBody(handler(), { absolutePath: '' })).status, 400);
+    assert.equal((await callBody(handler(), { absolutePath: 'x'.repeat(5000) })).status, 400);
+    // Control characters must be rejected before touching the filesystem.
+    assert.equal((await callBody(handler(), { absolutePath: '/tmp/\tx' })).status, 400);
   });
 });
 

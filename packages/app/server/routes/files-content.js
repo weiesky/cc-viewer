@@ -16,6 +16,7 @@ import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
 import { isAdminReq } from '../lib/is-admin.js';
 import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
+import { normalizeSortParams, compareEntries } from '../lib/file-sort.js';
 import {
   targetError, errnoToStatus, realDirectory, checkedDirectory, insidePath,
   targetRelPath, resolveTargetRoot,
@@ -773,7 +774,7 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
   });
 }
 
-function listTargetDirectory(rootReal, segments, deps, requireReadable = true) {
+function listTargetDirectory(rootReal, segments, deps, requireReadable = true, sortOpts = null) {
   const dirReal = requireReadable
     ? checkedDirectory(segments.length ? join(rootReal, ...segments) : rootReal, 'Directory')
     : realDirectory(segments.length ? join(rootReal, ...segments) : rootReal, 'Directory');
@@ -806,11 +807,19 @@ function listTargetDirectory(rootReal, segments, deps, requireReadable = true) {
     let st;
     try { st = statSync(policy.real); } catch (err) { reportSwallowed('targetFiles.entry.stat', err); continue; }
     if (!st.isDirectory() && !st.isFile()) continue;
-    entries.push({ name: entry.name, type: st.isDirectory() ? 'directory' : 'file', absPath: policy.real });
+    const type = st.isDirectory() ? 'directory' : 'file';
+    entries.push({
+      name: entry.name,
+      type,
+      absPath: policy.real,
+      size: type === 'file' ? st.size : null,
+      mtimeMs: st.mtimeMs,
+    });
   }
-  entries.sort((a, b) => a.type !== b.type
-    ? (a.type === 'directory' ? -1 : 1)
-    : a.name.localeCompare(b.name));
+  const cmp = sortOpts
+    ? compareEntries(sortOpts.sort, sortOpts.order)
+    : compareEntries('name', 'asc');
+  entries.sort(cmp);
   return entries;
 }
 
@@ -832,9 +841,14 @@ function targetFiles(req, res, parsedUrl, isLocal, deps) {
     const rawPath = parsedUrl.searchParams.get('path');
     const requestedSegments = targetRelPath(rawPath);
     const segments = requestedSegments === null ? scope.targetPath.split('/').filter(Boolean) : requestedSegments;
-    const entries = listTargetDirectory(scope.rootReal, segments, deps, segments.length > 0 || scope.rootKind !== 'home');
+    // Optional ?sort=name|size|mtime&order=asc|desc. The primary listing (the
+    // grid the user is looking at) honors the requested order; the ancestors
+    // chain — which the sidebar tree reads — is always name/asc so the tree
+    // order stays stable across user-driven grid re-sorts.
+    const sortOpts = normalizeSortParams(parsedUrl.searchParams);
+    const entries = listTargetDirectory(scope.rootReal, segments, deps, segments.length > 0 || scope.rootKind !== 'home', sortOpts);
     const rootEntries = requestedSegments === null && segments.length > 0
-      ? listTargetDirectory(scope.rootReal, [], deps, scope.rootKind === 'project')
+      ? listTargetDirectory(scope.rootReal, [], deps, scope.rootKind === 'project', sortOpts)
       : entries;
     const targetEntries = requestedSegments === null
       ? entries.filter(entry => insidePath(entry.absPath, join(scope.rootReal, ...segments)))
@@ -847,7 +861,8 @@ function targetFiles(req, res, parsedUrl, isLocal, deps) {
     // segments. We deliberately DO NOT use path.relative(targetPath, rawPath)
     // here — that helper happily produces "../.." for sibling branches, which
     // would pollute the cache with pseudo-paths and re-list directories the
-    // user never navigated into.
+    // user never navigated into. Ancestors always list in default name/asc so
+    // the tree row order stays stable while the grid applies user sorting.
     const chainSegments = requestedSegments === null ? targetSegments : segments;
     // Request-scoped memo: targetFiles lists the same directory multiple times
     // (entries + ancestors chain often share prefixes), so we cache by dir key
@@ -855,7 +870,7 @@ function targetFiles(req, res, parsedUrl, isLocal, deps) {
     const listMemo = new Map();
     const listOnce = (segs, requireReadable) => {
       const key = segs.join('/') + (requireReadable ? '|r' : '|n');
-      if (!listMemo.has(key)) listMemo.set(key, listTargetDirectory(scope.rootReal, segs, deps, requireReadable));
+      if (!listMemo.has(key)) listMemo.set(key, listTargetDirectory(scope.rootReal, segs, deps, requireReadable, null));
       return listMemo.get(key);
     };
     const ancestorCount = Math.max(0, chainSegments.length - (requestedSegments === null ? 0 : 1));

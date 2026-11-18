@@ -129,6 +129,34 @@ describe('GET /api/target-files', { concurrency: false }, () => {
     }
   });
 
+  it('every entry carries size + mtimeMs (dirs null on size) and primary listing honors ?sort=', () => {
+    // Default order: directories first, files by name asc.
+    const def = get(`/api/target-files?${targetQuery()}`);
+    assert.equal(def.status, 200);
+    for (const entry of def.json().targetEntries) {
+      assert.ok('size' in entry, `entry ${entry.name} must carry a size field`);
+      assert.ok('mtimeMs' in entry, `entry ${entry.name} must carry an mtimeMs field`);
+      if (entry.type === 'directory') assert.equal(entry.size, null);
+      else assert.equal(typeof entry.size, 'number');
+      assert.equal(typeof entry.mtimeMs, 'number');
+    }
+    // ?sort=size&order=desc flips the primary listing (files by size desc),
+    // but ancestors stay in the default name/asc order so the tree stays stable.
+    const sorted = get(`/api/target-files?${targetQuery()}&sort=size&order=desc`);
+    assert.equal(sorted.status, 200);
+    const fileSizes = sorted.json().targetEntries.filter(e => e.type === 'file').map(e => e.size);
+    for (let i = 1; i < fileSizes.length; i++) {
+      assert.ok(fileSizes[i - 1] >= fileSizes[i], `file sizes must be desc, got ${fileSizes}`);
+    }
+    // Ancestors chain is always name/asc — pick the same ancestor in both
+    // responses and assert their orders match.
+    const defAnc = def.json().ancestors.find(a => a.path === '.claude/skills');
+    const sortedAnc = sorted.json().ancestors.find(a => a.path === '.claude/skills');
+    assert.ok(defAnc && sortedAnc, 'expected .claude/skills ancestor in both responses');
+    assert.deepEqual(sortedAnc.entries.map(e => e.name), defAnc.entries.map(e => e.name),
+      'ancestors must stay in name/asc regardless of the requested grid sort');
+  });
+
   it('accepts only currently discovered user, project and plugin paths', () => {
     for (const [source, path] of [['user', userSkill], ['project', projectSkill], ['plugin', pluginSkill]]) {
       const res = get(`/api/target-files?kind=skill&source=${source}&targetPath=${encodeURIComponent(path)}`);

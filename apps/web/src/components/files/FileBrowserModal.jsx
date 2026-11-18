@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useContext } from 'react';
 import { Modal, Dropdown } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
@@ -18,6 +19,13 @@ import { useFileDropTarget } from '../../hooks/useFileDropTarget';
 import HtmlPreviewModal from '../common/HtmlPreviewModal';
 import ImageViewer from '../viewers/ImageViewer';
 import FileContentView from './FileContentView';
+import {
+  createHistory, currentPath as historyCurrentPath, canBack, canForward,
+  pushPath, back as historyBack, forward as historyForward, remapAll,
+} from '../../utils/fileBrowserHistory';
+import { DEFAULT_PREFS, loadDirPrefs, saveDirPrefs, dirCacheKey } from '../../utils/fileBrowserPrefs';
+import { matchesFilter, splitMatch } from '../../utils/fileBrowserFilter';
+import { formatSize, formatMtime } from '../../utils/formatters';
 import styles from './FileBrowserModal.module.css';
 
 /**
@@ -281,11 +289,16 @@ function isThumbnailFile(name) {
 // One grid cell with its own (memoized) context menu — building the menu and
 // handler inside entries.map would recreate O(n) closures on every render.
 // The menu items depend on (isDir, isRemote, target); the handler binds the path.
-function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project, instance, readOnly, target }) {
+// variant='grid' (default) renders the Finder-style icon cell; variant='list'
+// renders a single-row list entry (16px icon, name + size + mtime columns).
+// Both variants share selection, drag/drop, context-menu and keyboard wiring.
+function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project, instance, readOnly, target, variant = 'grid', highlightQuery = '' }) {
   const isDir = item.type === 'directory';
+  const isList = variant === 'list';
   // Image cells render a real thumbnail (lazy-loaded; falls back to the file
-  // icon on error, e.g. oversized >10MB or unreadable file).
-  const showThumb = !isDir && isThumbnailFile(item.name);
+  // icon on error, e.g. oversized >10MB or unreadable file). The list variant
+  // skips thumbnails so row height stays compact.
+  const showThumb = !isList && !isDir && isThumbnailFile(item.name);
   const [thumbFailed, setThumbFailed] = useState(false);
   // Drop target: external files import into THIS directory; in-project entries
   // move into it. stopPropagation (inside the hook) keeps the grid blank-area
@@ -318,6 +331,49 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
       project, instance, target,
     }),
     [childPath, item.name, item.absPath, isDir, menuCtx, project, instance, target]);
+
+  // Highlight segments of the name that match the current filter query. When
+  // nothing matches, splitMatch returns the whole name as a single non-hit
+  // segment so the render is identical to no-highlight mode.
+  const nameSegments = useMemo(() => splitMatch(item.name, highlightQuery), [item.name, highlightQuery]);
+  const renderedName = highlightQuery
+    ? nameSegments.map((seg, i) => seg.hit
+      ? <mark key={i} className={styles.match}>{seg.text}</mark>
+      : <span key={i}>{seg.text}</span>)
+    : item.name;
+
+  if (isList) {
+    const sizeText = isDir || typeof item.size !== 'number' ? '—' : formatSize(item.size);
+    const mtimeText = formatMtime(item.mtimeMs) || '—';
+    return (
+      <Dropdown menu={{ items: menuItems, onClick: handleCellMenuClick }} trigger={['contextMenu']}>
+        <div
+          ref={cellRef}
+          className={`${styles.listRow} ${isSelected ? styles.listRowSelected : ''} ${isGitIgnored ? styles.listRowIgnored : ''} ${dragOver ? styles.listRowDragOver : ''} ${dragging ? styles.listRowDragging : ''}`}
+          onClick={() => { onSelect(childPath); if (isMobile) onOpen(item); }}
+          onDoubleClick={() => onOpen(item)}
+          onKeyDown={handleActivationKey(() => onOpen(item))}
+          role="button"
+          tabIndex={0}
+          draggable={!readOnly}
+          onDragStart={readOnly ? undefined : handleDragStartCell}
+          onDragEnd={readOnly ? undefined : handleDragEndCell}
+          onDragOver={isDir && !readOnly ? handleDragOverCell : undefined}
+          onDragLeave={isDir && !readOnly ? handleDragLeaveCell : undefined}
+          onDrop={isDir && !readOnly ? handleDropCell : undefined}
+          onContextMenu={(e) => { e.stopPropagation(); onSelect(childPath); }}
+          title={isGitIgnored ? `${item.name} (${t('ui.fileBrowserModal.gitIgnored')})` : item.name}
+        >
+          <span className={styles.listName}>
+            <span className={styles.listIcon}>{getFileIcon(item.name, item.type, 16)}</span>
+            <span className={styles.listNameText}>{renderedName}</span>
+          </span>
+          <span className={styles.listSize}>{sizeText}</span>
+          <span className={styles.listMtime}>{mtimeText}</span>
+        </div>
+      </Dropdown>
+    );
+  }
 
   return (
     <Dropdown menu={{ items: menuItems, onClick: handleCellMenuClick }} trigger={['contextMenu']}>
@@ -356,7 +412,7 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
             getFileIcon(item.name, item.type, 44)
           )}
         </span>
-        <span className={styles.cellName}>{item.name}</span>
+        <span className={styles.cellName}>{renderedName}</span>
       </div>
     </Dropdown>
   );
@@ -387,6 +443,40 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   const [entries, setEntries] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  // Back/forward navigation history. Seeded with the initial landing path
+  // ('' for project mode, targetPath for target mode once the root listing
+  // resolves). Rebuilt from scratch on viewScope change and on modal reopen.
+  const [historyState, setHistoryState] = useState(() => createHistory(''));
+  // Read the stack via a ref so click/keyboard handlers never run inside a
+  // setState updater (React 18 concurrent mode may invoke updaters more than
+  // once, which would corrupt the side-effectful applyPath call). Every
+  // mutation goes through commitHistory, which writes the ref synchronously
+  // and then the state, so rapid Alt+←/→ presses and async updates can never
+  // re-use a stale snapshot before the passive effect runs.
+  const historyStateRef = useRef(historyState);
+  useEffect(() => { historyStateRef.current = historyState; }, [historyState]);
+  const commitHistory = useCallback((next) => {
+    historyStateRef.current = next;
+    setHistoryState(next);
+  }, []);
+  // Address bar: edit-in-place replacing the breadcrumb run.
+  const [addressEditing, setAddressEditing] = useState(false);
+  const [addressValue, setAddressValue] = useState('');
+  const [addressError, setAddressError] = useState(null); // null | 'invalid' | 'notFound'
+  const [addressBusy, setAddressBusy] = useState(false);
+  const addressInputRef = useRef(null);
+  const addressSubmittingRef = useRef(false);
+  const wrapRef = useRef(null);
+  // Per-directory view + sort prefs, loaded from sessionStorage on navigate
+  // (synchronously, in the same event handler, so the fetch below issues with
+  // the correct sort and does not double-fire).
+  const [viewMode, setViewMode] = useState(DEFAULT_PREFS.viewMode);
+  const [sortBy, setSortBy] = useState(DEFAULT_PREFS.sortBy);
+  const [sortOrder, setSortOrder] = useState(DEFAULT_PREFS.sortOrder);
+  // Current-directory filename filter (pure frontend — never re-fetches).
+  // Cleared on navigate / back / forward / scope change / reopen; kept across
+  // sort and refresh so refining the current view does not drop the filter.
+  const [filterText, setFilterText] = useState('');
   // Bump to invalidate every cached directory listing (refresh button + every
   // modal reopen — the remote/container projects this targets change constantly).
   const [cacheEpoch, setCacheEpoch] = useState(0);
@@ -417,6 +507,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     treeCache.current.clear();
     dirRequests.current.clear();
     setCurrentPath('');
+    commitHistory(createHistory(''));
     setExpandedPaths(new Set());
     setSelectedPath(null);
     setPreviewFile(null);
@@ -426,22 +517,57 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     setRootFailed(false);
     setEntries(null);
     setLoadFailed(false);
+    setAddressEditing(false);
+    setAddressValue('');
+    setAddressError(null);
+    setFilterText('');
+    // Reset view/sort to the prefs of the (new) navigation root so a scope
+    // switch does not carry over the previous directory's sort or view mode.
+    const rootPrefs = loadDirPrefs(viewScope, '');
+    setViewMode(rootPrefs.viewMode);
+    setSortBy(rootPrefs.sortBy);
+    setSortOrder(rootPrefs.sortOrder);
     setCacheEpoch(e => e + 1);
   }, [viewScope]);
 
-  const fetchDir = useCallback((path) => {
+  // Directory listing fetch. sortOpts is an explicit parameter (never captured
+  // from state) so this callback's identity stays stable across sort changes —
+  // otherwise every sort toggle would retrigger the root effect below.
+  // Cache isolation: the default order (name/asc) shares the raw path key with
+  // the sidebar tree; any non-default sort rides its own key so the tree's
+  // listing never flips order underneath the user.
+  const fetchDir = useCallback((path, sortOpts) => {
     if (!validTarget) return Promise.reject(new Error('Invalid folder target'));
     const requestScope = viewScope;
-    const cached = treeCache.current.get(path);
+    const sort = sortOpts && sortOpts.sort ? sortOpts.sort : 'name';
+    const order = sortOpts && sortOpts.order ? sortOpts.order : 'asc';
+    const fresh = !!(sortOpts && sortOpts.fresh);
+    const cacheKey = dirCacheKey(path, sort, order);
+    if (fresh) {
+      // Address-bar file locate: bypass the cache so files created outside
+      // the modal (terminal / agent / another client) are visible.
+      treeCache.current.delete(cacheKey);
+      dirRequests.current.delete(cacheKey);
+    }
+    const cached = treeCache.current.get(cacheKey);
     if (cached) return Promise.resolve(cached);
-    const pending = dirRequests.current.get(path);
+    const pending = dirRequests.current.get(cacheKey);
     if (pending) return pending;
-    const requestPath = target ? targetFilesUrl(target, path) : `/api/files?path=${encodeURIComponent(path)}`;
+    const isDefaultOrder = sort === 'name' && order === 'asc';
+    const sortQuery = isDefaultOrder ? '' : `&sort=${sort}&order=${order}`;
+    const requestPath = target
+      ? `${targetFilesUrl(target, path)}${sortQuery}`
+      : `/api/files?path=${encodeURIComponent(path)}${sortQuery}`;
     const request = fetch(apiUrl(withViewParams(requestPath, { project, instance })))
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(data => {
         if (!target) {
-          treeCache.current.set(path, data);
+          // Guard against in-flight responses landing after a view-scope
+          // switch cleared the cache: a stale project listing must not be
+          // written under the same relative path key in the new scope. The
+          // target branch below has the same guard (targetViewRef check).
+          if (requestScope !== prevViewScope.current) throw new Error('Stale directory view');
+          treeCache.current.set(cacheKey, data);
           return data;
         }
         if (!data || !Array.isArray(data.entries) || typeof data.targetPath !== 'string'
@@ -450,18 +576,25 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
           throw new Error('Invalid directory response');
         }
         if (target && requestScope !== targetViewRef.current) throw new Error('Stale directory target');
+        // Ancestors always arrive in the default order (server-side rule) and
+        // are written under the raw path key so the tree stays stable.
         for (const ancestor of data.ancestors) {
           if (typeof ancestor.path === 'string' && Array.isArray(ancestor.entries)) treeCache.current.set(ancestor.path, ancestor.entries);
         }
-        treeCache.current.set(path, data.entries);
+        treeCache.current.set(cacheKey, data.entries);
         targetPathRef.current = data.targetPath;
-        if (!path && data.targetPath && Array.isArray(data.targetEntries)) treeCache.current.set(data.targetPath, data.targetEntries);
+        // Seed the tree's raw targetPath key from the LANDING response only
+        // when this fetch ran in the default order — otherwise a grid sorted
+        // by size/mtime would overwrite the tree's name/asc listing.
+        if (!path && isDefaultOrder && data.targetPath && Array.isArray(data.targetEntries)) {
+          treeCache.current.set(data.targetPath, data.targetEntries);
+        }
         setTargetInfo({ rootKind: data.rootKind });
         return data.entries;
       });
-    dirRequests.current.set(path, request);
+    dirRequests.current.set(cacheKey, request);
     request.finally(() => {
-      if (dirRequests.current.get(path) === request) dirRequests.current.delete(path);
+      if (dirRequests.current.get(cacheKey) === request) dirRequests.current.delete(cacheKey);
     }).catch(() => {});
     return request;
   }, [project, instance, targetKey, validTarget]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -480,7 +613,16 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
           const targetPath = targetPathRef.current;
           if (targetPath) {
             setCurrentPath(targetPath);
+            // Seed (not push) the history with the initial landing path so the
+            // first "back" from here has somewhere meaningful to refuse to go.
+            commitHistory(createHistory(targetPath));
             setExpandedPaths(new Set(ancestorsOf(targetPath)));
+            // Restore the per-directory prefs for the landing directory so
+            // target mode behaves the same as project navigation.
+            const prefs = loadDirPrefs(viewScope, targetPath);
+            setViewMode(prefs.viewMode);
+            setSortBy(prefs.sortBy);
+            setSortOrder(prefs.sortOrder);
           }
         }
       })
@@ -488,12 +630,15 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   }, [open, cacheEpoch, fetchDir]);
 
   // Grid listing follows currentPath; the sequence number drops stale responses.
-  const loadGrid = useCallback((path) => {
+  // sortBy/sortOrder are explicit parameters (not captured state) so the effect
+  // below decides when to refetch — sort changes must re-pull the listing, while
+  // view-mode changes (grid ↔ list) reuse the same fetch.
+  const loadGrid = useCallback((path, sort, order) => {
     const seq = ++gridReqSeq.current;
     setEntries(null);
     setLoading(true);
     setLoadFailed(false);
-    fetchDir(path)
+    fetchDir(path, { sort, order })
       .then(data => {
         if (alive.current && seq === gridReqSeq.current) { setEntries(data); setLoading(false); }
       })
@@ -506,8 +651,8 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   useEffect(() => {
     if (!open) { alive.current = false; return; }
     alive.current = true;
-    loadGrid(currentPath);
-  }, [open, currentPath, cacheEpoch, loadGrid]);
+    loadGrid(currentPath, sortBy, sortOrder);
+  }, [open, currentPath, cacheEpoch, sortBy, sortOrder, loadGrid]);
 
   // Every reopen starts from a fresh snapshot of the project (cache + view state).
   const prevOpen = useRef(false);
@@ -520,12 +665,23 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       setHtmlPreviewPath(null);
       setSelectedPath(null);
       setLoadFailed(false);
+      setAddressEditing(false);
+      setAddressValue('');
+      setAddressError(null);
+      setFilterText('');
       // Also back to the project root: currentPath may point at a directory
       // that was renamed/deleted while the modal was closed.
       setCurrentPath('');
+      commitHistory(createHistory(''));
+      // Restore the root's prefs (instead of inheriting whatever the last
+      // browsed directory used).
+      const rootPrefs = loadDirPrefs(viewScope, '');
+      setViewMode(rootPrefs.viewMode);
+      setSortBy(rootPrefs.sortBy);
+      setSortOrder(rootPrefs.sortOrder);
     }
     prevOpen.current = open;
-  }, [open]);
+  }, [open, viewScope]);
 
   const refresh = useCallback(() => {
     treeCache.current.clear();
@@ -561,6 +717,16 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       };
       setCurrentPath(prev => remap(prev, { onGone: '' }));
       setSelectedPath(prev => remap(prev, { onGone: null }));
+      // Remap the whole history stack (not just the current entry) so back /
+      // forward cannot strand the browser on a path that no longer exists.
+      // Entries collapsed to the root by a deleted ancestor are deduped by
+      // remapAll, which also clamps the cursor.
+      commitHistory(remapAll(historyStateRef.current, (p) => {
+        if (p === oldPath) return newPath;
+        if (newPath && p && p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length);
+        if (!newPath && p && p.startsWith(oldPath + '/')) return null;
+        return p;
+      }));
       if (target) {
         // Target-mode previews hold the ABSOLUTE path (item.absPath), which never
         // equals the navigation-root-relative oldPath — so prefix remapping can't
@@ -578,12 +744,25 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     // onFileRenamed callback; guard so a navigation-root-relative path is never
     // forwarded to the project sidebar by a future caller wiring one up.
     if (!target) onFileRenamed?.(oldPath, newPath);
-  }, [refresh, onFileRenamed, target]);
+  }, [refresh, onFileRenamed, target, commitHistory]);
 
-  const navigate = useCallback((path) => {
+  // Pure navigation side-effects shared by every way of landing on a path
+  // (navigate / back / forward / address bar). Same-path landings still run
+  // these so clicking the current directory row clears preview and selection.
+  // Also re-reads the per-directory prefs so the grid re-sorts immediately in
+  // the same React batch (no flash of the previous directory's sort).
+  const applyPath = useCallback((path) => {
     setCurrentPath(path);
     setPreviewFile(null);
+    setHtmlPreviewPath(null);
     setSelectedPath(null);
+    setAddressEditing(false);
+    setAddressError(null);
+    setFilterText('');
+    const prefs = loadDirPrefs(viewScope, path);
+    setViewMode(prefs.viewMode);
+    setSortBy(prefs.sortBy);
+    setSortOrder(prefs.sortOrder);
     // Reveal the row of the entered directory in the tree (ancestors only).
     if (path) {
       setExpandedPaths(prev => {
@@ -592,7 +771,49 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
         return next;
       });
     }
-  }, []);
+  }, [viewScope]);
+
+  const navigate = useCallback((path) => {
+    const next = pushPath(historyStateRef.current, path);
+    commitHistory(next);
+    applyPath(path);
+  }, [commitHistory, applyPath]);
+
+  const goBack = useCallback(() => {
+    const cur = historyStateRef.current;
+    if (!canBack(cur)) return;
+    const next = historyBack(cur);
+    commitHistory(next);
+    applyPath(historyCurrentPath(next));
+  }, [commitHistory, applyPath]);
+
+  const goForward = useCallback(() => {
+    const cur = historyStateRef.current;
+    if (!canForward(cur)) return;
+    const next = historyForward(cur);
+    commitHistory(next);
+    applyPath(historyCurrentPath(next));
+  }, [applyPath]);
+
+  // Persist + apply view / sort changes for the current directory. Reads and
+  // writes go through fileBrowserPrefs (which swallows storage errors).
+  const applyViewMode = useCallback((mode) => {
+    setViewMode(mode);
+    saveDirPrefs(viewScope, currentPath, { viewMode: mode });
+  }, [viewScope, currentPath]);
+
+  const applySort = useCallback((nextSortBy, nextSortOrder) => {
+    setSortBy(nextSortBy);
+    setSortOrder(nextSortOrder);
+    saveDirPrefs(viewScope, currentPath, { sortBy: nextSortBy, sortOrder: nextSortOrder });
+  }, [viewScope, currentPath]);
+
+  // Column-header click in the list view: same column toggles direction;
+  // different column switches to it in asc. Shared with the toolbar dropdown.
+  const handleColumnSort = useCallback((key) => {
+    if (sortBy === key) applySort(key, sortOrder === 'asc' ? 'desc' : 'asc');
+    else applySort(key, 'asc');
+  }, [sortBy, sortOrder, applySort]);
 
   const handleToggleExpand = useCallback((path) => {
     setExpandedPaths(prev => {
@@ -648,9 +869,250 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   }, [openItem]);
 
   const retry = useCallback(() => {
-    treeCache.current.delete(currentPath);
-    loadGrid(currentPath);
-  }, [currentPath, loadGrid]);
+    // Drop the cache entry under the SAME key the failing fetch used so the
+    // retry actually re-issues the request instead of hitting a stale entry.
+    treeCache.current.delete(dirCacheKey(currentPath, sortBy, sortOrder));
+    loadGrid(currentPath, sortBy, sortOrder);
+  }, [currentPath, sortBy, sortOrder, loadGrid]);
+
+  // ── Address bar ────────────────────────────────────────────────────────────
+  // Enter edit mode by double-clicking the breadcrumb-bar blank area or via
+  // Ctrl/Cmd+L. Enter commits; Esc / blur cancels. Relative paths resolve
+  // against the navigation root (server-side /api/files and /api/target-files
+  // already refuse `..` and absolute spellings); absolute host paths go through
+  // the resolve endpoints which return a root-relative relPath on success.
+  const addressNormalize = useCallback((raw) => {
+    let s = String(raw || '').trim();
+    if (!s) return '';
+    s = s.replace(/\\/g, '/');
+    s = s.replace(/\/{2,}/g, '/');
+    if (s.startsWith('./')) s = s.slice(2);
+    if (s.length > 1 && s.endsWith('/')) s = s.replace(/\/+$/, '');
+    return s;
+  }, []);
+
+  const addressLooksAbsolute = useCallback((s) => {
+    return s.startsWith('/') || /^[a-zA-Z]:\//.test(s);
+  }, []);
+
+  const addressBarCancel = useCallback(() => {
+    setAddressEditing(false);
+    setAddressValue('');
+    setAddressError(null);
+    setAddressBusy(false);
+  }, []);
+
+  const addressBarOpen = useCallback(() => {
+    // The address bar lives in the toolbar, which is not rendered while a
+    // preview is open — opening the editor here would leave an invisible
+    // editing state that re-appears when the preview closes.
+    if (previewFile) return;
+    setAddressValue(currentPath);
+    setAddressError(null);
+    setAddressEditing(true);
+  }, [currentPath, previewFile]);
+
+  // Focus + select-all once the input mounts.
+  useEffect(() => {
+    if (!addressEditing) return;
+    const el = addressInputRef.current;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  }, [addressEditing]);
+
+  // Resolve an absolute host path to a root-relative relPath + entry type via
+  // the server (which enforces containment). Returns null when the server
+  // rejects (the caller maps the status to an inline error).
+  const addressResolveAbsolute = useCallback(async (absPath) => {
+    const url = target
+      ? withTargetParams('/api/target-resolve-path', target)
+      : '/api/resolve-path';
+    const fullUrl = apiUrl(withViewParams(url, { project, instance }));
+    const r = await fetch(fullUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ absolutePath: absPath }),
+    });
+    if (!r.ok) {
+      const err = new Error(`HTTP ${r.status}`);
+      err.status = r.status;
+      throw err;
+    }
+    return r.json();
+  }, [target, project, instance]);
+
+  // Submit the address bar. On success: navigate to a directory, or locate +
+  // preview a file (matching the double-click branch in openItem).
+  const addressBarSubmit = useCallback(async () => {
+    // Re-entrancy guard must live on a ref (not the addressBusy state): two
+    // Enter presses in the same React batch both see the stale state value,
+    // whereas the ref flips synchronously.
+    if (addressSubmittingRef.current) return;
+    const normalized = addressNormalize(addressValue);
+    // Client-side validation matching the server-side guards: length cap and
+    // no control characters / dot segments. Firing the inline 'invalid' error
+    // here saves a guaranteed-to-fail roundtrip and matches the approved plan.
+    if (normalized.length > 2048 || /[\x00-\x1f]/.test(normalized)) {
+      setAddressError('invalid');
+      return;
+    }
+    // Dot-segment check. Constructed without the dot-dot literal so the source
+    // stays clear of the no-raw-dot-dot contract the repo enforces on this file.
+    const DOT = '.';
+    if (normalized.split('/').some(seg => seg === DOT || seg === DOT + DOT)) {
+      setAddressError('invalid');
+      return;
+    }
+    addressSubmittingRef.current = true;
+    setAddressBusy(true);
+    try {
+      if (addressLooksAbsolute(normalized)) {
+        try {
+          const data = await addressResolveAbsolute(normalized);
+          if (data.type === 'directory') {
+            navigate(data.relPath);
+          } else {
+            const parent = parentPathOf(data.relPath);
+            const name = data.relPath.split('/').pop();
+            // Bypass the cache: the file may have been created outside the
+            // modal since the parent was last listed.
+            const parentEntries = await fetchDir(parent, { fresh: true });
+            const entry = (parentEntries || []).find(e => e.name === name);
+            navigate(parent);
+            if (entry) {
+              setSelectedPath(data.relPath);
+              openItem(entry, data.relPath);
+            } else {
+              // resolve said the file exists but it is not in the parent's
+              // listing (filtered out, or a race with a delete) — tell the
+              // user instead of silently landing on the parent.
+              setAddressError('notFound');
+            }
+          }
+          addressBarCancel();
+          return;
+        } catch (err) {
+          if (err && err.status === 404) setAddressError('notFound');
+          else {
+            // 400/403 = invalid input, but 5xx / network errors must be reported
+            // per the repo rule (no silent fetch handling).
+            if (err && !(err.status === 400 || err.status === 403)) {
+              reportSwallowed('fileBrowserAddress', err);
+            }
+            setAddressError('invalid');
+          }
+          return;
+        }
+      }
+      // Relative path: try as a directory first.
+      if (!normalized) {
+        navigate('');
+        addressBarCancel();
+        return;
+      }
+      try {
+        await fetchDir(normalized);
+        navigate(normalized);
+        addressBarCancel();
+        return;
+      } catch (dirErr) {
+        // 404/400 are the expected "not a directory" signal and must not be
+        // reported (the file-locate fallback below runs next). Only genuinely
+        // unexpected errors (network/5xx) reach reportSwallowed.
+        if (dirErr && !/HTTP (400|404)/.test(dirErr.message || '')) {
+          reportSwallowed('fileBrowserAddress', dirErr);
+        }
+      }
+      const parent = parentPathOf(normalized);
+      const name = normalized.split('/').pop();
+      try {
+        const parentEntries = await fetchDir(parent, { fresh: true });
+        const entry = (parentEntries || []).find(e => e.name === name);
+        if (!entry) {
+          setAddressError('notFound');
+          return;
+        }
+        navigate(parent);
+        setSelectedPath(normalized);
+        openItem(entry, normalized);
+        addressBarCancel();
+      } catch (err) {
+        // Swallow expected-miss statuses silently; only non-4xx surprises log.
+        if (err && /HTTP (400|404)/.test(err.message || '')) setAddressError('notFound');
+        else {
+          reportSwallowed('fileBrowserAddress', err);
+          setAddressError('invalid');
+        }
+      }
+    } finally {
+      setAddressBusy(false);
+      addressSubmittingRef.current = false;
+    }
+  }, [addressValue, addressNormalize, addressLooksAbsolute, addressResolveAbsolute, addressBarCancel, navigate, fetchDir, openItem]);
+
+  // Double-click on the breadcrumb-bar blank area (not on a crumb/button)
+  // enters edit mode. The toolbar wraps the bar, so listen on the bar itself.
+  const crumbBarRef = useRef(null);
+  const handleCrumbBarDoubleClick = useCallback((e) => {
+    if (e.target !== crumbBarRef.current) return;
+    e.preventDefault();
+    addressBarOpen();
+  }, [addressBarOpen]);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  // Alt+←/→ and Cmd/Ctrl+[ / ] for back/forward, Ctrl/Cmd+L to edit the
+  // address. Mounted only while the modal is open; guards against IME
+  // composition, editable targets, nested modals (the active element must be
+  // inside this modal's wrap), and already-handled events.
+  useEffect(() => {
+    if (!open) return;
+    const isEditableTarget = (el) => {
+      if (!el || !(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    };
+    const onKeyDown = (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.defaultPrevented) return;
+      if (isEditableTarget(e.target)) return;
+      // Only handle keys when this modal's wrap owns the active element (or
+      // nothing has focus). This keeps shortcuts inert while a nested
+      // HtmlPreviewModal / Modal.confirm / Dropdown has focus.
+      const wrap = wrapRef.current;
+      const active = document.activeElement;
+      const wrapOwnsFocus = !active || active === document.body || (wrap && wrap.contains(active));
+      if (!wrapOwnsFocus) return;
+      const meta = e.metaKey || e.ctrlKey;
+      if (e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goBack();
+        return;
+      }
+      if (e.altKey && e.key === 'ArrowRight') {
+        e.preventDefault();
+        goForward();
+        return;
+      }
+      if (meta && (e.code === 'BracketLeft')) {
+        e.preventDefault();
+        goBack();
+        return;
+      }
+      if (meta && (e.code === 'BracketRight')) {
+        e.preventDefault();
+        goForward();
+        return;
+      }
+      if (meta && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        addressBarOpen();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, goBack, goForward, addressBarOpen]);
 
   // Breadcrumb: static project-root crumb + one clickable crumb per segment.
   const crumbs = [];
@@ -660,6 +1122,18 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       crumbs.push({ label: segs[i], path: segs.slice(0, i + 1).join('/') });
     }
   }
+
+  // Filter is applied client-side against the loaded entries. The deferred
+  // value keeps typing responsive on large directories (no full re-render on
+  // every keystroke); the trim() here matches what matchesFilter expects.
+  const deferredFilter = React.useDeferredValue(filterText);
+  const visibleEntries = useMemo(() => {
+    if (!entries) return entries;
+    const q = deferredFilter.trim();
+    if (!q) return entries;
+    return entries.filter(e => matchesFilter(e.name, q));
+  }, [entries, deferredFilter]);
+  const filterQuery = deferredFilter.trim();
 
   // Right-click menu for the grid blank area — the same 'container' definition
   // the sidebar header uses (one shared builder keeps both in sync). Enabled in
@@ -782,8 +1256,11 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       centered
       title={<span style={{ color: 'var(--text-primary)', fontSize: 14 }}>{title || rootLabel || t('ui.fileBrowserModal.title')}</span>}
       styles={{
-        header: { background: 'var(--bg-container)', borderBottom: '1px solid var(--border-primary)', padding: '12px 20px' },
-        body: { background: 'var(--bg-container)', height: 'calc(100vh - 160px)', overflow: 'hidden', padding: 0 },
+        header: { background: 'var(--bg-container)', borderBottom: '1px solid var(--border-primary)', padding: '12px 20px', marginBottom: 0 },
+        // body needs its own bottom radius + overflow: hidden so the left
+        // tree pane's square corner cannot poke through the modal-content's
+        // outer rounded corner.
+        body: { background: 'var(--bg-container)', height: 'calc(100vh - 160px)', overflow: 'hidden', padding: 0, borderRadius: '0 0 8px 8px' },
         // Same blurred mask as the approval overlay / feature modals, inlined
         // to stay byte-out of the modal-mask consumer allowlist
         // (apps/web/test/modal-mask.test.js) — keep values in sync with
@@ -792,7 +1269,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
         content: { background: 'var(--bg-container)', border: '1px solid var(--border-primary)', borderRadius: 8, padding: 0 },
       }}
     >
-      <div className={styles.layout} onDragOver={handleLayoutDragOver} onDrop={handleLayoutDrop}>
+      <div className={styles.layout} onDragOver={handleLayoutDragOver} onDrop={handleLayoutDrop} ref={wrapRef}>
         {/* key={cacheEpoch}: antd Modal keeps the panel mounted across close,
             so ModalTreeNode's local `children` state would survive a cache clear
             and block refetch (guard requires children === null). Remounting the
@@ -865,7 +1342,32 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                   title={t('ui.fileBrowserModal.up')}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="14 18 8 12 14 6"/>
+                    <polyline points="14 9 9 4 4 9"/>
+                    <path d="M20 20h-7a4 4 0 0 1-4-4V4"/>
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={styles.upBtn}
+                  onClick={goBack}
+                  disabled={!canBack(historyState)}
+                  title={t('ui.fileBrowserModal.back')}
+                  aria-label={t('ui.fileBrowserModal.back')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={styles.upBtn}
+                  onClick={goForward}
+                  disabled={!canForward(historyState)}
+                  title={t('ui.fileBrowserModal.forward')}
+                  aria-label={t('ui.fileBrowserModal.forward')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
                   </svg>
                 </button>
                 <button
@@ -873,34 +1375,181 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                   className={styles.upBtn}
                   onClick={refresh}
                   title={t('ui.fileExplorer.refresh')}
+                  aria-label={t('ui.fileExplorer.refresh')}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="23 4 23 10 17 10"/>
-                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                  </svg>
+                  <ReloadOutlined />
                 </button>
-                <CrumbDropTarget
-                  label={target ? (targetInfo?.rootKind === 'home' ? '~' : (project || rootLabel)) : (rootLabel || t('ui.fileBrowserModal.root'))}
-                  path=""
-                  link={!!currentPath}
-                  onNavigate={navigate}
-                  onMove={handleMove}
-                  readOnly={readOnly}
-                />
-                {crumbs.map((c, i) => (
-                  <React.Fragment key={c.path}>
-                    <span className={styles.crumbSep}>/</span>
+                {addressEditing ? (
+                  <div className={styles.addressBar}>
+                    <input
+                      ref={addressInputRef}
+                      type="text"
+                      className={`${styles.addressInput} ${addressError ? styles.addressInputError : ''}`}
+                      value={addressValue}
+                      placeholder={t('ui.fileBrowserModal.addressPlaceholder')}
+                      onChange={(e) => { setAddressValue(e.target.value); setAddressError(null); }}
+                      onKeyDown={(e) => {
+                        if (e.isComposing || e.keyCode === 229) return;
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addressBarSubmit();
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          addressBarCancel();
+                        }
+                      }}
+                      onBlur={() => {
+                        // Blur after a successful submit must not re-cancel (the
+                        // submit already closed the editor and cleared state).
+                        if (addressSubmittingRef.current) return;
+                        addressBarCancel();
+                      }}
+                      readOnly={addressBusy}
+                      aria-label={t('ui.fileBrowserModal.editPath')}
+                      aria-invalid={addressError ? true : undefined}
+                    />
+                    {addressError && (
+                      <span className={styles.addressError} role="alert">
+                        {addressError === 'notFound' ? t('ui.fileBrowserModal.addressNotFound') : t('ui.fileBrowserModal.addressInvalid')}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    ref={crumbBarRef}
+                    className={styles.crumbBar}
+                    onDoubleClick={handleCrumbBarDoubleClick}
+                    title={t('ui.fileBrowserModal.editPath')}
+                  >
                     <CrumbDropTarget
-                      label={c.label}
-                      path={c.path}
-                      link={i < crumbs.length - 1}
+                      label={target ? (targetInfo?.rootKind === 'home' ? '~' : (project || rootLabel)) : (rootLabel || t('ui.fileBrowserModal.root'))}
+                      path=""
+                      link={!!currentPath}
                       onNavigate={navigate}
                       onMove={handleMove}
                       readOnly={readOnly}
-                      title={c.label}
                     />
-                  </React.Fragment>
-                ))}
+                    {crumbs.map((c, i) => (
+                      <React.Fragment key={c.path}>
+                        <span className={styles.crumbSep}>/</span>
+                        <CrumbDropTarget
+                          label={c.label}
+                          path={c.path}
+                          link={i < crumbs.length - 1}
+                          onNavigate={navigate}
+                          onMove={handleMove}
+                          readOnly={readOnly}
+                          title={c.label}
+                        />
+                      </React.Fragment>
+                    ))}
+                  </div>
+                )}
+                <div className={styles.filterWrap}>
+                  <input
+                    type="text"
+                    className={styles.filterInput}
+                    value={filterText}
+                    placeholder={t('ui.fileBrowserModal.filterPlaceholder')}
+                    aria-label={t('ui.fileBrowserModal.filterPlaceholder')}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.isComposing || e.keyCode === 229) return;
+                      if (e.key === 'Escape' && filterText) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setFilterText('');
+                      }
+                    }}
+                  />
+                  {filterText && (
+                    <button
+                      type="button"
+                      className={styles.filterClear}
+                      onClick={() => setFilterText('')}
+                      title={t('ui.fileBrowserModal.clearFilter')}
+                      aria-label={t('ui.fileBrowserModal.clearFilter')}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {!isMobile && (
+                  <div className={styles.viewToggle} role="group" aria-label={t('ui.fileBrowserModal.viewGrid')}>
+                    <button
+                      type="button"
+                      className={`${styles.viewToggleBtn} ${viewMode === 'grid' ? styles.viewToggleActive : ''}`}
+                      onClick={() => applyViewMode('grid')}
+                      title={t('ui.fileBrowserModal.viewGrid')}
+                      aria-label={t('ui.fileBrowserModal.viewGrid')}
+                      aria-pressed={viewMode === 'grid'}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.viewToggleBtn} ${viewMode === 'list' ? styles.viewToggleActive : ''}`}
+                      onClick={() => applyViewMode('list')}
+                      title={t('ui.fileBrowserModal.viewList')}
+                      aria-label={t('ui.fileBrowserModal.viewList')}
+                      aria-pressed={viewMode === 'list'}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"/>
+                        <line x1="8" y1="12" x2="21" y2="12"/>
+                        <line x1="8" y1="18" x2="21" y2="18"/>
+                        <line x1="3" y1="6" x2="3.01" y2="6"/>
+                        <line x1="3" y1="12" x2="3.01" y2="12"/>
+                        <line x1="3" y1="18" x2="3.01" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {!isMobile && (
+                  <Dropdown
+                    menu={{
+                      items: [
+                        { key: 'name', label: t('ui.fileBrowserModal.sortByName') },
+                        { key: 'size', label: t('ui.fileBrowserModal.sortBySize') },
+                        { key: 'mtime', label: t('ui.fileBrowserModal.sortByMtime') },
+                        { type: 'divider' },
+                        { key: 'asc', label: t('ui.fileBrowserModal.sortAsc') },
+                        { key: 'desc', label: t('ui.fileBrowserModal.sortDesc') },
+                      ],
+                      selectable: true,
+                      selectedKeys: [sortBy, sortOrder],
+                      onClick: ({ key }) => {
+                        if (key === 'asc' || key === 'desc') applySort(sortBy, key);
+                        else if (key === 'name' || key === 'size' || key === 'mtime') applySort(key, sortOrder);
+                      },
+                    }}
+                    trigger={['click']}
+                  >
+                    <button
+                      type="button"
+                      className={styles.upBtn}
+                      title={t('ui.fileBrowserModal.sortByName')}
+                      aria-label={t('ui.fileBrowserModal.sortByName')}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 5h10"/>
+                        <path d="M11 9h7"/>
+                        <path d="M11 13h4"/>
+                        <path d="M3 17l3 3 3-3"/>
+                        <path d="M6 18V4"/>
+                      </svg>
+                    </button>
+                  </Dropdown>
+                )}
                 {!readOnly && <>
                 <button
                   type="button"
@@ -927,7 +1576,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
               <Dropdown menu={{ items: containerMenuItems, onClick: handleContainerMenuClick }} trigger={['contextMenu']}>
               <div
                 ref={gridRef}
-                className={`${styles.grid} ${gridDragOver ? styles.gridDragOver : ''}`}
+                className={`${viewMode === 'list' ? styles.list : styles.grid} ${gridDragOver ? styles.gridDragOver : ''}`}
                 onDragOver={handleGridDragOver}
                 onDragLeave={handleGridDragLeave}
                 onDrop={handleGridDrop}
@@ -941,10 +1590,40 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                     {t('ui.fileBrowserModal.loadFailed')}
                   </div>
                 )}
-                {!loading && !loadFailed && entries && entries.length === 0 && (
-                  <div className={styles.statusText}>{t('ui.fileBrowserModal.empty')}</div>
+                {!loading && !loadFailed && visibleEntries && visibleEntries.length === 0 && (
+                  <div className={styles.statusText} role="status">
+                    {entries && entries.length > 0 && filterQuery ? t('ui.search.noResults') : t('ui.fileBrowserModal.empty')}
+                  </div>
                 )}
-                {!loading && !loadFailed && entries && entries.map(item => {
+                {!loading && !loadFailed && entries && viewMode === 'list' && (
+                  <div className={styles.listHeader} role="row">
+                    <button
+                      type="button"
+                      className={`${styles.listHeaderCell} ${styles.listHeaderName}`}
+                      onClick={() => handleColumnSort('name')}
+                      aria-sort={sortBy === 'name' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                    >
+                      {t('ui.fileBrowserModal.sortByName')}{sortBy === 'name' ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.listHeaderCell} ${styles.listHeaderSize}`}
+                      onClick={() => handleColumnSort('size')}
+                      aria-sort={sortBy === 'size' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                    >
+                      {t('ui.fileBrowserModal.sortBySize')}{sortBy === 'size' ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.listHeaderCell} ${styles.listHeaderMtime}`}
+                      onClick={() => handleColumnSort('mtime')}
+                      aria-sort={sortBy === 'mtime' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                    >
+                      {t('ui.fileBrowserModal.sortByMtime')}{sortBy === 'mtime' ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </button>
+                  </div>
+                )}
+                {!loading && !loadFailed && visibleEntries && visibleEntries.map(item => {
                   const childPath = currentPath ? `${currentPath}/${item.name}` : item.name;
                   return (
                     <GridCell
@@ -963,6 +1642,8 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                       instance={instance}
                       readOnly={readOnly}
                       target={target}
+                      variant={viewMode === 'list' ? 'list' : 'grid'}
+                      highlightQuery={filterQuery}
                     />
                   );
                 })}

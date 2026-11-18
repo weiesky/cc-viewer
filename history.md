@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web+server): **文件浏览器导航与视图增强** — 弹窗文件浏览器（FileBrowserModal）新增前进/后退历史（Alt+←/→、Cmd/Ctrl+[/]）、地址栏（双击面包屑空白 / Ctrl/Cmd+L 编辑，支持相对与绝对路径、文件路径定位并预览）、列表/网格视图切换（每目录记忆）、按名称/大小/修改时间排序（列表列头可点击，目录始终置顶）、当前目录文件名过滤（输入即时过滤并高亮命中）。`/api/files` 与 `/api/target-files` 新增 `size`/`mtimeMs` 字段和 `?sort=&order=` 参数（不传保持现有行为）；`/api/resolve-path` 与 `/api/target-resolve-path` 新增 `absolutePath` 分支（admin + same-origin 门禁，realpath + containment 校验）。Coverage: `fileBrowserHistory.test.js`, `fileBrowserPrefs.test.js`, `fileBrowserFilter.test.js`, `formatters-gap.test.js`, `file-sort-lib.test.js`, `api-files-fs.test.js`, `api-target-files.test.js`, `api-target-files-fs.test.js`, `file-browser-modal.test.js`。
+
 - feat(web): **定时任务侧边栏快捷列表** — 左侧导航栏新增时钟图标，hover/click 弹出等待执行的任务列表（内容预览 + 实时倒计时），点击某行打开定时任务弹层并自动定位（选中 + 滚动）到该任务。数据经 SSE 自动刷新。Coverage: `schedule-nav-button.test.js`。
 
 - feat(web): **审批默认值与选项调整** — 权限自动审批默认改为免审批（-1），Plan 自动审批默认改为 60 秒倒计时，问答题托管默认改为 5 分钟；问答题托管选项新增 1/5 分钟、删除 20/30 分钟。Coverage: `auto-approve-options.test.js`, `ask-auto-answer-menu.test.js`。

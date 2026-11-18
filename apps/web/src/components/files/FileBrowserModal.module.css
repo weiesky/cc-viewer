@@ -169,6 +169,298 @@
   font-size: 12px;
 }
 
+/* Breadcrumb run wrapper: fills the toolbar's middle stretch, double-click on
+   the trailing blank area switches it into the address editor. */
+.crumbBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 40px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* Address editor replacing the breadcrumb run while editing. */
+.addressBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.addressInput {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-base, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+.addressInput:focus {
+  border-color: var(--color-primary);
+}
+
+.addressInputError {
+  border-color: var(--color-error, #e0564b);
+}
+
+.addressError {
+  font-size: 12px;
+  color: var(--color-error, #e0564b);
+  white-space: nowrap;
+}
+
+/* Filename filter input: fixed-width, sits between the breadcrumb run and
+   the view/sort/upload buttons. Clears itself on Esc. */
+.filterWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.filterInput {
+  width: 160px;
+  height: 24px;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-base, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+.filterInput:focus {
+  border-color: var(--color-primary);
+}
+
+.filterInput::placeholder {
+  color: var(--text-disabled);
+}
+
+.filterClear {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.filterClear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+/* Filter highlight inside entry names (grid + list variants). */
+.match {
+  background: var(--color-primary-bg-light);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+}
+
+/* Narrow widths: shrink the filter input so the toolbar does not overflow. */
+@media (max-width: 640px) {
+  .filterInput {
+    width: 100px;
+  }
+}
+
+/* View toggle (grid / list) button group. */
+.viewToggle {
+  display: inline-flex;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.viewToggleBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.viewToggleBtn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.viewToggleActive {
+  background: var(--color-primary-bg-light);
+  color: var(--color-primary);
+}
+
+/* ── List view ─────────────────────────────────────────────────────────────
+   Shares the scroll container with the grid (same drag/drop handlers), but
+   lays rows out as a vertical stack with a sticky column header. */
+.list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  align-content: start;
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-container);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.listHeaderCell {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.listHeaderCell:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.listHeaderName {
+  flex: 1;
+  min-width: 0;
+}
+
+.listHeaderSize {
+  width: 88px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.listHeaderMtime {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  user-select: none;
+  border-bottom: 1px solid var(--border-primary-light, transparent);
+  min-height: 28px;
+}
+
+.listRow:hover {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.listRowSelected {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.listRowIgnored {
+  opacity: 0.4;
+}
+
+.listRowDragOver {
+  background: var(--color-primary-bg-light);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+}
+
+.listRowDragging {
+  opacity: 0.5;
+}
+
+.listName {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.listIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.listNameText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listSize {
+  width: 88px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+  padding: 0 6px;
+}
+
+.listMtime {
+  width: 150px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Narrow widths: hide the mtime column to keep the name readable. */
+@media (max-width: 640px) {
+  .listHeaderMtime,
+  .listMtime {
+    display: none;
+  }
+}
+
 .grid {
   flex: 1;
   overflow-y: auto;
