@@ -1,0 +1,20 @@
+apps/web/src/i18n.js
+  s_c84d7cc740dd1b::t_cb08cd1de9c3e8 10805-10809
+  s_c84d7cc740dd1b::t_be7eb99b3f4652 10804
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3cc8a90b95378bd6cd0097584eba34a57c7d57a9",
+  "prompts": {},
+  "sessions": {
+    "s_c84d7cc740dd1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a67a0a56-3050-4767-9437-8809e3d1f516",
+        "model": "k3"
+      },
+      "human_author": null
+    }
+  }
+}
