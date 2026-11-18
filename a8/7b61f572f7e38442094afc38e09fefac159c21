@@ -1,0 +1,78 @@
+apps/web/src/components/chat/ProxyChip.module.css
+  s_c84d7cc740dd1b::t_b418f77f58c278 11-12,16,24-25
+  s_c84d7cc740dd1b::t_75385d5560856b 49
+  s_c84d7cc740dd1b::t_670e769c00517a 33-34,38,45-48
+apps/web/src/components/chat/ChatView.jsx
+  s_c84d7cc740dd1b::t_4c581ffcbfa261 4975-4982
+  s_c84d7cc740dd1b::t_094431f47d2408 6144,6149
+  s_c84d7cc740dd1b::t_09892f810f8c65 44
+  s_c84d7cc740dd1b::t_1667a5554175bf 376
+apps/web/test/schedule-nav-button.test.js
+  s_c84d7cc740dd1b::t_3012bcd23251e0 1-18,20-52,72-84,91-121,127-131,134-143,150-161,166-168,170-172,176,181-186,195-196,200-216,278-279,283-284
+  s_c84d7cc740dd1b::t_acbb90170136d0 19,53-71,85-90,122-126,132-133,144-149,162-165,169,173-175,177-180,187-194,197-199,217-253,256-277,280-282
+  s_c84d7cc740dd1b::t_e2d3de1bc47436 254-255
+apps/web/src/components/dashboard/ScheduleNavButton.jsx
+  s_c84d7cc740dd1b::t_670c97845a1b7e 1,25,29-32,41-44,54-55,75-90,92-93,95-102,105,107,131,143,146,153-159
+  s_c84d7cc740dd1b::t_85da152a454849 2-24,26-28,33-40,45-53,56-74,91,94,103-104,106,108-130,132-142,144-145,147-152,160-164
+apps/web/src/components/common/quickMenuIcons.jsx
+  s_c84d7cc740dd1b::t_5e76c8bb684160 91-99
+apps/web/src/utils/autoApproveOptions.js
+  s_c84d7cc740dd1b::t_dc3df882ba92c1 45,49
+apps/web/src/components/common/ScheduleTaskModal.jsx
+  s_c84d7cc740dd1b::t_a428f86936d1ff 314-315
+  s_c84d7cc740dd1b::t_8077fdd8f10eba 316-319
+  s_c84d7cc740dd1b::t_27301795af826c 142,158-164
+  s_c84d7cc740dd1b::t_fa931c20339ed1 350-369,373
+  s_c84d7cc740dd1b::t_e7cd7df23b80d3 165-169
+  s_c84d7cc740dd1b::t_b8cd39229c7d9a 370-372
+  s_c84d7cc740dd1b::t_3806bdec8262fd 632
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_c84d7cc740dd1b::t_f41f493a4b2b6e 1887
+  s_c84d7cc740dd1b::t_65b921217d96b0 2128
+  s_c84d7cc740dd1b::t_8db5723a89a18f 39
+apps/web/test/auto-approve-options.test.js
+  s_c84d7cc740dd1b::t_676f1ce2d5944d 89-90,92,100-101,106
+apps/web/src/components/terminal/UltraplanPanel.module.css
+  s_c84d7cc740dd1b::t_8370801791284e 564-565
+apps/web/src/i18n.js
+  s_c84d7cc740dd1b::t_3ed96eb8ae2569 10852-10869
+  s_c84d7cc740dd1b::t_be7eb99b3f4652 10804
+  s_c84d7cc740dd1b::t_cb08cd1de9c3e8 10805-10809
+  s_c84d7cc740dd1b::t_8a92ca41f7f518 10820-10825
+apps/web/test/ask-auto-answer-menu.test.js
+  s_c84d7cc740dd1b::t_5233db6fcfef73 33
+  s_c84d7cc740dd1b::t_7e221a3f35b141 80-81
+apps/web/src/utils/scheduleNav.js
+  s_c84d7cc740dd1b::t_03a8d4ea82f44d 22-23
+  s_c84d7cc740dd1b::t_4cf5bc4162a8c5 1-21,24-37
+apps/web/src/components/terminal/CustomUltraplanEditModal.jsx
+  s_c84d7cc740dd1b::t_152a63c2608131 43,45
+  s_c84d7cc740dd1b::t_300711f573cee4 174-204
+  s_c84d7cc740dd1b::t_ec7dc141733fee 7
+apps/web/src/components/dashboard/ScheduleNavButton.module.css
+  s_c84d7cc740dd1b::t_b6f1259adde679 34,41-43,45-50
+  s_c84d7cc740dd1b::t_01427a64115426 1-33,35-40,44,51-95
+apps/web/src/AppBase.jsx
+  s_c84d7cc740dd1b::t_0d3c8f157880dc 236
+  s_c84d7cc740dd1b::t_0c7cb2383fbd96 312-313
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_c84d7cc740dd1b::t_e335c84e1cfb3e 12
+  s_c84d7cc740dd1b::t_05ae4e20223e2a 709
+  s_c84d7cc740dd1b::t_fadc91d98651de 665
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a87b61f572f7e38442094afc38e09fefac159c21",
+  "prompts": {},
+  "sessions": {
+    "s_c84d7cc740dd1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a67a0a56-3050-4767-9437-8809e3d1f516",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
