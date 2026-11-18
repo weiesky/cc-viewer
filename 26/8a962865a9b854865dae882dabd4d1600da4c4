@@ -1,0 +1,21 @@
+packages/app/CHANGELOG.md
+  s_c84d7cc740dd1b::t_cc96900eb3a566 3-8
+packages/app/package.json
+  s_c84d7cc740dd1b::t_cc96900eb3a566 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "268a962865a9b854865dae882dabd4d1600da4c4",
+  "prompts": {},
+  "sessions": {
+    "s_c84d7cc740dd1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a67a0a56-3050-4767-9437-8809e3d1f516",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
