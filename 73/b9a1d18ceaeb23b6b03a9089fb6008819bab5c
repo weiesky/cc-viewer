@@ -1,0 +1,39 @@
+apps/web/src/Mobile.jsx
+  s_c84d7cc740dd1b::t_991c4eb580cb21 95
+.changeset/schedule-nav-sidebar.md
+  s_c84d7cc740dd1b::t_2a4b21f587c535 1-5
+apps/web/src/components/common/ScheduleTaskModal.jsx
+  s_c84d7cc740dd1b::t_6f2d404a889994 370-372
+  s_c84d7cc740dd1b::t_782e57ace47718 639
+  s_c84d7cc740dd1b::t_f7def62a656858 20
+apps/web/src/components/dashboard/ScheduleNavButton.module.css
+  s_c84d7cc740dd1b::t_88d014c8fe28ed 86
+history.md
+  s_c84d7cc740dd1b::t_505617b5dd6009 5-10
+apps/web/test/schedule-nav-button.test.js
+  s_c84d7cc740dd1b::t_ad72279c9c284a 243
+apps/web/src/i18n.js
+  s_c84d7cc740dd1b::t_ff35461e1d8a12 10805
+apps/web/src/components/dashboard/ScheduleNavButton.jsx
+  s_c84d7cc740dd1b::t_07cd0c7600b562 40
+  s_c84d7cc740dd1b::t_5327bbdec08565 161
+  s_c84d7cc740dd1b::t_7e5574000f4684 78-82,85-86
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_c84d7cc740dd1b::t_bc5a2ea35bc818 108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "73b9a1d18ceaeb23b6b03a9089fb6008819bab5c",
+  "prompts": {},
+  "sessions": {
+    "s_c84d7cc740dd1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a67a0a56-3050-4767-9437-8809e3d1f516",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
