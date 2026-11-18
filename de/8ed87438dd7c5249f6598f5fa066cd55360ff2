@@ -1,0 +1,21 @@
+apps/web/src/components/chat/ProxyChip.module.css
+  s_c84d7cc740dd1b::t_b418f77f58c278 11-12,16,24-25
+  s_c84d7cc740dd1b::t_670e769c00517a 33-34,38,45-48
+  s_c84d7cc740dd1b::t_75385d5560856b 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "de8ed87438dd7c5249f6598f5fa066cd55360ff2",
+  "prompts": {},
+  "sessions": {
+    "s_c84d7cc740dd1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a67a0a56-3050-4767-9437-8809e3d1f516",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
