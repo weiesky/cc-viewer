@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- feat(web): **定时任务侧边栏快捷列表** — 左侧导航栏新增时钟图标，hover/click 弹出等待执行的任务列表（内容预览 + 实时倒计时），点击某行打开定时任务弹层并自动定位（选中 + 滚动）到该任务。数据经 SSE 自动刷新。Coverage: `schedule-nav-button.test.js`。
+
+- feat(web): **审批默认值与选项调整** — 权限自动审批默认改为免审批（-1），Plan 自动审批默认改为 60 秒倒计时，问答题托管默认改为 5 分钟；问答题托管选项新增 1/5 分钟、删除 20/30 分钟。Coverage: `auto-approve-options.test.js`, `ask-auto-answer-menu.test.js`。
+
+- fix(web): **UI 细节修复** — 定时任务弹层 prompt 输入框去除左右多余出血；快捷指令图标从 AgentTeam 双人形改为闪电；问答题托管"0 分钟"改为"模型自主决策"；代理热切换 chip 默认透明、hover 才显示背景；移动端自定义专家编辑弹窗隐藏左侧文档面板。
+
 - feat(web+server): **持久记忆文件夹改为应用内文件浏览器打开** — 缓存面板「持久记忆」区的文件夹图标改为在内置 FileBrowserModal 中打开项目 memory 目录（根目录即 memory 目录），不再调起 OS 资源管理器；远程/无 GUI 服务器也可用。目录不存在时自动创建（与原 OS-open 行为一致）。Coverage: `api-target-files.test.js`, `external-folder-targets.test.js`。
 
 - feat(web): **概念文档弹窗标题新增「复制 Markdown」按钮** — UltraPlan、Tools、CustomUltraplanExpert 等 ConceptHelp 弹窗与系统提示词「参数文档」弹窗的标题旁出现小复制图标，点击把该文档的 markdown 原文写入剪贴板。LAN HTTP 场景经 `copyTextToClipboard` 兜底。Coverage: `copy-markdown-button.test.js`。

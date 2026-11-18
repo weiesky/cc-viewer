@@ -17,6 +17,7 @@ import {
   describeSchedule, deriveTaskUiStatus, formatNextRun, formatTimestamp,
   runStatusLabel, reasonLabel, errorLabel,
 } from '../../utils/scheduleDescription';
+import { taskPreview } from '../../utils/scheduleNav';
 import styles from './ScheduleTaskModal.module.css';
 
 const KINDS = ['hourly', 'daily', 'weekdays', 'weekly', 'cron', 'once'];
@@ -366,10 +367,10 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
         rowRefs.current.get(initialTaskId)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       });
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSelect is always the
+    // latest closure when the effect fires (deps [open, initialTaskId, tasks] change);
+    // listing it would re-run the locate on every keystroke.
   }, [open, initialTaskId, tasks]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSelect is always the
-  // latest closure when the effect fires (deps [open, initialTaskId, tasks] change);
-  // listing it would re-run the locate on every keystroke.
 
   // When the selection changes, hydrate the draft from the task (unless dirty).
   // Depends on tasks too so a refresh re-hydrates a clean draft; an empty selection with
@@ -635,7 +636,7 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
                   >
                     <span className={`${styles.statusDot} ${styles[`status_${st}`]}`} title={t(`ui.schedule.status.${st}`)} />
                     <span className={styles.listRowMain}>
-                      <span className={styles.listRowSummary} title={task.promptSummary || task.prompt}>{String(task.promptSummary || task.prompt || '').split('\n')[0].slice(0, 60) || '—'}</span>
+                      <span className={styles.listRowSummary} title={task.promptSummary || task.prompt}>{taskPreview(task)}</span>
                       <span className={styles.listRowMeta}>
                         {describeSchedule(task.schedule, tz)}
                         {' · '}

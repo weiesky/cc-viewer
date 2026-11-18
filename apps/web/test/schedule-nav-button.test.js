@@ -240,7 +240,7 @@ describe('ScheduleNavButton internals', () => {
   });
 
   it('has aria-haspopup and aria-expanded on the trigger', () => {
-    assert.ok(/aria-haspopup="menu"/.test(NAV_BUTTON), 'haspopup');
+    assert.ok(/aria-haspopup="dialog"/.test(NAV_BUTTON), 'haspopup dialog');
     assert.ok(/aria-expanded=\{open\}/.test(NAV_BUTTON), 'expanded');
   });
 

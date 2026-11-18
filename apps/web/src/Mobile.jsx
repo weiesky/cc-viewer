@@ -92,7 +92,7 @@ class Mobile extends AppBase {
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       // SDK plan 审批复用 ApprovalModal 的 planModeBox 卡片（onPendingPtyPlan 通道），
       // 不再有独立的计划审批浮层。
-      autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批 / -2=完全免审批）
+      autoApproveSeconds: -1,   // 与 AppBase 一致：默认免审批（0=关闭 / -1=免审批 / -2=完全免审批）
       hasGit: true,
       terminalPendingImages: [],  // 终端面板独立的 pending 图片/文件
       // ─── 血条 popover/抽屉用的状态（与 AppHeader 同语义）─────────

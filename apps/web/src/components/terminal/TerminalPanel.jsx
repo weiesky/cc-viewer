@@ -105,7 +105,7 @@ function PlusIcon() {
   );
 }
 
-// SparkleIcon / ShieldCheckIcon / PlanClipboardIcon / AgentTeamIcon / UltraplanIcon /
+// SparkleIcon / ShieldCheckIcon / PlanClipboardIcon / ZapIcon / UltraplanIcon /
 // UploadIcon / TrashIcon 已迁至 ../common/quickMenuIcons.jsx（与 ChatInputBar 四芒星菜单共用）
 
 function CloseIcon() {

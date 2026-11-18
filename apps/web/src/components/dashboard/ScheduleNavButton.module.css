@@ -83,7 +83,7 @@
   min-width: 56px;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   font-size: 11px;
 }
 

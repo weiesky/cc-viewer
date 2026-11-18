@@ -35,15 +35,9 @@
   color: var(--text-tertiary);
   font-size: 12px;
   cursor: default;
-  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
   margin-inline-end: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.sdkChip:hover {
-  background: var(--border-secondary);
-  border-color: var(--border-light);
-  color: var(--text-secondary);
 }

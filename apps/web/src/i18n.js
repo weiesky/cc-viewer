@@ -10802,7 +10802,7 @@ const i18nData = {
   },
   "ui.askAutoAnswer.setting": {
     "zh": "问答题托管", "en": "Question hosting", "zh-TW": "問答題託管",
-    "ko": "질문 응답托管", "ja": "質問ホスティング", "de": "Fragen-Hosting",
+    "ko": "질문 응답 호스팅", "ja": "質問ホスティング", "de": "Fragen-Hosting",
     "es": "Gestión de preguntas", "fr": "Gestion des questions", "it": "Gestione domande",
     "da": "Spørgsmålshåndtering", "pl": "Obsługa pytań", "ru": "Управление вопросами",
     "ar": "إدارة الأسئلة", "no": "Spørsmålshåndtering", "pt-BR": "Gestão de perguntas",

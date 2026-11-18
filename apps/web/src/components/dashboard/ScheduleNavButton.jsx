@@ -37,7 +37,7 @@ export default function ScheduleNavButton({ project, instance, onOpenTask, navBt
   const [open, setOpen] = useState(false);
   // Wall-clock tick that drives every row's countdown — a single interval for the
   // whole popover instead of one per row, and only while the popover is open.
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   // Timestamp of the last overdue-triggered reload. A time-based cooldown (not a
   // boolean) so an overdue-but-unclaimed task reloads at most once per 15 s instead
   // of once per round-trip.
@@ -75,11 +75,15 @@ export default function ScheduleNavButton({ project, instance, onOpenTask, navBt
 
   const pending = useMemo(() => pendingTasks(tasks), [tasks]);
 
-  // Overdue detection as a pure derivation, so the reload is an effect (not a
-  // render-phase side effect) and the cooldown ref prevents a reload storm.
+  // Overdue detection driven by wall-clock time so tasks that become due while
+  // the page idles are caught. The tick state forces re-evaluation every second
+  // (via the tick effect below), and the effect re-fires whenever hasOverdue
+  // transitions false→true. The cooldown ref prevents a reload storm for tasks
+  // the scheduler can't claim (no live session → stays overdue indefinitely).
   const hasOverdue = useMemo(
     () => pending.some((task) => remainingSeconds(task.nextRunAt - clockOffset) <= 0),
-    [pending, clockOffset],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick forces re-eval
+    [pending, clockOffset, tick],
   );
   useEffect(() => {
     if (!hasOverdue) return;
@@ -154,7 +158,7 @@ export default function ScheduleNavButton({ project, instance, onOpenTask, navBt
         className={`${navBtnClass || ''} ${styles.stNavBtn}`}
         title={t('ui.schedule.title')}
         aria-label={t('ui.schedule.title')}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
       >
         <ScheduleIcon />
