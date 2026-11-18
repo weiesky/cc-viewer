@@ -1,0 +1,19 @@
+apps/web/src/components/terminal/UltraplanPanel.module.css
+  s_c84d7cc740dd1b::t_8370801791284e 564-565
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "375224d4357f6911f51649c45b50b35a9cc5cb20",
+  "prompts": {},
+  "sessions": {
+    "s_c84d7cc740dd1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a67a0a56-3050-4767-9437-8809e3d1f516",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
