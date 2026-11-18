@@ -1,0 +1,27 @@
+apps/web/src/utils/autoApproveOptions.js
+  s_c84d7cc740dd1b::t_dc3df882ba92c1 45,49
+apps/web/test/ask-auto-answer-menu.test.js
+  s_c84d7cc740dd1b::t_7e221a3f35b141 80-81
+  s_c84d7cc740dd1b::t_5233db6fcfef73 33
+apps/web/src/AppBase.jsx
+  s_c84d7cc740dd1b::t_0d3c8f157880dc 236
+  s_c84d7cc740dd1b::t_0c7cb2383fbd96 312-313
+apps/web/test/auto-approve-options.test.js
+  s_c84d7cc740dd1b::t_676f1ce2d5944d 89-90,92,100-101,106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd86c7e64bc790b96f96e1d9b4dcf5c80f3b150f",
+  "prompts": {},
+  "sessions": {
+    "s_c84d7cc740dd1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a67a0a56-3050-4767-9437-8809e3d1f516",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
