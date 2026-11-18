@@ -88,6 +88,15 @@ export function AgentTeamIcon() {
   );
 }
 
+// 菜单行图标：快捷指令（闪电 — 快速、一触即发）
+export function ZapIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  );
+}
+
 // Clock + small calendar dot — the "scheduled tasks" menu glyph.
 export function ScheduleIcon() {
   return (

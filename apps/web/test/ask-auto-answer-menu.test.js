@@ -30,7 +30,7 @@ const ICONS = read('src/components/common/quickMenuIcons.jsx');
 describe('ask auto-answer option helpers (value contract)', () => {
   it('minute-tier options + OFF sentinel + converters live in the single source of truth', () => {
     assert.ok(/ASK_AUTO_ANSWER_OFF = -1/.test(OPTIONS), 'OFF sentinel must be -1');
-    assert.ok(/ASK_AUTO_ANSWER_OPTIONS = \[0, 10, 20, 30, ASK_AUTO_ANSWER_OFF\]/.test(OPTIONS), 'tiers: 0/10/20/30 min + off');
+    assert.ok(/ASK_AUTO_ANSWER_OPTIONS = \[0, 1, 5, 10, ASK_AUTO_ANSWER_OFF\]/.test(OPTIONS), 'tiers: 0/1/5/10 min + off');
     assert.ok(/export function askAutoAnswerValueLabel/.test(OPTIONS), 'minute-tier label mapper');
     assert.ok(/export function askAutoAnswerSelectOptions/.test(OPTIONS), 'antd Select options builder');
     assert.ok(/export function askAutoAnswerUiValue/.test(OPTIONS), 'pref → UI sentinel converter');
@@ -77,8 +77,8 @@ describe('QuickAutoApproveRows — 完全免审批 (-2) tier', () => {
 });
 
 describe('prop threading chain', () => {
-  it('AppBase: initial null, null-aware hydrate, stable handler persisting via pref converter', () => {
-    assert.ok(/askAutoAnswerMinutes: null/.test(APPBASE), 'initial approvalPrefs must default to null (off)');
+  it('AppBase: initial 5 minutes, null-aware hydrate, stable handler persisting via pref converter', () => {
+    assert.ok(/askAutoAnswerMinutes: 5/.test(APPBASE), 'initial approvalPrefs must default to 5 minutes');
     assert.ok(/data\.approvalModal\.askAutoAnswerMinutes !== undefined/.test(APPBASE), 'hydrate must be null-aware (persisted null is a real value, not "absent")');
     assert.ok(/handleAskAutoAnswerChange = \(uiValue\)/.test(APPBASE), 'stable class-property handler');
     assert.ok(/askAutoAnswerPrefValue\(uiValue\)/.test(APPBASE), 'handler must convert OFF sentinel → null before persisting');

@@ -4,6 +4,7 @@ import Loading from '../common/Loading';
 import { t, getLang } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { renderMarkdown } from '../../utils/markdown';
+import { isMobile } from '../../env';
 import PresetExpertPickerModal from './PresetExpertPickerModal';
 import styles from './CustomUltraplanEditModal.module.css';
 
@@ -39,8 +40,9 @@ export default function CustomUltraplanEditModal({ open, initial, onSave, onDele
   }, [docCollapsed]);
 
   // 左栏:用与 ConceptHelp 相同的 /api/concept 请求(此处内联),把使用说明文档常驻显示供"抄作业"。
+  // 移动端不渲染文档面板,跳过加载。
   useEffect(() => {
-    if (!open) return;
+    if (!open || isMobile) return;
     let cancelled = false;
     setDocHtml('');
     setDocLoading(true);
@@ -169,31 +171,37 @@ export default function CustomUltraplanEditModal({ open, initial, onSave, onDele
       styles={{ content: { background: 'var(--bg-elevated)', border: '1px solid var(--border-light)' }, header: { background: 'var(--bg-elevated)', borderBottom: 'none' } }}
     >
       <div className={styles.split}>
-        {/* 始终挂载,折叠/展开靠 CSS 过渡:flex-basis 50%↔0 + padding/border 渐变 + opacity 淡入淡出,
-            把手凭 margin-left:-20px 始终贴在 docPanel 右边界上,会随之平滑滑入/滑出。 */}
-        <div
-          className={`chat-md ${styles.docPanel} ${docCollapsed ? styles.docCollapsed : ''}`}
-          ref={docRef}
-          aria-hidden={docCollapsed}
-        >
-          {docLoading
-            ? <div className={styles.docLoading}><Loading /></div>
-            : <div dangerouslySetInnerHTML={{ __html: docHtml }} />}
-        </div>
-        {/* 折叠把手:借鉴 ChatView 的 .terminalToggle。Terminal 在右、本面板在左,chevron 方向相对反转:
-            展开时 `<`(点击向左收回),折叠时 `>`(点击向右拉出),与图二参考一致。 */}
-        <div
-          className={styles.docToggle}
-          onClick={() => setDocCollapsed(v => !v)}
-          title={docCollapsed ? t('ui.ultraplan.expandDoc') : t('ui.ultraplan.collapseDoc')}
-        >
-          <svg viewBox="0 0 8 24" width="8" height="24">
-            {docCollapsed
-              ? <path d="M4 8 L7 12 L4 16" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-              : <path d="M4 8 L1 12 L4 16" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-            }
-          </svg>
-        </div>
+        {/* 移动端（isMobile）直接隐藏整个文档面板：docPanel + docToggle 都不渲染，
+            编辑区独占全宽。桌面端保持原有的折叠/展开过渡。 */}
+        {!isMobile && (
+          <>
+            {/* 始终挂载,折叠/展开靠 CSS 过渡:flex-basis 50%↔0 + padding/border 渐变 + opacity 淡入淡出,
+                把手凭 margin-left:-20px 始终贴在 docPanel 右边界上,会随之平滑滑入/滑出。 */}
+            <div
+              className={`chat-md ${styles.docPanel} ${docCollapsed ? styles.docCollapsed : ''}`}
+              ref={docRef}
+              aria-hidden={docCollapsed}
+            >
+              {docLoading
+                ? <div className={styles.docLoading}><Loading /></div>
+                : <div dangerouslySetInnerHTML={{ __html: docHtml }} />}
+            </div>
+            {/* 折叠把手:借鉴 ChatView 的 .terminalToggle。Terminal 在右、本面板在左,chevron 方向相对反转:
+                展开时 `<`(点击向左收回),折叠时 `>`(点击向右拉出),与图二参考一致。 */}
+            <div
+              className={styles.docToggle}
+              onClick={() => setDocCollapsed(v => !v)}
+              title={docCollapsed ? t('ui.ultraplan.expandDoc') : t('ui.ultraplan.collapseDoc')}
+            >
+              <svg viewBox="0 0 8 24" width="8" height="24">
+                {docCollapsed
+                  ? <path d="M4 8 L7 12 L4 16" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  : <path d="M4 8 L1 12 L4 16" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                }
+              </svg>
+            </div>
+          </>
+        )}
         <div className={styles.editPanel}>
           <div className={styles.field}>
             <input

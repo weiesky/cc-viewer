@@ -8,12 +8,12 @@
 
 .proxyChip {
   border-radius: 12px;
-  background: var(--border-secondary);
-  border: 1px solid var(--border-light);
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-tertiary);
   font-size: 12px;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
   margin-inline-end: 0;
   max-width: 100%;
   overflow: hidden;
@@ -21,22 +21,29 @@
   white-space: nowrap;
 }
 .proxyChip:hover {
+  background: var(--border-secondary);
+  border-color: var(--border-light);
   color: var(--text-secondary);
-  border-color: var(--text-disabled);
 }
 
 /* SDK-mode launch-model chip: same pill geometry as .proxyChip (it fills the same slot as a
    hot-switch fallback) but read-only — no pointer cursor / hover affordance. */
 .sdkChip {
   border-radius: 12px;
-  background: var(--border-secondary);
-  border: 1px solid var(--border-light);
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-tertiary);
   font-size: 12px;
   cursor: default;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
   margin-inline-end: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.sdkChip:hover {
+  background: var(--border-secondary);
+  border-color: var(--border-light);
+  color: var(--text-secondary);
 }

@@ -86,10 +86,10 @@ describe('autoApproveSelectOptions', () => {
   });
 });
 
-describe('ask auto-answer (问答题自动托管) option set', () => {
-  it('options: 0/10/20/30 minutes + OFF sentinel', () => {
+describe('ask auto-answer (问答题托管) option set', () => {
+  it('options: 0/1/5/10 minutes + OFF sentinel', () => {
     assert.equal(ASK_AUTO_ANSWER_OFF, -1);
-    assert.deepEqual(ASK_AUTO_ANSWER_OPTIONS, [0, 10, 20, 30, ASK_AUTO_ANSWER_OFF]);
+    assert.deepEqual(ASK_AUTO_ANSWER_OPTIONS, [0, 1, 5, 10, ASK_AUTO_ANSWER_OFF]);
   });
 
   it('label mapping: OFF → off key, 0 → instant key, N → minutes key with {n}', () => {
@@ -97,11 +97,13 @@ describe('ask auto-answer (问答题自动托管) option set', () => {
     assert.equal(askAutoAnswerValueLabel(null, t), 'ui.askAutoAnswer.off');
     assert.equal(askAutoAnswerValueLabel(undefined, t), 'ui.askAutoAnswer.off');
     assert.equal(askAutoAnswerValueLabel(0, t), 'ui.askAutoAnswer.instant');
+    assert.equal(askAutoAnswerValueLabel(1, tp), 'ui.askAutoAnswer.minutes:{"n":1}');
+    assert.equal(askAutoAnswerValueLabel(5, tp), 'ui.askAutoAnswer.minutes:{"n":5}');
     assert.equal(askAutoAnswerValueLabel(10, tp), 'ui.askAutoAnswer.minutes:{"n":10}');
   });
 
   it('select options carry all five tiers', () => {
-    assert.deepEqual(askAutoAnswerSelectOptions(t).map(o => o.value), [0, 10, 20, 30, -1]);
+    assert.deepEqual(askAutoAnswerSelectOptions(t).map(o => o.value), [0, 1, 5, 10, -1]);
   });
 
   it('pref → UI sentinel: number passes, everything else maps to OFF', () => {

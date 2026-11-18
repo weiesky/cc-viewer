@@ -561,6 +561,8 @@
 
 .ultraplanPanel.embedded .ultraplanInputBox {
   flex: none;
+  /* 嵌入弹层时容器自身已有内边距，去掉 popover 模式的左右出血 */
+  margin: 0;
 }
 
 .ultraplanPanel.embedded .ultraplanTextarea {

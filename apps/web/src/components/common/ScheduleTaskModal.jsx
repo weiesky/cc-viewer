@@ -139,7 +139,7 @@ async function _fetchJson(path, init) {
   return { status: r.status, ok: r.ok, data };
 }
 
-export default function ScheduleTaskModal({ open, onClose, project, instance, serverTimezone, onResumeSession }) {
+export default function ScheduleTaskModal({ open, onClose, project, instance, serverTimezone, onResumeSession, initialTaskId = null }) {
   const [tasks, setTasks] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState(() => _emptyDraft());
@@ -155,6 +155,18 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
   // While set, the auto-select in loadTasks must not re-pick tasks[0] — that
   // would immediately bounce the blank form back to the first task.
   const newTaskMode = useRef(false);
+  // One-shot guard for the sidebar-driven auto-locate: once we have selected +
+  // scrolled to initialTaskId, SSE-driven list refreshes must not re-run the locate
+  // (handleSelect would silently discard unsaved edits when draft.id matches).
+  const handledInitialIdRef = useRef(null);
+  // Row DOM refs keyed by task id, for scrollIntoView on auto-locate. A Map of refs
+  // avoids a global document.querySelector and works across the modal's body portal.
+  const rowRefs = useRef(new Map());
+  // Live ref for initialTaskId so loadTasks (memoized on [project, instance]) always
+  // reads the current value — without this, the sidebar-targeted priority branch in
+  // setSelectedId closes over the mount-time null and never fires.
+  const initialTaskIdRef = useRef(initialTaskId);
+  useEffect(() => { initialTaskIdRef.current = initialTaskId; }, [initialTaskId]);
 
   // ── UltraPlan panel wiring (experts mirror + controller + sub-modals) ──────
   // The modal is a function component, so the shared UltraplanController (built for
@@ -299,6 +311,12 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
         if (!keepSelection) return prev;
         if (prev && (data.tasks || []).some(t2 => t2.id === prev)) return prev;
         if (newTaskMode.current) return null;
+        // A sidebar click targets a specific task — select it directly instead of
+        // bouncing through tasks[0] first (which would flash the wrong row).
+        // Read through the ref: this callback is memoized on [project, instance]
+        // but initialTaskId can change without either dep changing.
+        const tid = initialTaskIdRef.current;
+        if (tid && (data.tasks || []).some(t2 => t2.id === tid)) return tid;
         return (data.tasks && data.tasks[0] && data.tasks[0].id) || null;
       });
     } catch (err) {
@@ -328,6 +346,30 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
     });
     return unsub;
   }, [open, project, loadTasks, loadRuns, selectedId]);
+
+  // Auto-locate the sidebar-clicked task: select it and scroll its row into view.
+  // One-shot per open — the handledInitialIdRef guard prevents SSE-driven list
+  // refreshes from re-running handleSelect, which would silently discard unsaved
+  // edits when draft.id matches the target (handleSelect skips the confirm guard
+  // in that case). Reset on close so the next open can locate again.
+  useEffect(() => {
+    if (!open) { handledInitialIdRef.current = null; return; }
+    if (!initialTaskId || handledInitialIdRef.current === initialTaskId) return;
+    if (!tasks.length) return;
+    const target = tasks.find(t2 => t2.id === initialTaskId);
+    if (!target) return; // task may have just been deleted — skip silently
+    handledInitialIdRef.current = initialTaskId;
+    handleSelect(target);
+    // Double rAF waits out the modal open animation before scrolling.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        rowRefs.current.get(initialTaskId)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
+    });
+  }, [open, initialTaskId, tasks]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSelect is always the
+  // latest closure when the effect fires (deps [open, initialTaskId, tasks] change);
+  // listing it would re-run the locate on every keystroke.
 
   // When the selection changes, hydrate the draft from the task (unless dirty).
   // Depends on tasks too so a refresh re-hydrates a clean draft; an empty selection with
@@ -587,6 +629,7 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
                 return (
                   <button
                     key={task.id}
+                    ref={(el) => { if (el) rowRefs.current.set(task.id, el); else rowRefs.current.delete(task.id); }}
                     className={`${styles.listRow} ${task.id === selectedId ? styles.listRowActive : ''}`}
                     onClick={() => handleSelect(task)}
                   >

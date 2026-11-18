@@ -9,7 +9,7 @@ import ImageLightbox from '../common/ImageLightbox';
 import ConfirmRemoveButton from '../common/ConfirmRemoveButton';
 import styles from './ChatInputBar.module.css';
 import chrome from '../common/sharedChrome.module.css';
-import { AgentTeamIcon, UltraplanIcon, UploadIcon, TrashIcon, ScheduleIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
+import { UltraplanIcon, UploadIcon, TrashIcon, ScheduleIcon, ZapIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import SlashCommandMenu from './SlashCommandMenu';
@@ -662,7 +662,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                         onMouseLeave={() => qmHover.leave('agentteam')}
                       >
                         <button className={chrome.quickMenuRow} onClick={() => setQuickExpanded(quickExpanded === 'agentteam' ? null : 'agentteam')}>
-                          <span className={chrome.quickMenuRowIcon}><AgentTeamIcon /></span>
+                          <span className={chrome.quickMenuRowIcon}><ZapIcon /></span>
                           <span className={chrome.quickMenuLabel}>{t('ui.terminal.agentTeam')}</span>
                           <span className={chrome.quickMenuCaret}>▸</span>
                         </button>
@@ -706,7 +706,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                           closePlusMenu();
                           onPresetSend?.(desc);
                         }} title={desc}>
-                          <AgentTeamIcon />
+                          <ZapIcon />
                           <span className={styles.presetLabel}>{name || desc}</span>
                         </button>
                       );

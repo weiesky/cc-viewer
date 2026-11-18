@@ -41,6 +41,7 @@ import { terminalAnchor } from '../../utils/terminalAnchor';
 import { isSafeAttachmentPath } from '../../utils/fileDragDrop';
 import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
+import ScheduleNavButton from '../dashboard/ScheduleNavButton';
 import UserPromptsModal from './UserPromptsModal';
 import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
@@ -372,6 +373,7 @@ class ChatView extends React.Component {
       presetItems: [],
       mobilePresetModalVisible: false,
       scheduleModalVisible: false,
+      scheduleModalTaskId: null, // sidebar-clicked task id — modal auto-selects + scrolls to it
       localAskAnswers: {}, // 提交后的本地答案映射，用于 Last Response 立即切换到非交互式
       pendingPermission: null, // { id, toolName, input } — active permission approval request
       permissionQueue: [], // queued permission requests when one is already active
@@ -4970,6 +4972,14 @@ class ChatView extends React.Component {
             </svg>
           </button>
         </Popover>
+        {this.props.cliMode && !this.props.isLocalLog && (this.props.viewProject || this.props.projectName) && (
+          <ScheduleNavButton
+            project={this.props.viewProject || this.props.projectName || null}
+            instance={this.props.viewInstance || null}
+            onOpenTask={(taskId) => this.setState({ scheduleModalVisible: true, scheduleModalTaskId: taskId })}
+            navBtnClass={styles.navBtn}
+          />
+        )}
         <TeamButton requests={this.props.requests} onOpenSession={(session) => this.setState({ teamModalSession: session })} navBtnClass={styles.navBtn} />
         <WorkflowButton requests={this.props.requests} onOpenRun={(run) => this.setState({ workflowModalRun: run })} navBtnClass={styles.navBtn} />
         {/* Sidebar avatar entry: kept only when the composer cannot host the nav entry —
@@ -6131,11 +6141,12 @@ class ChatView extends React.Component {
       <PresetModal open={this.state.mobilePresetModalVisible} onClose={() => this.setState({ mobilePresetModalVisible: false })} items={this.state.presetItems} onItemsChange={(items) => this.setState({ presetItems: items })} onSavePresets={(payload) => { if (this.props.onUpdatePreferences) this.props.onUpdatePreferences(payload); }} />
       <ScheduleTaskModal
         open={this.state.scheduleModalVisible}
-        onClose={() => this.setState({ scheduleModalVisible: false })}
+        onClose={() => this.setState({ scheduleModalVisible: false, scheduleModalTaskId: null })}
         project={this.props.viewProject || this.props.projectName || null}
         instance={this.props.viewInstance || null}
         serverTimezone={this.props.serverTimezone || null}
         onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
+        initialTaskId={this.state.scheduleModalTaskId}
       />
       {this._renderSelectionQuotePopup()}
     </>);

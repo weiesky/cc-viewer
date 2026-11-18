@@ -1,0 +1,95 @@
+/* Scheduled-task sidebar nav button styles. Mirrors the WorkflowRunsPanel / TeamSessionPanel
+   popover look so the rail feels uniform. All colors via CSS custom properties; no !important. */
+
+.stPopover {
+  min-width: 240px;
+  max-width: 360px;
+  padding: 8px 0;
+}
+
+/* Scroll container so a long pending list never overflows the viewport. */
+.stPopoverScroll {
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.stPopoverTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 4px 12px 8px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.stPopoverItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: left;
+  transition: background 0.15s;
+}
+
+/* --bg-surface contrasts against the popover's --bg-elevated body so the hover
+   highlight is actually visible (unlike the WorkflowRunsPanel/TeamSessionPanel
+   rows which reuse --bg-elevated and are effectively invisible). */
+.stPopoverItem:hover {
+  background: var(--bg-surface);
+}
+
+.stPopoverItem:focus-visible {
+  outline: 2px solid var(--color-primary-pale, var(--color-primary));
+  outline-offset: -2px;
+}
+
+/* Status dot colors mirror ScheduleTaskModal.module.css so both lists read identically.
+   Redefined locally instead of composes to avoid cross-module coupling. */
+.stStatusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-secondary, #999);
+}
+
+.stStatus_active { background: var(--success-color, #52c41a); }
+.stStatus_running { background: var(--info-color, #1677ff); }
+.stStatus_paused { background: var(--warning-color, #faad14); }
+.stStatus_completed { background: var(--text-secondary, #999); }
+.stStatus_error { background: var(--error-color, #ff4d4f); }
+
+.stTaskName {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+/* Countdown: tabular-nums + fixed min-width so digit changes do not jitter the row width,
+   same trick as ActiveAgentsBar's .dur. */
+.stCountdown {
+  flex-shrink: 0;
+  min-width: 56px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* The nav-rail button hosts ScheduleIcon, which ships no width/height of its own —
+   the rail buttons rely on inline 20x20 SVGs, so constrain the icon here. */
+.stNavBtn svg {
+  width: 20px;
+  height: 20px;
+}

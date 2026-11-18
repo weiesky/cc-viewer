@@ -36,7 +36,7 @@ import ScratchTerminal from './ScratchTerminal';
 import { darkTerminalTheme, lightTerminalTheme, terminalFontFamily } from './terminalThemes';
 import { resizeImageIfNeeded } from '../../utils/imageResize';
 import UltraplanPanel, { readUltraplanPopoverSize, ultraplanOverlayInnerStyle } from './UltraplanPanel';
-import { AgentTeamIcon, UploadIcon, TrashIcon, ScheduleIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
+import { UploadIcon, TrashIcon, ScheduleIcon, ZapIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import ScheduleTaskModal from '../common/ScheduleTaskModal';
@@ -1884,7 +1884,7 @@ class TerminalPanel extends React.Component {
                         className={chrome.quickMenuRow}
                         onClick={() => this.setState(s => ({ quickSettingsExpanded: s.quickSettingsExpanded === 'agentteam' ? null : 'agentteam' }))}
                       >
-                        <span className={chrome.quickMenuRowIcon}><AgentTeamIcon /></span>
+                        <span className={chrome.quickMenuRowIcon}><ZapIcon /></span>
                         <span className={chrome.quickMenuLabel}>{t('ui.terminal.agentTeam')}</span>
                         <span className={chrome.quickMenuCaret}>▸</span>
                       </button>
@@ -2125,7 +2125,7 @@ class TerminalPanel extends React.Component {
                       onTouchEnd={(e) => this._vkTouchEnd(() => this.handlePresetSend(desc), e)}
                       title={desc}
                     >
-                      <AgentTeamIcon /><span className={styles.vkTeamLabel}>{name || desc}</span>
+                      <ZapIcon /><span className={styles.vkTeamLabel}>{name || desc}</span>
                     </button>
                   );
                 })}

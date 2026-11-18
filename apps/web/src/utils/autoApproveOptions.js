@@ -42,11 +42,11 @@ export function autoApproveSelectOptions(values, t) {
 // 与上方秒级档位不同的一套数值契约(持久化于 approvalModal.askAutoAnswerMinutes):
 //   null/缺省 = 不托管(默认) —— 持久化边界上由 ASK_AUTO_ANSWER_OFF 转换而来
 //   0         = 0 分钟,立即回答(无人值守流程)
-//   10/20/30  = 分钟数倒计时,到点服务端自动回答
+//   1/5/10    = 分钟数倒计时,到点服务端自动回答
 // ASK_AUTO_ANSWER_OFF 只是 UI 层 sentinel(antd Select / 级联菜单需要数值键),
 // 绝不写入 preferences.json —— 落盘一律 null。
 export const ASK_AUTO_ANSWER_OFF = -1;
-export const ASK_AUTO_ANSWER_OPTIONS = [0, 10, 20, 30, ASK_AUTO_ANSWER_OFF];
+export const ASK_AUTO_ANSWER_OPTIONS = [0, 1, 5, 10, ASK_AUTO_ANSWER_OFF];
 
 // 单个档位值 -> 显示文案;t 由调用方注入。
 export function askAutoAnswerValueLabel(v, t) {

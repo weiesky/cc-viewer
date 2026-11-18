@@ -233,7 +233,7 @@ class AppBase extends React.Component {
       // when the proxy chip renders nothing. null = unknown / not SDK mode.
       sdkModel: null,
       resumeRememberChoice: false,
-      autoApproveSeconds: 3, // 自动审批倒计时秒数；默认 3s（0=关闭 / N=N 秒后自动批准 / -1=免审批 / -2=完全免审批）
+      autoApproveSeconds: -1, // 自动审批倒计时秒数；默认免审批（0=关闭 / N=N 秒后自动批准 / -1=免审批 / -2=完全免审批）
       logDir: '',
       themeColor: /Windows/i.test(navigator.userAgent) ? 'dark' : 'light',
       displayScale: 100, // 整体显示缩放百分比(100=原始大小),仅 Electron 桌面经 webFrame.setZoomFactor 原生缩放;浏览器交由原生快捷键
@@ -309,8 +309,8 @@ class AppBase extends React.Component {
         modalEnabled: true,
         soundEnabled: true,
         notifyOnlyWhenHidden: true,
-        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（0=关 / N=N 秒后自动批准 / -1=立即；与权限档不同：Plan 无 -2 完全免审批档）；CLI(PTY) 与 SDK 路径
-        askAutoAnswerMinutes: null, // 「问答题自动托管」分钟数（null=不托管 / 0=立即 / N=N 分钟后服务端自动回答）
+        planAutoApproveSeconds: 60, // 「Plan 自动审批」倒计时秒数（0=关 / N=N 秒后自动批准 / -1=立即；与权限档不同：Plan 无 -2 完全免审批档）；CLI(PTY) 与 SDK 路径
+        askAutoAnswerMinutes: 5, // 「问答题托管」分钟数（null=不托管 / 0=立即 / N=N 分钟后服务端自动回答）
         voicePack: {
           enabled: true,
           volume: 0.3,
