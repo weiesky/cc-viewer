@@ -119,6 +119,58 @@ describe('/api/target-* write routes', { concurrency: false }, () => {
     assert.equal(res.json().fullPath, join(HOME, '.claude/skills/write-skill/notes.txt'));
   });
 
+  // Address-bar absolutePath branch: resolves a host absolute path against the
+  // navigation root, enforcing realpath containment and the read policy.
+  it('resolves an absolute path inside the navigation root to relPath + type', async () => {
+    const absDir = join(HOME, '.claude/skills/write-skill');
+    const absFile = join(userSkill, 'notes.txt');
+    const dirRes = await call(route('/api/target-resolve-path'), { body: { absolutePath: absDir }, query: targetQ() });
+    assert.equal(dirRes.status, 200, dirRes.body);
+    assert.equal(dirRes.json().relPath, '.claude/skills/write-skill');
+    assert.equal(dirRes.json().type, 'directory');
+    const fileRes = await call(route('/api/target-resolve-path'), { body: { absolutePath: absFile }, query: targetQ() });
+    assert.equal(fileRes.status, 200);
+    assert.equal(fileRes.json().relPath, '.claude/skills/write-skill/notes.txt');
+    assert.equal(fileRes.json().type, 'file');
+  });
+
+  it('resolves the navigation root itself to relPath "" + type directory', async () => {
+    const res = await call(route('/api/target-resolve-path'), { body: { absolutePath: HOME }, query: targetQ() });
+    assert.equal(res.status, 200, res.body);
+    assert.equal(res.json().relPath, '');
+    assert.equal(res.json().type, 'directory');
+  });
+
+  it('rejects an absolute path outside the navigation root', async () => {
+    const outside = join(PROJECT, 'some-file.txt');
+    writeFileSync(outside, 'x');
+    const res = await call(route('/api/target-resolve-path'), { body: { absolutePath: outside }, query: targetQ() });
+    assert.equal(res.status, 403);
+  });
+
+  it('rejects a non-existent absolute path', async () => {
+    const ghost = join(HOME, '.claude/skills/write-skill/ghost.txt');
+    const res = await call(route('/api/target-resolve-path'), { body: { absolutePath: ghost }, query: targetQ() });
+    assert.equal(res.status, 404);
+  });
+
+  it('rejects relative / empty / over-long absolutePath values', async () => {
+    for (const bad of ['rel/x', '', 'x'.repeat(5000)]) {
+      const res = await call(route('/api/target-resolve-path'), { body: { absolutePath: bad }, query: targetQ() });
+      assert.equal(res.status, 400, `absolutePath ${JSON.stringify(bad.slice(0, 20))} must be 400, got ${res.status}`);
+    }
+  });
+
+  it('rejects a read-denied absolute path under the navigation root', async () => {
+    // ~/.ssh inside the home navigation root is covered by the read policy's
+    // backstop — the resolve endpoint must not become an existence oracle.
+    const ssh = join(HOME, '.ssh');
+    mkdirSync(ssh, { recursive: true });
+    writeFileSync(join(ssh, 'id_rsa'), 'PRIVATE');
+    const res = await call(route('/api/target-resolve-path'), { body: { absolutePath: join(ssh, 'id_rsa') }, query: targetQ() });
+    assert.equal(res.status, 403);
+  });
+
   it('creates a file and a directory inside the target subtree', async () => {
     let res = await call(route('/api/target-create-file'), { body: { dirPath: '.claude/skills/write-skill', name: 'new.txt' }, query: targetQ() });
     assert.equal(res.status, 200, res.body);

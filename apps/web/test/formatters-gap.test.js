@@ -10,7 +10,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatSize, formatTimestamp } from '../src/utils/formatters.js';
+import { formatSize, formatTimestamp, formatMtime } from '../src/utils/formatters.js';
 
 describe('formatSize', () => {
   it('returns "0 B" for falsy byte counts (0, null, undefined, NaN)', () => {
@@ -65,5 +65,26 @@ describe('formatTimestamp', () => {
 
   it('accepts trailing precision beyond the 15-char prefix', () => {
     assert.equal(formatTimestamp('20260601_143005_123', false), '2026-06-01 14:30:05');
+  });
+});
+
+describe('formatMtime', () => {
+  it('returns "" for null / non-finite / non-positive inputs', () => {
+    assert.equal(formatMtime(null), '');
+    assert.equal(formatMtime(undefined), '');
+    assert.equal(formatMtime(NaN), '');
+    assert.equal(formatMtime('1234'), '');
+    assert.equal(formatMtime(0), '');
+    assert.equal(formatMtime(-1000), '');
+    assert.equal(formatMtime(Infinity), '');
+    assert.equal(formatMtime(1e20), ''); // beyond Date range → Invalid Date → ''
+  });
+
+  it('formats an epoch-ms timestamp as "YYYY-MM-DD HH:MM" in the local timezone', () => {
+    // new Date(y, m, d, h, min) uses the local timezone, so the expected
+    // string is timezone-stable — what changes across zones is the epoch ms,
+    // not the formatted output.
+    const ts = new Date(2026, 0, 15, 9, 5).getTime();
+    assert.equal(formatMtime(ts), '2026-01-15 09:05');
   });
 });

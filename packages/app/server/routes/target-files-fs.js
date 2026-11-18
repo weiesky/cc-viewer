@@ -180,6 +180,36 @@ function targetOpenTerminal(req, res, parsedUrl, isLocal, deps) {
 // ─── resolve to absolute path (for copy-path / attach-to-chat) ──────────────
 function targetResolvePath(req, res, parsedUrl, isLocal, deps) {
   withBody(req, res, parsedUrl, isLocal, deps, (parsed, scope) => {
+    // Address-bar absolute path branch: resolve a host absolute path against
+    // the navigation root, returning the navigation-root-relative relPath the
+    // browser navigates with. Existing { path } behavior is unchanged.
+    if (typeof parsed.absolutePath === 'string') {
+      const abs = parsed.absolutePath;
+      const isAbs = abs.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(abs);
+      if (!abs || abs.length > 4096 || /[\x00-\x1f]/.test(abs) || !isAbs) {
+        throw targetError(400, 'Invalid path');
+      }
+      let real;
+      // realpathSync.native returns the on-disk casing on case-insensitive
+      // filesystems (macOS APFS / Windows NTFS), matching how scope.rootReal
+      // was derived; the JS implementation would keep the input casing and
+      // make the containment check below reject legitimate in-root paths.
+      try { real = realpathSync.native(abs); } catch (err) { throw targetError(errnoToStatus(err), 'Path not found'); }
+      if (!insidePath(real, scope.rootReal)) throw targetError(403, 'Path outside navigation root');
+      // Match the read route's policy backstop (listTargetDirectory filters
+      // each entry through isReadAllowed): the resolve endpoint must not
+      // become an existence/type oracle for read-denied paths like ~/.ssh.
+      // The navigation root itself is exempt — it is already the user's
+      // visible anchor and may live outside the read-allowlist roots.
+      if (real !== scope.rootReal) {
+        const policy = isReadAllowed(real);
+        if (!policy.ok) throw targetError(403, 'Path not allowed');
+      }
+      const st = statSync(real);
+      const rel = real === scope.rootReal ? '' : real.slice(scope.rootReal.length + 1).split(/[\\/]/).join('/');
+      send(res, 200, { ok: true, fullPath: real, relPath: rel, type: st.isDirectory() ? 'directory' : 'file' });
+      return;
+    }
     const segments = parsed.path ? requiredTargetRelPath(parsed.path) : [];
     const full = segments.length ? join(scope.rootReal, ...segments) : scope.rootReal;
     send(res, 200, { ok: true, fullPath: full });

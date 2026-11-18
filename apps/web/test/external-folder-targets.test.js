@@ -89,7 +89,7 @@ describe('target-scoped file browser boundaries (menu/preview enabled, drag/uplo
     assert.match(browser, /setCurrentPath\(targetPath\)/);
     assert.match(browser, /targetInfo\?\.rootKind === 'home' \? '~'/);
     assert.match(browser, /setExpandedPaths\(new Set\(ancestorsOf\(targetPath\)\)\)/);
-    assert.match(browser, /dirRequests\.current\.get\(path\)/);
+    assert.match(browser, /dirRequests\.current\.get\(cacheKey\)/);
     assert.match(browser, /const entries = target \? data\.entries : data/);
     assert.match(browser, /targetPathRef\.current = data\.targetPath/);
     assert.match(browser, /const readOnly = isExternal/);

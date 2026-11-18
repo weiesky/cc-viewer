@@ -8,7 +8,10 @@ import { homedir, tmpdir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { bumpWorkspacesVersion, isReadAllowed } from '../lib/file-access-policy.js';
 import { isPathContained, validateImportDir, renameSyncWithRetry } from '../lib/file-api.js';
+import { normalizeSortParams, compareEntries } from '../lib/file-sort.js';
 import { reportSwallowed } from '../lib/error-report.js';
+import { isAdminReq } from '../lib/is-admin.js';
+import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
 import { viewRootOrReply } from '../lib/view-root.js';
 import { revealInOs, openTerminalAt } from '../lib/os-open.js';
 import { loadWorkspaces } from '../workspace-registry.js';
@@ -290,26 +293,44 @@ async function files(req, res, parsedUrl, isLocal, deps) {
   const cwd = _viewRootOrReply(req, res, parsedUrl);
   if (!cwd) return;
   const targetDir = join(cwd, reqPath);
+  // Address-bar / list-view / sort-driven listings all read sort+order here.
+  // Defaults preserve the historical "directories first, name asc" behavior.
+  const { sort, order } = normalizeSortParams(parsedUrl.searchParams);
   try {
     const entries = readdirSync(targetDir, { withFileTypes: true });
     const items = entries
       .filter(e => !deps.IGNORED_PATTERNS.has(e.name))
       .map(e => {
-        // Dirent.isDirectory() 不解引用 symlink —— 对指向目录的 symlink 也返回 false。
-        // 需要对 symlink 单独 statSync（follow link）才能拿到真实类型，否则前端会把
-        // symlink-to-dir 当成文件渲染，不可展开。断链时 fallback 到 file，避免单个
-        // 坏链接让整个目录返回 404。
+        // Dirent.isDirectory() does not dereference symlinks — a symlink pointing
+        // at a directory also returns false. A symlink needs its own statSync
+        // (following the link) to learn the real type, otherwise the client would
+        // render a symlink-to-dir as a file and refuse to expand it. Broken links
+        // fall back to 'file' so one bad entry cannot 404 the whole listing.
+        // Files and directories take their size/mtimeMs from the same stat call,
+        // avoiding a second syscall for symlinks.
         let type = e.isDirectory() ? 'directory' : 'file';
+        let stat = null;
         if (e.isSymbolicLink()) {
-          try { type = statSync(join(targetDir, e.name)).isDirectory() ? 'directory' : 'file'; }
+          try {
+            stat = statSync(join(targetDir, e.name));
+            type = stat.isDirectory() ? 'directory' : 'file';
+          }
           catch { type = 'file'; }
+        } else {
+          // Always stat so the list view and size/mtime sorts have data. A
+          // single failing entry must not 404 the whole listing — degrade to
+          // null metrics instead (broken symlink, EACCES race, etc.).
+          try { stat = statSync(join(targetDir, e.name)); }
+          catch (err) { if (err && err.code !== 'ENOENT') reportSwallowed('filesFs.entry.stat', err); }
         }
-        return { name: e.name, type };
+        return {
+          name: e.name,
+          type,
+          size: stat && type === 'file' ? stat.size : null,
+          mtimeMs: stat ? stat.mtimeMs : null,
+        };
       })
-      .sort((a, b) => {
-        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
+      .sort(compareEntries(sort, order));
     // 使用 git check-ignore 批量检测被 .gitignore 忽略的文件
     let gitIgnoredSet = new Set();
     try {
@@ -727,17 +748,59 @@ function resolvePath(req, res, parsedUrl, isLocal, deps) {
       return;
     }
     try {
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
+      // Address-bar absolute path branch: { absolutePath } resolves a host
+      // absolute path against the viewed root and returns the project-relative
+      // relPath the browser navigates with. The existing { path } branch is
+      // unchanged (pure string join; never stats, never rejects missing paths).
+      if (typeof parsed.absolutePath === 'string') {
+        // SECURITY: the absolute branch is a host-filesystem existence oracle
+        // (it stats the path and distinguishes 404 / 400-outside / 403-EACCES).
+        // Hold it to the same bar as /api/target-resolve-path — admin + a
+        // same-origin browser request — because the global
+        // Access-Control-Allow-Origin: * would otherwise let any web page
+        // probe the loopback server for arbitrary host paths.
+        if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'forbidden' }));
+          return;
+        }
+        const abs = parsed.absolutePath;
+        if (abs.length === 0 || abs.length > 4096 || /[\x00-\x1f]/.test(abs) || !isAbsoluteHostPath(abs)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid path' }));
+          return;
+        }
+        let real;
+        // realpathSync.native returns the on-disk casing on case-insensitive
+        // filesystems (macOS APFS / Windows NTFS); the JS implementation keeps
+        // the input casing, which would make the containment check below
+        // reject legitimate in-root paths spelled with different casing.
+        try { real = realpathSync.native(abs); } catch (err) {
+          const status = err && err.code === 'ENOENT' ? 404 : (err && err.code === 'EACCES' ? 403 : 400);
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: status === 404 ? 'Path not found' : 'Invalid path' }));
+          return;
+        }
+        const realCwd = realpathSync.native(cwd);
+        if (real !== realCwd && !real.startsWith(realCwd + sep)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
+          return;
+        }
+        const st = statSync(real);
+        const relPath = real === realCwd ? '' : real.slice(realCwd.length + 1).split(sep).join('/');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, fullPath: real, relPath, type: st.isDirectory() ? 'directory' : 'file' }));
+        return;
+      }
       const relPath = parsed.path || '';
       if (relPath.startsWith('/') || relPath.includes('..')) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      // Resolve a project-relative path against the same viewed root used by
-      // reveal/open. Registered projects and live instances use the shared
-      // resolver, so same-name projects cannot silently fall back to the bound cwd.
-      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
-      if (!cwd) return;
       const fullPath = relPath ? join(cwd, relPath) : cwd;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, fullPath }));
@@ -746,6 +809,13 @@ function resolvePath(req, res, parsedUrl, isLocal, deps) {
       res.end(JSON.stringify({ error: err.message }));
     }
   });
+}
+
+// Host-absolute path probe for the address-bar branch above: POSIX (/foo) and
+// Windows drive-letter (C:\foo / C:/foo) spellings. UNC (\\server\share) is
+// refused — the browser has no business resolving network shares.
+function isAbsoluteHostPath(p) {
+  return p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p);
 }
 
 // Lightweight existence probe for the chat markdown code-span feature: the web

@@ -43,6 +43,21 @@ const I18N_KEYS = [
   'ui.fileBrowserModal.loadFailed',
   'ui.fileBrowserModal.gitIgnored',
   'ui.fileBrowserModal.upload',
+  'ui.fileBrowserModal.back',
+  'ui.fileBrowserModal.forward',
+  'ui.fileBrowserModal.editPath',
+  'ui.fileBrowserModal.addressPlaceholder',
+  'ui.fileBrowserModal.addressInvalid',
+  'ui.fileBrowserModal.addressNotFound',
+  'ui.fileBrowserModal.viewGrid',
+  'ui.fileBrowserModal.viewList',
+  'ui.fileBrowserModal.sortByName',
+  'ui.fileBrowserModal.sortBySize',
+  'ui.fileBrowserModal.sortByMtime',
+  'ui.fileBrowserModal.sortAsc',
+  'ui.fileBrowserModal.sortDesc',
+  'ui.fileBrowserModal.filterPlaceholder',
+  'ui.fileBrowserModal.clearFilter',
 ];
 
 // Slice one handler/component body out of a source file so substring checks
@@ -177,8 +192,8 @@ describe('FileBrowserModal wiring contract', () => {
   it('swallowed fetches report via reportSwallowed', () => {
     const reports = [...FILE_BROWSER_MODAL.matchAll(/reportSwallowed\('([^']+)'/g)].map(m => m[1]);
     assert.deepEqual(reports.sort(),
-      ['fileBrowserGrid', 'fileBrowserTreeNode', 'fileBrowserTreeRoot'],
-      'tree-node, tree-root and grid fetches must all call reportSwallowed');
+      ['fileBrowserAddress', 'fileBrowserAddress', 'fileBrowserAddress', 'fileBrowserGrid', 'fileBrowserTreeNode', 'fileBrowserTreeRoot'],
+      'tree-node, tree-root, grid and address-bar (relative + absolute + locate branches) fetches must all call reportSwallowed');
   });
   it('resets cached directory data when project or instance changes', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('const prevViewScope = useRef(viewScope)'),
@@ -197,6 +212,143 @@ describe('FileBrowserModal wiring contract', () => {
       'cache epoch bump missing (refresh + reopen)');
     assert.ok(FILE_BROWSER_MODAL.includes("t('ui.fileExplorer.refresh')"),
       'toolbar must expose a refresh button reusing ui.fileExplorer.refresh');
+  });
+
+  it('wires a back/forward history stack via utils/fileBrowserHistory', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes("from '../../utils/fileBrowserHistory'"),
+      'the history helpers must be imported from the pure-function module');
+    for (const token of [
+      'createHistory', 'pushPath', 'historyBack', 'historyForward', 'canBack', 'canForward', 'remapAll',
+    ]) {
+      assert.ok(FILE_BROWSER_MODAL.includes(token), `history helper ${token} must be used`);
+    }
+    // The toolbar must render both buttons and gate them on the stack.
+    assert.ok(FILE_BROWSER_MODAL.includes('disabled={!canBack(historyState)}'),
+      'back button must be disabled at the start of the stack');
+    assert.ok(FILE_BROWSER_MODAL.includes('disabled={!canForward(historyState)}'),
+      'forward button must be disabled at the end of the stack');
+    // Both keyboard bindings (Alt+←/→ and Cmd/Ctrl+[ / ]).
+    assert.ok(FILE_BROWSER_MODAL.includes("e.altKey && e.key === 'ArrowLeft'"),
+      'Alt+ArrowLeft must trigger goBack');
+    assert.ok(FILE_BROWSER_MODAL.includes("e.altKey && e.key === 'ArrowRight'"),
+      'Alt+ArrowRight must trigger goForward');
+    assert.ok(FILE_BROWSER_MODAL.includes("e.code === 'BracketLeft'"),
+      'Cmd/Ctrl+[ must trigger goBack (e.code, not e.key, for non-US layouts)');
+    assert.ok(FILE_BROWSER_MODAL.includes("e.code === 'BracketRight'"),
+      'Cmd/Ctrl+] must trigger goForward');
+  });
+
+  it('reseeds history on view scope change, modal reopen and target landing', () => {
+    // viewScope reset must rebuild the stack from the root.
+    const scopeBlock = bodyOf(FILE_BROWSER_MODAL, 'if (prevViewScope.current === viewScope) return;');
+    assert.ok(scopeBlock.includes('commitHistory(createHistory('),
+      'viewScope changes must reset the history stack');
+    // Reopen reset (the prevOpen effect).
+    const reopenBlock = bodyOf(FILE_BROWSER_MODAL, 'if (open && !prevOpen.current) {');
+    assert.ok(reopenBlock.includes('commitHistory(createHistory('),
+      'reopening the modal must reset the history stack');
+    // Target mode seeds the stack with the resolved targetPath so back() from
+    // the landing directory refuses to go further instead of walking to ''.
+    const targetBlock = bodyOf(FILE_BROWSER_MODAL, 'if (target && !initialTargetRef.current) {');
+    assert.ok(targetBlock.includes('commitHistory(createHistory(targetPath))'),
+      'target mode must seed history with targetPath (not push)');
+  });
+
+  it('mutations remap the whole history stack (not just the current entry)', () => {
+    const mutBlock = bodyOf(FILE_BROWSER_MODAL, 'const handleAfterMutation = useCallback((oldPath, newPath) => {');
+    assert.ok(mutBlock.includes('commitHistory(remapAll(historyStateRef.current'),
+      'rename/delete must remap every history entry, otherwise back/forward lands on stale paths');
+  });
+
+  it('address bar: edit-in-place input, absolute-path resolve endpoint, error hints', () => {
+    // Editing state + input.
+    assert.ok(FILE_BROWSER_MODAL.includes('addressEditing'),
+      'addressEditing state missing');
+    assert.ok(FILE_BROWSER_MODAL.includes("t('ui.fileBrowserModal.addressPlaceholder')"),
+      'address input must use the placeholder i18n key');
+    // Both error strings appear as literal t() calls (the i18n-keys contract
+    // scan relies on the literal form).
+    assert.ok(FILE_BROWSER_MODAL.includes("t('ui.fileBrowserModal.addressInvalid')"),
+      'invalid-path error must be a literal t() call');
+    assert.ok(FILE_BROWSER_MODAL.includes("t('ui.fileBrowserModal.addressNotFound')"),
+      'not-found error must be a literal t() call');
+    // The breadcrumb bar must be double-clickable.
+    assert.ok(FILE_BROWSER_MODAL.includes('onDoubleClick={handleCrumbBarDoubleClick}'),
+      'crumb bar must enter edit mode on double-click');
+    // Absolute paths resolve through the resolve endpoints, not the listing endpoint.
+    assert.ok(FILE_BROWSER_MODAL.includes("withTargetParams('/api/target-resolve-path', target)"),
+      'target mode must resolve absolute paths via /api/target-resolve-path');
+    assert.ok(FILE_BROWSER_MODAL.includes("'/api/resolve-path'"),
+      'project mode must resolve absolute paths via /api/resolve-path');
+    assert.ok(FILE_BROWSER_MODAL.includes('absolutePath: absPath'),
+      'the resolve request body must carry absolutePath');
+    // Ctrl/Cmd+L opens the address editor.
+    assert.ok(FILE_BROWSER_MODAL.includes("e.key === 'l' || e.key === 'L'"),
+      'Ctrl/Cmd+L must open the address bar');
+    // IME composition guard so CJK input does not submit prematurely.
+    assert.ok(FILE_BROWSER_MODAL.includes('e.isComposing || e.keyCode === 229'),
+      'keyboard handlers must skip IME composition');
+    // Esc inside the address input must not bubble up and close the modal.
+    const inputBlock = bodyOf(FILE_BROWSER_MODAL, 'onKeyDown={(e) => {', 'onBlur=');
+    assert.ok(inputBlock.includes("e.stopPropagation()"),
+      'Esc inside the address input must stopPropagation so the modal stays open');
+  });
+
+  it('history-aware keyboard shortcuts guard against nested modals and editable targets', () => {
+    // Editable-target guard so typing in an input never triggers navigation.
+    assert.ok(FILE_BROWSER_MODAL.includes('isEditableTarget'),
+      'editable-target guard missing');
+    // activeElement must belong to this modal's wrap (nested modals stay quiet).
+    assert.ok(FILE_BROWSER_MODAL.includes('wrapRef'),
+      'wrapRef must be threaded so shortcut scope can be checked');
+    assert.ok(FILE_BROWSER_MODAL.includes('wrap.contains(active)'),
+      'shortcut handler must require the active element to live inside the wrap');
+  });
+
+  it('wires list/grid view toggle and server-driven sorting', () => {
+    // Prefs module drives the per-directory memory.
+    assert.ok(FILE_BROWSER_MODAL.includes("from '../../utils/fileBrowserPrefs'"),
+      'view/sort prefs must come from fileBrowserPrefs');
+    for (const token of ['loadDirPrefs', 'saveDirPrefs', 'dirCacheKey']) {
+      assert.ok(FILE_BROWSER_MODAL.includes(token), `prefs helper ${token} missing`);
+    }
+    // Sort params reach the listing endpoint (non-default orders only, so the
+    // default name/asc keeps sharing the tree's cache key).
+    assert.ok(FILE_BROWSER_MODAL.includes('&sort=${sort}&order=${order}'),
+      'sort/order must be appended to the listing query');
+    // GridCell carries the list variant + column header triggers handleColumnSort.
+    assert.ok(FILE_BROWSER_MODAL.includes("variant={viewMode === 'list' ? 'list' : 'grid'}"),
+      'GridCell must be told which variant to render');
+    assert.ok(FILE_BROWSER_MODAL.includes('handleColumnSort'),
+      'column header must route through handleColumnSort');
+    // aria-pressed exposes the active view toggle button.
+    assert.ok(FILE_BROWSER_MODAL.includes('aria-pressed={viewMode === \'grid\'}'),
+      'view toggle must expose aria-pressed');
+    // formatSize / formatMtime render the list columns.
+    assert.ok(FILE_BROWSER_MODAL.includes('formatSize(item.size)'),
+      'list view must render formatted size');
+    assert.ok(FILE_BROWSER_MODAL.includes('formatMtime(item.mtimeMs)'),
+      'list view must render formatted mtime (mtimeMs field name, not mtime)');
+  });
+
+  it('wires the current-directory filter (pure frontend, with highlight + clear)', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes("from '../../utils/fileBrowserFilter'"),
+      'filter helpers must come from fileBrowserFilter');
+    for (const token of ['matchesFilter', 'splitMatch', 'filterText', 'visibleEntries', 'highlightQuery']) {
+      assert.ok(FILE_BROWSER_MODAL.includes(token), `filter wiring ${token} missing`);
+    }
+    // Deferred filter input so typing does not block the grid re-render.
+    assert.ok(FILE_BROWSER_MODAL.includes('useDeferredValue(filterText)'),
+      'filter input must be deferred to keep typing responsive');
+    // Esc inside the filter input clears the text without closing the modal.
+    assert.ok(FILE_BROWSER_MODAL.includes("if (e.key === 'Escape' && filterText) {"),
+      'filter input must clear on Esc only when there is text (empty Esc falls through to close the modal)');
+    assert.ok(/if \(e\.key === 'Escape' && filterText\) \{\s*\n\s*e\.preventDefault\(\);\s*\n\s*e\.stopPropagation\(\);/.test(FILE_BROWSER_MODAL),
+      'Esc inside the filter input must stopPropagation so the modal stays open');
+    // Empty state falls back to the shared no-results string when a filter
+    // hides everything (entries non-empty but visibleEntries is).
+    assert.ok(FILE_BROWSER_MODAL.includes("t('ui.search.noResults')"),
+      'filter empty state must reuse ui.search.noResults');
   });
 });
 
@@ -455,7 +607,7 @@ describe('modal upload wiring (button + zoned drag-drop)', () => {
     const plains = FILE_BROWSER_MODAL.split("dataTransfer.setData('text/plain', childPath)").length - 1;
     assert.equal(plains, 2, 'row and cell onDragStart must both carry the fromPath as text/plain');
     const draggableCount = (FILE_BROWSER_MODAL.match(/draggable=\{!readOnly\}/g) || []).length;
-    assert.equal(draggableCount, 2, 'row and cell elements must be draggable only outside read-only targets');
+    assert.equal(draggableCount, 3, 'tree row, grid cell and list row must each be draggable only outside read-only targets');
     for (const attr of ['onDragStart={readOnly ? undefined : handleDragStartRow}', 'onDragStart={readOnly ? undefined : handleDragStartCell}',
       'onDrop={readOnly ? undefined : handleDropRow}', 'onDrop={isDir && !readOnly ? handleDropCell : undefined}']) {
       assert.ok(FILE_BROWSER_MODAL.includes(attr), `missing JSX wiring: ${attr}`);

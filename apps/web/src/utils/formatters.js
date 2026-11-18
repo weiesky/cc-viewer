@@ -38,6 +38,19 @@ export function formatPromptNavTime(ts) {
   } catch { return ''; }
 }
 
+// File-browser list view: render an epoch-milliseconds mtime as a short local
+// "YYYY-MM-DD HH:MM" stamp. Null / non-finite inputs return '' (the caller
+// renders a placeholder for directories and failed stats).
+export function formatMtime(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return '';
+  try {
+    const d = new Date(ms);
+    if (isNaN(d.getTime())) return '';
+    const hm = `${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+    return `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())} ${hm}`;
+  } catch { return ''; }
+}
+
 // Single source of truth for the context-fullness severity color, shared by the
 // desktop header bar, the mobile header tag, and the cache popover so all three
 // surfaces always agree for the same percentage.
