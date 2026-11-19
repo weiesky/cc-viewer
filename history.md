@@ -2,9 +2,17 @@
 
 ## Unreleased
 
+- feat(web): **SDK 活跃代理面板支持浏览器刷新恢复** — SDK 模式的活跃代理（subAgent/teammate）面板状态经 localStorage 按 sessionId 持久化（LRU 上限 10、TTL 24h），浏览器刷新后从检查点恢复显示；种子恢复为 seed-only，服务器权威快照到达后再 reconcile，空快照保留旧面板不再误清。同时修复 boot 首次激活把 WS replay 刚恢复的面板重置掉的问题（boot 不再当视图切换处理），并覆盖 `sdkMode` 水合窗口：以 tracker 实际状态（`hasSdkState()`）为门禁防止 boot 期 hook 路径误清已恢复的面板，sdkMode 翻 true 后 `restoreFromStorage` 在持有未验证种子时重新发布以恢复显示。Coverage: `sdkTaskTracker-persist.test.js`, `chat-active-agents-wiring.test.js`。
+
+## 1.9.33
+
 - fix(server): **自更新重启保留 ACCESS_TOKEN，已打开页面平滑恢复** — 自更新重启时把当前 token 经 `restart-config.json`（0600，helper 读入内存即删）交接给新进程（env `CCV_ACCESS_TOKEN`），新进程仅在严格 32 位小写 hex 校验通过时采用、模块加载即读即删 env、缺失/非法回退随机；不写 `preferences.json`，手动重启仍轮换。仅自更新重启生效（首次由旧版本发起的更新除外）。Coverage: `access-token.test.js`, `server-access-token-env.test.js`, `restart-helper.test.js`。
 
+## 1.9.32
+
 - feat(web+server): **文件浏览器导航与视图增强** — 弹窗文件浏览器（FileBrowserModal）新增前进/后退历史（Alt+←/→、Cmd/Ctrl+[/]）、地址栏（双击面包屑空白 / Ctrl/Cmd+L 编辑，支持相对与绝对路径、文件路径定位并预览）、列表/网格视图切换（每目录记忆）、按名称/大小/修改时间排序（列表列头可点击，目录始终置顶）、当前目录文件名过滤（输入即时过滤并高亮命中）。`/api/files` 与 `/api/target-files` 新增 `size`/`mtimeMs` 字段和 `?sort=&order=` 参数（不传保持现有行为）；`/api/resolve-path` 与 `/api/target-resolve-path` 新增 `absolutePath` 分支（admin + same-origin 门禁，realpath + containment 校验）。Coverage: `fileBrowserHistory.test.js`, `fileBrowserPrefs.test.js`, `fileBrowserFilter.test.js`, `formatters-gap.test.js`, `file-sort-lib.test.js`, `api-files-fs.test.js`, `api-target-files.test.js`, `api-target-files-fs.test.js`, `file-browser-modal.test.js`。
+
+## 1.9.31
 
 - feat(web): **定时任务侧边栏快捷列表** — 左侧导航栏新增时钟图标，hover/click 弹出等待执行的任务列表（内容预览 + 实时倒计时），点击某行打开定时任务弹层并自动定位（选中 + 滚动）到该任务。数据经 SSE 自动刷新。Coverage: `schedule-nav-button.test.js`。
 
@@ -12,11 +20,15 @@
 
 - fix(web): **UI 细节修复** — 定时任务弹层 prompt 输入框去除左右多余出血；快捷指令图标从 AgentTeam 双人形改为闪电；问答题托管"0 分钟"改为"模型自主决策"；代理热切换 chip 默认透明、hover 才显示背景；移动端自定义专家编辑弹窗隐藏左侧文档面板。
 
+## 1.9.30
+
 - feat(web+server): **持久记忆文件夹改为应用内文件浏览器打开** — 缓存面板「持久记忆」区的文件夹图标改为在内置 FileBrowserModal 中打开项目 memory 目录（根目录即 memory 目录），不再调起 OS 资源管理器；远程/无 GUI 服务器也可用。目录不存在时自动创建（与原 OS-open 行为一致）。Coverage: `api-target-files.test.js`, `external-folder-targets.test.js`。
 
 - feat(web): **概念文档弹窗标题新增「复制 Markdown」按钮** — UltraPlan、Tools、CustomUltraplanExpert 等 ConceptHelp 弹窗与系统提示词「参数文档」弹窗的标题旁出现小复制图标，点击把该文档的 markdown 原文写入剪贴板。LAN HTTP 场景经 `copyTextToClipboard` 兜底。Coverage: `copy-markdown-button.test.js`。
 
 - fix(server): **应用内自更新在会 302 的 npm 镜像上不再失败** — 下载改为 `redirect: 'follow'`,安装包完整性校验不变。Coverage: `update-job.test.js`。
+
+## 1.9.29
 
 - fix(web): **活跃代理卡片显示错位/多计修复** — (1) `deriveActiveAgents` 不再统计无 `promptSnippet` 的 agent task（防御性过滤：SDK schema 中 prompt 为可选字段，缺失时视为非真实 Agent 派生）；(2) `buildAgentToolUseMap` 扩展为索引整个 transcript 中的 Agent/Task tool_use（而非仅 mainAgent 行），teammate 派生的嵌套 subagent 现在能 join 到真实名字而非回落到短 description（之前形如 "Read X" 的无名行）。Coverage: `activeAgents.test.js`。
 
@@ -28,15 +40,23 @@
 
 - feat(web): **选中助手回复文字 →「添加到对话」引用 chip** — 在助手回复气泡内选中一段文字（正文/表格/代码均可）会浮出「添加到对话」按钮，点击后把选中文本作为引用 chip 插入输入框上方（可删除、点击预览全文）；发送时该引用以 `> ` 引用块拼在用户消息前一并发给 agent。slash 命令（如 `/clear`）时不拼接引用以免破坏命令识别；多行引用经 bracketed-paste 发送避免 PTY 把换行当提交。Coverage: `chat-quote-i18n.test.js`.
 
+## 1.9.28
+
 - feat(web): **`--sdk` 活跃 SubAgent/Teammate 浮条改为可折叠卡片列表** — 对话面板右上角浮层由头像条改为标题 + 数量 + 行列表（状态点 / 名称 / 当前工具 / 耗时）；移除 (ALL) 与点击头像过滤对话；有活跃代理即显示、结束自动消失，与角色筛选互斥；WS 重连后保留当前工具标签且不重置已运行耗时。Coverage: `active-agents-bar.test.js`, `chat-active-agents-wiring.test.js`, `activeAgents.test.js`, `sdkTaskTracker.test.js`, `new-ui-i18n.test.js`.
 
 - fix(web): **SDK 模式代理热切换隐藏 Teammate 角色** — `ccv --sdk` 无 PTY、无法唤起 Teammate，角色分工区与其徽章在该模式下不再渲染 Teammate 行，仅保留主 Agent / 子 Agent；PTY 模式行为不变。
 
 - fix(server): **WS-mux 冷加载背压卡死修复（会话区空白）** — 冷加载历史经 WS-mux 推送时触发队列上限，连接以 1011 关闭、页面收不到 load_end、刷新后仍空白。重构背压泵与生产者为信用式逐帧背压，修复大会话/慢链路下刷新后聊天区不显示；压缩 SSE 路径冷加载不再因 drain 等待卡满超时。Coverage: `ws-mux-backpressure.test.js`, `events-v3-cold-backpressure.test.js`, `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`, `wire-compress.test.js`.
 
+- style(web): **统一 Git 变更 / 文件浏览器刷新按钮样式** — 两处头部刷新按钮从自绘 SVG 换成与「上下文消耗」同款的 antd text 小按钮 + ReloadOutlined，压缩至 16×16 贴合 11px 标题栏；点击后无限旋转 loading 直到刷新完成（仅手动点击触发）。Coverage: `icon-svg.test.js`。
+
+## 1.9.27
+
 - feat(web): **GIT 变更面板文件与文件夹支持拖拽到终端或对话** — GIT 变更面板（工作树变更与本地未推送 commit）中的文件/文件夹可拖入终端追加转义路径（不发送回车），或拖入对话输入框作为附件，行为与文件浏览器一致；拖拽未推送 commit 行本身则传入该 commit id；重命名/复制条目因无有效路径不可拖。文件行右键菜单补齐「添加到对话 / 插入路径到对话」，提供键盘可达的等价能力。Coverage: `file-drag-drop.test.js`.
 
 - fix(web+server): **自动审批/自动托管推进后弹窗不关闭修复** — 服务端实质推进后，客户端待审批/待回答弹窗与状态可靠推进为已完成；修复 instant 档下 pending 与 resolved 帧同 tick 连发时因 React 批处理读到未提交状态而漏清，并让带 id 的审批终态帧绕过视图收窄全量广播。Coverage: `plan-auto-approve-runtime.test.js`, `ask-flow-controller.test.js`, `ws-instance-isolation.test.js`, `sdk-plan-approval-guard.test.js`.
+
+## 1.9.26
 
 - feat(web+server): **新增「完全免审批」权限自动审批档位（-2）** — 到达即放行且解除 `npm publish` 硬闸（含 bypassPermissions 模式），仅建议隔离容器使用；任意入口选择该档统一弹 danger 确认（默认聚焦取消），快捷菜单权限行补 (?) 帮助说明两档差异并红色标注；Plan 自动审批不提供该档。Coverage: `auto-approve.test.js`, `sdk-manager-auto-approve.test.js`, `sdk-manager-query.test.js`, `api-ask-perm-extra.test.js`, `branch-routes-ask-perm.test.js`, `auto-approve-options.test.js`, `plan-auto-approve-runtime.test.js`, `ask-auto-answer-menu.test.js`, `quick-settings-i18n.test.js`, `full-auto-approve-wiring.test.js`.
 
@@ -51,6 +71,8 @@
 - feat(web+server): **音频文件支持在线预览** — MP3/WAV/OGG/OGA/M4A/AAC/FLAC/Opus 经专用流式路由提供单区间 Range(206/416/304/If-Range)与正确 MIME,前端原生 `<audio>` 播放、可拖动进度,不支持编码或播放失败时提供下载回退。Coverage: `audio-stream.test.js`, `api-audio-stream.test.js`, `audio-preview.test.js`, `preview-kind.test.js`, `preview-wiring.test.js`.
 
 - fix(sdk+web): **慢上游提示正确跟随请求生命周期** — 客户端断连和响应转发异常会按 requestId 结束提示；WS 重连或切回视图时恢复仍在等待的提示，已完成的请求不再残留。Coverage: `proxy-slow-upstream.test.js`, `slow-upstream-lifecycle.test.js`, `slow-upstream-replay.test.js`.
+
+## 1.9.25
 
 - feat(update): **CLI npm 一键更新与重启** — 下载显示真实字节进度并校验安装包，用户确认后安装并后台重启，恢复原工作目录与启动参数；失败时恢复原服务并显示诊断，检测到其他实例时提示先退出。Coverage: `update-job.test.js`, `update-routes.test.js`, `restart-helper.test.js`, `update-instances.test.js`, `update-modal.test.js`.
 

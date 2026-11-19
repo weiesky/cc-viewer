@@ -87,6 +87,10 @@ describe('slow-upstream terminal-WS replay', () => {
     const b = sdk.listSdkSessions().find(s => s.cwd === '/work/slow-b');
     const reconnected = await connect(`/ws/terminal?project=slow-a&instance=${encodeURIComponent(a.instanceKey)}`);
     await waitFor(() => reconnected.messages.some(m => m.type === 'state'), 'reconnect replay complete');
+    // The state frame and the slow-upstream replay are sent in the same connection
+    // handler but arrive as separate WS messages; wait for the replay explicitly
+    // to avoid a race where the assertion runs before the replay arrives.
+    await waitFor(() => reconnected.messages.some(m => m.type === 'sdk-slow-upstream' && m.requestId === 'sq-replay-a'), 'slow-a replay');
     const replayed = reconnected.messages.filter(m => m.type === 'sdk-slow-upstream');
     assert.deepEqual(replayed.map(m => m.requestId), ['sq-replay-a']);
     assert.ok(replayed[0].waitingMs >= 30000, 'replay preserves elapsed waiting time');
@@ -95,9 +99,16 @@ describe('slow-upstream terminal-WS replay', () => {
     proxyStats.emitSlowUpstream({ type: 'resolved', requestId: 'sq-replay-a', cwd: '/work/slow-a', instanceKey: a.instanceKey });
     const afterResolved = await connect(`/ws/terminal?project=slow-a&instance=${encodeURIComponent(a.instanceKey)}`);
     await waitFor(() => afterResolved.messages.some(m => m.type === 'state'), 'post-resolution replay complete');
+    // Give the connection handler a tick to deliver any replay that might race
+    // with the state frame (a settled request must NOT be replayed).
+    await new Promise(resolve => setTimeout(resolve, 50));
     assert.equal(afterResolved.messages.filter(m => m.type === 'sdk-slow-upstream').length, 0, 'a settled request is not replayed');
     const other = await connect(`/ws/terminal?project=slow-b&instance=${encodeURIComponent(b.instanceKey)}`);
     await waitFor(() => other.messages.some(m => m.type === 'state'), 'second instance replay complete');
+    // The state frame and the slow-upstream replay are sent in the same connection
+    // handler but arrive as separate WS messages; wait for the replay explicitly
+    // to avoid a race where the assertion runs before the replay arrives.
+    await waitFor(() => other.messages.some(m => m.type === 'sdk-slow-upstream' && m.requestId === 'sq-replay-b'), 'slow-b replay');
     assert.deepEqual(other.messages.filter(m => m.type === 'sdk-slow-upstream').map(m => m.requestId), ['sq-replay-b']);
   });
 });

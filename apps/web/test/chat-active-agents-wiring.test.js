@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const JSX = readFileSync(join(__dirname, '..', 'src', 'components', 'chat', 'ChatView.jsx'), 'utf-8');
 const CSS = readFileSync(join(__dirname, '..', 'src', 'components', 'chat', 'ChatView.module.css'), 'utf-8');
+const APPBASE = readFileSync(join(__dirname, '..', 'src', 'AppBase.jsx'), 'utf-8');
 
 describe('ChatView active-agents wiring contract', () => {
   it('imports the bar but NOT the removed pure helpers / task snapshot', () => {
@@ -116,5 +117,21 @@ describe('ChatView active-agents wiring contract', () => {
     assert.ok(split, '.splitContainer rule exists');
     assert.match(split[1], /overflow-x:\s*auto/, 'horizontal scroll on overflow');
     assert.match(split[1], /overflow-y:\s*hidden/, 'vertical overflow still hidden');
+  });
+
+  it('boot first-activation preserves the SDK tracker (refresh-restore survives)', () => {
+    // Regression pin for the double-refresh bug: the boot activation runs AFTER
+    // the terminal-WS replay (restore + authoritative snapshot). If _coldActivate
+    // called _syncTaskStoreForChannel without preserveSdkTracker, the deferred
+    // boot reset would blank the just-restored panel and the next live frame
+    // would delete the persisted checkpoint.
+    assert.ok(/_syncTaskStoreForChannel\(ch, \{ preserveSdkTracker:/.test(APPBASE),
+      '_coldActivate passes preserveSdkTracker');
+    assert.ok(/preserveSdkTracker:\s*reason === 'boot' && !hadRenderedChannel/.test(APPBASE),
+      'preserve only on boot first-activation, not on view switches');
+    // The sync helper must honour the flag in SDK mode.
+    assert.ok(/preserveSdkTracker = false/.test(APPBASE), 'preserveSdkTracker defaults to false');
+    assert.ok(/if \(!preserveSdkTracker\) resetSdkTaskTrackerForView\(\)/.test(APPBASE),
+      'SDK reset skipped when preserveSdkTracker is set');
   });
 });

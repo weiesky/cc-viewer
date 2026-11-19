@@ -19,7 +19,7 @@ import { publish as publishWorkflowUpdate } from './utils/workflowStore';
 import { publishScheduledTaskEvent } from './utils/scheduledTaskEvents';
 import { reasonLabel } from './utils/scheduleDescription';
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
-import { clear as clearSdkTaskTracker, resetForView as resetSdkTaskTrackerForView } from './utils/sdkTaskTracker';
+import { clear as clearSdkTaskTracker, resetForView as resetSdkTaskTrackerForView, hasSdkState as sdkTaskTrackerHasState } from './utils/sdkTaskTracker';
 import { reportSwallowed } from './utils/errorReport';
 import { shouldWipeApprovalDismissal } from './utils/approvalDismissal';
 import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
@@ -2462,7 +2462,11 @@ class AppBase extends React.Component {
     }
     // 只有在无缓存时才显示 loading 遮罩
     if (!plan.hasCache) this._commitChannel(ch, { fileLoading: true, fileLoadingCount: 0, fileLoadingBytes: null });
-    this._syncTaskStoreForChannel(ch);
+    // Boot first-activation (no previously rendered channel, reason 'boot'):
+    // preserve the SDK tracker so the browser-refresh restore that landed via
+    // the WS replay isn't wiped. Genuine view switches (reason 'activate',
+    // warm paths, or a switch to a different rendered channel) still reset.
+    this._syncTaskStoreForChannel(ch, { preserveSdkTracker: reason === 'boot' && !hadRenderedChannel });
   }
 
   /** Warm switch: the channel is committed, fresh and connected — swap its
@@ -2608,8 +2612,11 @@ class AppBase extends React.Component {
 
   /** Task checklist follows the rendered scope: republish the channel's last
    *  known snapshot (its own connect-time replay will refresh it), or clear
-   *  when it has none — the departing project's checklist must not linger. */
-  _syncTaskStoreForChannel(ch) {
+   *  when it has none — the departing project's checklist must not linger.
+   * `preserveSdkTracker` (boot only): skip the SDK tracker reset so a
+   * browser-refresh restore that already landed via the WS replay is not
+   * wiped by the deferred boot activation (review: double-refresh). */
+  _syncTaskStoreForChannel(ch, { preserveSdkTracker = false } = {}) {
     try {
       // SDK mode: the hook-driven SSE snapshot is always empty, so replaying /
       // clearing it here would wipe the checklist the sdkTaskTracker maintains.
@@ -2617,7 +2624,17 @@ class AppBase extends React.Component {
       // switching to a workspace with no task activity would leave the previous
       // workspace's checklist on screen indefinitely — reset it on activation
       // (review P2-1). The new owner's first frame re-seeds via the owner branch.
-      if (this.state.sdkMode) { resetSdkTaskTrackerForView(); return; }
+      // Boot first-activation is NOT a view switch: the WS replay (restore +
+      // authoritative snapshot) already ran, so resetting here would blank the
+      // panel and let the next live frame delete the persisted checkpoint.
+      if (this.state.sdkMode) { if (!preserveSdkTracker) resetSdkTaskTrackerForView(); return; }
+      // Boot-hydration guard (browser refresh): sdkMode starts false and only
+      // flips when /api/cli-mode resolves, so this boot activation can run while
+      // the WS replay has already seeded the SDK tracker. The hook path would
+      // then clearTaskStore() and blank the just-restored panel — and the tracker
+      // would never republish (no new live frame when the stream is quiet). When
+      // the tracker holds SDK state, leave the store to it instead.
+      if (sdkTaskTrackerHasState()) return;
       const snap = ch && ch.vm && ch.vm.taskSnapshot;
       if (snap) publishTaskUpdate(snap);
       else clearTaskStore();
@@ -3341,7 +3358,11 @@ class AppBase extends React.Component {
       // Publishing that empty snapshot would wipe the checklist the
       // sdkTaskTracker just rebuilt from WS sdk-task frames. Ignore hook
       // snapshots here — in SDK mode the tracker is the sole taskStore writer.
-      if (this.state.sdkMode) return;
+      // Gate on the tracker's actual state too, not just the sdkMode flag: on a
+      // browser refresh the SSE connect replay can arrive while the async
+      // /api/cli-mode fetch is still in flight (sdkMode still false), and the
+      // empty hook snapshot would otherwise blank the just-restored panel.
+      if (this.state.sdkMode || sdkTaskTrackerHasState()) return;
       if (!this._isRenderedChannel(channel)) { channel.vm.taskSnapshot = data; return; }
       // B2 view-attach: while attached to a sid, hide the primary
       // session's task checklist — it is not the attached sid's, and the resume

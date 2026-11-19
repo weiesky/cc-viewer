@@ -51,7 +51,7 @@ import ProxyChip from './ProxyChip';
 import ProxyModal from '../settings/ProxyModal';
 import WorkflowLiveHud from '../viewers/WorkflowLiveHud';
 import TaskProgressHud from './TaskProgressHud';
-import { applyFrame as applySdkTaskFrame, applySnapshot as applySdkTaskSnapshot, resetForSession as resetSdkTaskTrackerForSession } from '../../utils/sdkTaskTracker';
+import { applyFrame as applySdkTaskFrame, applySnapshot as applySdkTaskSnapshot, resetForSession as resetSdkTaskTrackerForSession, restoreFromStorage as restoreSdkTaskTrackerFromStorage } from '../../utils/sdkTaskTracker';
 import PresetModal from '../terminal/PresetModal';
 import ScheduleTaskModal from '../common/ScheduleTaskModal';
 import UltraPlanModal from '../terminal/UltraPlanModal';
@@ -836,6 +836,12 @@ class ChatView extends React.Component {
     // the popover's unmount and the popover re-opens on its own when the layout returns.
     if (this.state.promptNavOpen && !this._useComposerPromptNav()) {
       this.setState({ promptNavOpen: false });
+    }
+    // Restore active-agents panel when SDK mode activates (covers the case where
+    // sdkMode flips to true after mount, e.g. /api/cli-mode resolves late).
+    // Uses the last-known sessionId (may be null on cold load — restore skips gracefully).
+    if (!prevProps.sdkMode && this.props.sdkMode) {
+      restoreSdkTaskTrackerFromStorage(this._lastSdkSessionStateSid);
     }
     // Sharding (2026-11): a "load earlier history" prepend landed — expand the
     // render window by the number of items it added and anchor the viewport, or
@@ -3494,6 +3500,9 @@ class ChatView extends React.Component {
               resetSdkTaskTrackerForSession();
             }
             if (newSid) this._lastSdkSessionStateSid = newSid;
+            // Restore persisted tasks for this session (browser refresh recovery).
+            // Seed-only: skipped if the tracker already has live data.
+            if (newSid) restoreSdkTaskTrackerFromStorage(newSid);
           }
           if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null, turnId: msg.turnId || null, turnStartedAt: Number.isFinite(msg.turnStartedAt) ? msg.turnStartedAt : null, heartbeat: msg.heartbeat === true, activity: msg.activity === true });
         } else if (msg.type === 'sdk-task') {
