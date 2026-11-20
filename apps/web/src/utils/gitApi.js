@@ -49,7 +49,11 @@ export async function fetchAllRepos(project, instance) {
         deletions: statusData.deletions || 0,
         commits: commitsData.commits || [],
         hasUpstream: !!commitsData.hasUpstream,
-        branch: commitsData.branch || null,
+        // Keep undefined ("unknown": old server without the field, or the
+        // unpushed request failed above) distinct from null ("server says
+        // detached/unborn HEAD") — the panel only renders a detached-HEAD
+        // fallback for the explicit null, and no chip at all for undefined.
+        branch: commitsData.branch === null ? null : (commitsData.branch ?? undefined),
         upstream: commitsData.upstream || null,
         truncated: !!commitsData.truncated,
         totalCount: typeof commitsData.totalCount === 'number' ? commitsData.totalCount : (commitsData.commits || []).length,

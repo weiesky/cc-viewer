@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **GIT 变更面板显示当前分支** — 单仓库项目在面板顶部新增「当前分支: xxx」行（服务端明确 detached 时显示回退文案，旧服务器/请求失败等未知状态不显示 chip）；多仓库项目在每个仓库标题行内显示对应分支名。Coverage: `git-changes-branch.test.js`。
+
 - feat(web): **SDK 活跃代理面板支持浏览器刷新恢复** — SDK 模式的活跃代理（subAgent/teammate）面板状态经 localStorage 按 sessionId 持久化（LRU 上限 10、TTL 24h），浏览器刷新后从检查点恢复显示；种子恢复为 seed-only，服务器权威快照到达后再 reconcile，空快照保留旧面板不再误清。同时修复 boot 首次激活把 WS replay 刚恢复的面板重置掉的问题（boot 不再当视图切换处理），并覆盖 `sdkMode` 水合窗口：以 tracker 实际状态（`hasSdkState()`）为门禁防止 boot 期 hook 路径误清已恢复的面板，sdkMode 翻 true 后 `restoreFromStorage` 在持有未验证种子时重新发布以恢复显示。Coverage: `sdkTaskTracker-persist.test.js`, `chat-active-agents-wiring.test.js`。
 
 ## 1.9.33

@@ -184,6 +184,33 @@ function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onResto
   );
 }
 
+// Current-branch pill. Renders nothing when the branch is unknown (undefined:
+// old server without the branch field, or the git-log-unpushed request failed);
+// only an explicit null from the server maps to the "detached HEAD" label —
+// note this also covers unborn HEAD (fresh `git init`), which the server
+// currently cannot distinguish from detached.
+// The chip mirrors the proxy hot-switch chip geometry
+// (components/chat/ProxyChip.module.css) so a future branch-switch interaction
+// can attach to it without a visual redesign.
+function BranchChip({ branch }) {
+  if (branch === undefined) return null;
+  const label = branch ?? t('ui.gitChanges.detachedHead');
+  return (
+    // title lives on the chip only — its sole value is revealing the full branch name when ellipsized
+    <span className={styles.branchChip} title={`${t('ui.gitChanges.currentBranch')}: ${label}`}>{label}</span>
+  );
+}
+
+// Current-branch info row at the top of the single-repo panel.
+function BranchRow({ branch }) {
+  return (
+    <div className={styles.branchRow}>
+      <span className={styles.branchLabel}>{t('ui.gitChanges.currentBranch')}:</span>
+      <BranchChip branch={branch} />
+    </div>
+  );
+}
+
 // Shared +n/-n line-stat badge pair; renders nothing when both counters are zero.
 // Used by the panel total, the repo header, and each unpushed-commit row.
 function StatBadges({ insertions, deletions }) {
@@ -447,6 +474,23 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, on
         {!loading && !error && (!repos || repos.length === 0) && (
           <div className={styles.empty}>{t('ui.gitChanges.noChanges')}</div>
         )}
+        {/* Single-repo only: branch info row above the file list. The dashed
+            separator only renders when working-tree rows follow — otherwise it
+            would dangle above an empty panel or double up with the unpushed
+            section's own separator. Multi-repo shows the branch inside each
+            repo header instead. When nothing else renders (fully clean repo),
+            repeat the empty message below the row so the panel doesn't look broken. */}
+        {!loading && !error && repos && repos.length === 1 && (
+          <>
+            <BranchRow branch={repos[0].branch} />
+            {(repos[0].changes || []).length > 0 && (
+              <div className={styles.unpushedSeparator} aria-hidden="true" />
+            )}
+            {(repos[0].changes || []).length === 0 && !(repos[0].commits || []).length && (
+              <div className={styles.empty}>{t('ui.gitChanges.noChanges')}</div>
+            )}
+          </>
+        )}
         {!loading && !error && repos && repos.map(repo => {
           const collapsed = collapsedRepos.has(repo.path);
           const baseDepth = isSingleRepo ? 0 : 1;
@@ -558,7 +602,8 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, on
                   <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
                   <path d="M18 9a9 9 0 0 1-9 9"/>
                 </svg>
-                <span className={styles.repoName}>{repo.name}</span>
+                <span className={styles.repoName} title={repo.name}>{repo.name}</span>
+                <BranchChip branch={repo.branch} />
                 <StatBadges insertions={repo.insertions} deletions={repo.deletions} />
                 <span className={styles.repoBadge}>{repo.changes.length}</span>
               </div>

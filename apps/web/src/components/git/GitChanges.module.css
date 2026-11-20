@@ -247,6 +247,10 @@
 .repoName {
   overflow: hidden;
   text-overflow: ellipsis;
+  /* min-width floor: without it the branch chip (content-sized flex basis)
+     absorbs all negative free space and the repo name collapses to 0px on
+     default-width sidebars; full name is recoverable via the row title. */
+  min-width: 56px;
   flex: 1;
   font-weight: 600;
 }
@@ -274,6 +278,47 @@
 
 .statDelete {
   color: #f14c4c;
+}
+
+/* ─── current branch row (single-repo) ─── */
+/* Static info row at the top of the scroll content — not clickable, no hover/cursor affordances. */
+.branchRow {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.branchLabel {
+  flex-shrink: 0;
+}
+
+/* Branch name pill (rounded 12px geometry shared with the proxy hot-switch chip)
+   so a future click-to-switch interaction keeps the same visual language.
+   Read-only for now: default cursor, no hover affordance.
+   --bg-elevated fill keeps the pill distinguishable from both the panel
+   background (--bg-container) and the multi-repo repoHeader (--bg-surface).
+   In the repo header it shrinks/ellipsizes first so fixed icons and badges keep
+   their space; the repo name keeps a min-width floor (see .repoName). */
+.branchChip {
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /* ─── 本地未推送 commit 区 ─── */

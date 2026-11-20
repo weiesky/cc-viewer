@@ -120,7 +120,7 @@ describe('fetchAllRepos — 主路径 /api/git-repos 成功', () => {
     assert.equal(b.deletions, 0);
     assert.deepEqual(b.commits, []);
     assert.equal(b.hasUpstream, false);
-    assert.equal(b.branch, null, 'branch 缺省 → null');
+    assert.equal(b.branch, undefined, 'branch 字段缺失（旧服务器）→ undefined（未知），不归一为 null');
     assert.equal(b.upstream, null);
     assert.equal(b.truncated, false);
     assert.equal(b.totalCount, 0, 'totalCount 缺省 → 由 commits.length 推断');

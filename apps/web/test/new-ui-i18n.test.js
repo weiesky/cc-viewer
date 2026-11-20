@@ -96,6 +96,9 @@ const KEYS = [
   'ui.chatInput.queueFull',    // toast when the server rejects an enqueue (queue full)
   // Git changes panel: unpushed-section tooltip when the branch has no upstream (GitChanges.jsx):
   'ui.gitChanges.noUpstreamTip',
+  // Git changes panel: current-branch row label + detached/unknown fallback (GitChanges.jsx):
+  'ui.gitChanges.currentBranch',
+  'ui.gitChanges.detachedHead',
   // Task checklist HUD docked above the composer (TaskProgressHud.jsx; fed by task-bridge hooks):
   'ui.tasks.title',
   'ui.tasks.progress',
