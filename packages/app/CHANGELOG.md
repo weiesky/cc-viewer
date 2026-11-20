@@ -1,5 +1,13 @@
 # cc-viewer
 
+## 1.9.34
+
+### Patch Changes
+
+- cb7d59e: feat(web): persist the SDK active-agents panel to localStorage so it survives browser refresh, and fix the boot-time view reset that wiped the restored panel.
+- e7313de: fix(web): make the selected item in dark-mode dropdown menus legible — the file-browser sort menu painted colorPrimary text on the dark-blue selected background; override the Dropdown component token to white selected text.
+- 8dddb8a: feat(web): show the current branch name at the top of the Git Changes panel (per-repo chip in multi-repo view). Explicit detached HEAD gets a fallback label; unknown states (old server, failed request) render no chip instead of a misleading label.
+
 ## 1.9.33
 
 ### Patch Changes
