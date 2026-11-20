@@ -137,6 +137,16 @@ const DARK_THEME_CONFIG = Object.freeze({
     controlOutline: 'transparent',
     controlOutlineWidth: 0,
   }),
+  components: Object.freeze({
+    Dropdown: Object.freeze({
+      // The dark-algorithm default paints selected menu items with colorPrimary
+      // text (#1668dc) on a dark-blue controlItemBgActive, which is low-contrast
+      // on the elevated dropdown bg. White text keeps the selection legible.
+      // (The rule lives in the Dropdown component's own style, keyed off
+      // colorPrimary — overriding Menu.itemSelectedColor does not reach it.)
+      colorPrimary: '#fff',
+    }),
+  }),
 });
 
 /**
