@@ -1,0 +1,20 @@
+apps/web/src/AppBase.jsx
+  s_5d2737ade05525::t_4ee60e8af54da8 140,148-149
+  s_5d2737ade05525::t_ca34532425ca7a 141-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "db741d5edc3b195c6edae15027e750a6afb7a5ec",
+  "prompts": {},
+  "sessions": {
+    "s_5d2737ade05525": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6938b23e-75cc-4b5c-8f8c-50ff64eaae55",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
