@@ -1,0 +1,49 @@
+apps/web/src/components/git/GitChanges.module.css
+  s_9354b280d134b2::t_88b011b7e7983b 284,301-307,309,311
+  s_9354b280d134b2::t_610260543011ad 283,285-300,313-314,317-318,322-323
+  s_9354b280d134b2::t_945eaf0bb03586 250-253
+  s_9354b280d134b2::t_f12e83fbb2220a 320-321
+  s_9354b280d134b2::t_f23f66a3ac4f2b 308,310,312,315-316,319
+apps/web/src/i18n.js
+  s_9354b280d134b2::t_3b811704f7eab3 6002
+  s_9354b280d134b2::t_bfed722b6f0de9 5974-6001,6003-6013
+history.md
+  s_9354b280d134b2::t_5c74a3a7aa1bdc 6
+  s_9354b280d134b2::t_083ef2c326b280 5
+apps/web/test/new-ui-i18n.test.js
+  s_9354b280d134b2::t_0e88574218ea46 99-101
+apps/web/test/git-api.test.js
+  s_9354b280d134b2::t_241cad80220cbd 123
+apps/web/src/utils/gitApi.js
+  s_9354b280d134b2::t_1ab3b1f17cbe0b 52-56
+apps/web/test/git-changes-branch.test.js
+  s_9354b280d134b2::t_f9484f627f00ce 1-58
+.changeset/git-panel-current-branch.md
+  s_9354b280d134b2::t_6d099312fce13e 5
+  s_9354b280d134b2::t_d1c8fb8b7a78f2 1-4
+apps/web/src/components/git/GitChanges.jsx
+  s_9354b280d134b2::t_31daef046a1dc1 481-482,488-490
+  s_9354b280d134b2::t_3e72a01646c316 605-606
+  s_9354b280d134b2::t_fa98411356982b 187-192,195-204,209
+  s_9354b280d134b2::t_89a4f6d18b9267 193-194
+  s_9354b280d134b2::t_eca30f86e0ff3b 207
+  s_9354b280d134b2::t_8749644f759aad 477-480,483,486-487,491
+  s_9354b280d134b2::t_463fa427d2e62d 205-206,208,210-213
+  s_9354b280d134b2::t_f6470f0fc02d0e 484-485,492-493
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8dddb8a11591ee1a55330946c8aa51f9ba4d463e",
+  "prompts": {},
+  "sessions": {
+    "s_9354b280d134b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9ce40af-a968-40e8-9e5c-c00dce564564",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
