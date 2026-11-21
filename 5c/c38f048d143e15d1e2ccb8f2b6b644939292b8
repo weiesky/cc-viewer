@@ -1,0 +1,88 @@
+apps/web/src/components/files/fileContextMenu.js
+  s_bd56cc1f181194::t_03c6f3a8d26eeb 20-23,29,31-33,40,52
+history.md
+  s_bd56cc1f181194::t_31da37b2a36a09 5
+  s_bd56cc1f181194::t_317998387d639c 6
+apps/web/test/file-browser-modal.test.js
+  s_bd56cc1f181194::t_846f4f70a52e48 366-370,375-376
+apps/web/test/workspace-launch.test.js
+  s_bd56cc1f181194::t_12ac782ebc3f6b 55-60
+  s_bd56cc1f181194::t_40643fcad11f51 78-88
+  s_bd56cc1f181194::t_cca4c0a8ec5533 73-77
+  s_bd56cc1f181194::t_9880ef06059bf9 1-18,20-54,61-72,89
+  s_bd56cc1f181194::t_8523431316e449 19
+apps/web/src/components/chat/ChatView.jsx
+  s_bd56cc1f181194::t_4f2a2e0c8e4bb2 818-820
+  s_bd56cc1f181194::t_cbbbe99c2e4054 5646
+apps/web/src/components/dashboard/WorkspaceList.jsx
+  s_bd56cc1f181194::t_bb2891d2feb03f 121
+  s_bd56cc1f181194::t_74682740389104 6
+  s_bd56cc1f181194::t_d04bfd87a537d2 112-118,120
+  s_bd56cc1f181194::t_a7236439f544b2 122-124
+apps/electron/electron/tab-content-preload.js
+  s_bd56cc1f181194::t_437f7f3ad8e242 61-65
+  s_bd56cc1f181194::t_633de3e612bc32 66
+apps/web/src/components/files/fileContextMenuActions.jsx
+  s_bd56cc1f181194::t_f117798ec5bdeb 17
+  s_bd56cc1f181194::t_cc54de0ffe0f46 220-235,246-256,264
+  s_bd56cc1f181194::t_dee0c36715eed9 236-244
+  s_bd56cc1f181194::t_30417a423abb0e 257-261
+  s_bd56cc1f181194::t_7fb16c740bbc02 16
+  s_bd56cc1f181194::t_02772ad7312105 42-44
+  s_bd56cc1f181194::t_efda420725a8fc 245,262-263
+apps/web/src/App.jsx
+  s_bd56cc1f181194::t_07064a4c68362e 786
+.changeset/file-explorer-new-workspace.md
+  s_bd56cc1f181194::t_c181161e600e47 1-4
+  s_bd56cc1f181194::t_6c933b57057b0a 5
+apps/web/test/new-ui-i18n.test.js
+  s_bd56cc1f181194::t_d30bb63d1a8cda 54-58
+  s_bd56cc1f181194::t_bdee3ad13ce021 186
+apps/web/src/components/files/FileExplorer.jsx
+  s_bd56cc1f181194::t_f48b43300c69e5 276-277
+  s_bd56cc1f181194::t_5f227de0f1f120 279-280,284,286
+  s_bd56cc1f181194::t_6642581b01e8a7 623
+  s_bd56cc1f181194::t_5bda606f9cabb6 34
+  s_bd56cc1f181194::t_befac4bf65533c 340
+  s_bd56cc1f181194::t_7445d1d37bafac 422-423,426,428
+  s_bd56cc1f181194::t_8fcd1925b0198d 346
+apps/web/test/file-context-menu.test.js
+  s_bd56cc1f181194::t_b0b301537e4508 64-98
+apps/electron/electron/main.js
+  s_bd56cc1f181194::t_afe59e4e13cd7e 936-944
+  s_bd56cc1f181194::t_cf8c7e05387d91 552-556
+apps/electron/electron/tab-worker.js
+  s_bd56cc1f181194::t_dd081791b2d125 100-106
+apps/web/src/utils/workspaceLaunch.js
+  s_bd56cc1f181194::t_11636ae2c6841f 12-19
+  s_bd56cc1f181194::t_518e8c449b71c3 1-4,11,20-21,28-35,37-38,40
+  s_bd56cc1f181194::t_2ea3cf3ca2ffd3 5-10,22-27,36,39
+apps/web/src/i18n.js
+  s_bd56cc1f181194::t_81ca7dd122095e 4570-4629
+  s_bd56cc1f181194::t_b76e2cdff049ad 12146-12153
+apps/web/test/file-context-menu-actions.test.js
+  s_bd56cc1f181194::t_6be041d06727a9 18-19,22
+  s_bd56cc1f181194::t_e25e2afcf0b1e1 56-57,59-60
+  s_bd56cc1f181194::t_e9d5bf1d4f6bd5 140-209,211,214-215,219-220,239-268
+  s_bd56cc1f181194::t_d5377384e381c5 210,212-213,216-218
+  s_bd56cc1f181194::t_87458fe230f409 221-238
+  s_bd56cc1f181194::t_d2087fc913b57b 42
+apps/web/src/Mobile.jsx
+  s_bd56cc1f181194::t_8de98acae69826 1009
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5cc38f048d143e15d1e2ccb8f2b6b644939292b8",
+  "prompts": {},
+  "sessions": {
+    "s_bd56cc1f181194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0d6b53-7c83-4e3c-9a16-fa1029b884d1",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
