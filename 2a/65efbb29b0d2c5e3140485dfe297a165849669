@@ -1,0 +1,104 @@
+packages/app/test/v2-retire-instance.test.js
+  s_a37b0cd06a7870::t_0abaed30fc624e 16
+  s_a37b0cd06a7870::t_fd2e985a315393 65-66,68,77-79
+  s_a37b0cd06a7870::t_dc714b41664844 1-15,17-64,67,69-76,82,86-135
+  s_a37b0cd06a7870::t_b20799a342d82c 80-81,83-85
+packages/app/server/lib/sdk-manager.js
+  s_a37b0cd06a7870::t_b979e01b7ac49d 3084-3093,3100-3105,3113-3123,3125-3138
+  s_a37b0cd06a7870::t_e9af1529dd1b8b 2865-2867
+  s_a37b0cd06a7870::t_0c0d2ccaa8f258 439-448
+  s_a37b0cd06a7870::t_aa79a2e86ee67d 990-1005
+  s_a37b0cd06a7870::t_ba846d850349af 3094-3099,3106-3112,3124
+  s_a37b0cd06a7870::t_20ba55d8a867df 170
+  s_a37b0cd06a7870::t_1211fc6c3cbe40 449-454
+  s_a37b0cd06a7870::t_84db31d44d68d2 2783-2785
+  s_a37b0cd06a7870::t_b518007d7a33af 2939-2940
+  s_a37b0cd06a7870::t_1a1e75307836c4 2935-2938
+  s_a37b0cd06a7870::t_b140080f653517 513-519
+  s_a37b0cd06a7870::t_a32b52c922565d 2861-2864
+.changeset/force-new-fresh-empty-view.md
+  s_a37b0cd06a7870::t_4449621491e796 1-4
+  s_a37b0cd06a7870::t_3cac50d3a581d7 5-9
+packages/app/server/routes/events.js
+  s_a37b0cd06a7870::t_2490f2144cc9d9 430,436,439,444,446
+  s_a37b0cd06a7870::t_37e1e3c11468c3 478-480
+  s_a37b0cd06a7870::t_edeeb11286c81d 431-435,440-441,443
+history.md
+  s_a37b0cd06a7870::t_bc7ae74d292fc3 5
+  s_a37b0cd06a7870::t_4456ea190b9fac 6
+packages/app/server/lib/v2/session-select.js
+  s_a37b0cd06a7870::t_606890be16316a 398
+  s_a37b0cd06a7870::t_16cb3babaa3f14 362-370
+  s_a37b0cd06a7870::t_4a34896f708c62 305-311,314
+packages/app/server/lib/v2/v2-writer.js
+  s_a37b0cd06a7870::t_5e6ba3f62b332d 1241
+  s_a37b0cd06a7870::t_486f3f72b27f9f 1291-1315
+  s_a37b0cd06a7870::t_6e14652a972faa 573
+  s_a37b0cd06a7870::t_58854607bf2600 540-545
+  s_a37b0cd06a7870::t_50c32896301d46 584
+  s_a37b0cd06a7870::t_8bffd77516821b 105-111
+  s_a37b0cd06a7870::t_c3fe8107675eec 599,603-606
+packages/app/test/v2-session-select.test.js
+  s_a37b0cd06a7870::t_3b5b9f6e395fe2 203-254
+packages/app/test/events-instance-live-empty.test.js
+  s_a37b0cd06a7870::t_f30cd26561d1ce 54-56,64
+  s_a37b0cd06a7870::t_932752594a2c79 44
+  s_a37b0cd06a7870::t_ff662360b166c0 57-60,65
+  s_a37b0cd06a7870::t_c6bc57ab1c6d5b 344-347,351
+  s_a37b0cd06a7870::t_cdc4671bbbbc37 357-381,389-390,392-393,396-399
+  s_a37b0cd06a7870::t_ade14d5a341e4a 382-388,391,394-395
+  s_a37b0cd06a7870::t_378166be089e34 301-343,348-350,352-356
+packages/app/server/server.js
+  s_a37b0cd06a7870::t_c92402b9e7ff91 680-683,687-690
+  s_a37b0cd06a7870::t_ca59fdd587441d 684-686
+packages/app/test/pty-manager-instance.test.js
+  s_a37b0cd06a7870::t_b497a2680b811e 269-298
+apps/web/test/view-cache-restore.test.js
+  s_a37b0cd06a7870::t_f0e4877846ab58 111
+apps/web/test/force-new-view-blank.test.js
+  s_a37b0cd06a7870::t_23ae6fcf2c2f51 103-105
+  s_a37b0cd06a7870::t_f6f5a37ea357c3 70
+  s_a37b0cd06a7870::t_4a352caf88858d 1,4,10,14-23,25-42,46-52,55-57,59-69,71-81,84-85,90,92-98,100-102,107-111,113-114,117-118,120-121,123,126-127,129-135,138,140-141,148,150-153,158,166-167
+  s_a37b0cd06a7870::t_0857e92d65a710 2-3,5-9,11-13,24,53-54,58,82-83,86-89,91,99,106,112,115-116,119,122,124-125,128,136-137,139,142-147,149,154-157,159-165
+  s_a37b0cd06a7870::t_33e98ebdd077af 43-45
+packages/app/server/pty-manager.js
+  s_a37b0cd06a7870::t_dbd0e2abafe2f8 1261-1266
+  s_a37b0cd06a7870::t_335c2f777a78f1 104-111
+  s_a37b0cd06a7870::t_57a6c311cfbaf5 1475,1479
+  s_a37b0cd06a7870::t_f6ebfac70ad248 1702-1713
+  s_a37b0cd06a7870::t_90937bc5ccebdb 1492-1495
+apps/web/src/AppBase.jsx
+  s_a37b0cd06a7870::t_a88aa87d867580 4357
+  s_a37b0cd06a7870::t_60d789e4634dac 918,929-945,949-950
+  s_a37b0cd06a7870::t_aee0a2d7b2ac37 946-948
+packages/app/server/interceptor.js
+  s_a37b0cd06a7870::t_102bdfbc03b50f 635-645
+packages/app/test/sdk-force-new.test.js
+  s_a37b0cd06a7870::t_57b030bf077660 105-115
+  s_a37b0cd06a7870::t_9d4a65beb839c2 56-57
+  s_a37b0cd06a7870::t_215975cd871b48 1-17,20-55,58-63,65-104,116-169
+  s_a37b0cd06a7870::t_0a15d12abd3991 18-19
+  s_a37b0cd06a7870::t_6c50d416a5f0f0 64
+packages/app/server/routes/workspaces.js
+  s_a37b0cd06a7870::t_5002a8307cbc9d 144-148
+  s_a37b0cd06a7870::t_1386a9ac4e9248 97-99
+  s_a37b0cd06a7870::t_bba7b7083cd143 194-197
+  s_a37b0cd06a7870::t_fdf5f5386b96e1 132-135,139-143,149-151
+  s_a37b0cd06a7870::t_245c3721ca8bba 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2a65efbb29b0d2c5e3140485dfe297a165849669",
+  "prompts": {},
+  "sessions": {
+    "s_a37b0cd06a7870": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52a5449d-705b-45a1-b91e-35fe418a9521",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
