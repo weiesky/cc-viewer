@@ -1,0 +1,27 @@
+.changeset/modal-new-workspace.md
+  s_bd56cc1f181194::t_55925835b28a77 5
+history.md
+  s_bd56cc1f181194::t_c2edf04ea2865c 5
+apps/web/src/components/files/FileBrowserModal.jsx
+  s_bd56cc1f181194::t_eb1ab186e4190e 1653
+  s_bd56cc1f181194::t_d3b00b90ca1a47 1140-1147,1158,1160
+  s_bd56cc1f181194::t_a4c21497bb0a91 1326
+apps/web/test/file-browser-modal.test.js
+  s_bd56cc1f181194::t_96afb51e597e1c 395-403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2ebdd1904d9bf0f2f1a1fefb69852d364ad573a6",
+  "prompts": {},
+  "sessions": {
+    "s_bd56cc1f181194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0d6b53-7c83-4e3c-9a16-fa1029b884d1",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
