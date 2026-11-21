@@ -235,6 +235,16 @@ export class V2Writer {
     return cur ? cur.sid : null;
   }
 
+  /** The sid an instance is CURRENTLY bound to (main-turn routing pointer), or null.
+   *  Read-only; used by the resume twin-ownership guard to tell "this instance owns the
+   *  conversation it is actively writing" apart from "this instance merely shares a
+   *  deterministic key with a dead prior author". */
+  currentSidForInstance(instKey) {
+    if (typeof instKey !== 'string' || !instKey) return null;
+    const cur = this._currentSidByInstance.get(instKey);
+    return cur ? cur.sid : null;
+  }
+
   /** In-terminal /resume signal (interceptor.markSessionStart → here): arm a
    *  one-shot routing switch. `transcriptUuid` is the resumed conversation's
    *  stable identity (transcript basename); `hookSid` is the fresh session
@@ -1289,16 +1299,14 @@ export class V2Writer {
   }
 
   /**
-   * Retire a departed SDK forceNew generation (2026-11). Marks the instanceKey retired so
+   * Retire a CLOSED random-key SDK session (2026-11). Marks the instanceKey retired so
    * its late traffic stops moving the live pointers, and clears the per-instance routing
-   * state the old generation held. Deliberately does NOT clear `_currentSid` here UNLESS it
-   * currently equals the retired instance's sid (the route's resetForLiveRelaunch already
-   * nulled `_currentSid` for the project, but a late sid-bearing request from the draining
-   * old child can re-poison it in the window before the swap — closing that is the point).
+   * state the closed session held.
    *
-   * Call ONLY from the SDK forceNew launch path (routes/workspaces.js via interceptor's
-   * retireInstance). Never from initForWorkspace/resetForLiveRelaunch: PTY same-cwd twins
-   * stay LIVE and depend on their per-instance pointers surviving a relaunch (R3).
+   * Call ONLY from the explicit SDK close path (routes/resume.js, wasFreshKey===true) —
+   * a random per-generation key is never re-created, so retirement is permanent and safe.
+   * Never from a launch or initForWorkspace/resetForLiveRelaunch: a same-cwd sibling stays
+   * LIVE and depends on its per-instance pointers surviving a relaunch.
    */
   retireInstance(instKey) {
     if (typeof instKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instKey)) return;
@@ -1307,6 +1315,22 @@ export class V2Writer {
     if (this._retiredInstances.size > 64) this._retiredInstances.delete(this._retiredInstances.values().next().value);
     // The retired instance's own routing state: its metadata-less traffic must not route
     // to its old sid, and any held cold-start bucket must never flush into the new dir.
+    const prior = this._currentSidByInstance.get(instKey);
+    this._currentSidByInstance.delete(instKey);
+    this._pendingNoSidByInstance.delete(instKey);
+    if (prior && this._currentSid === prior.sid) this._currentSid = null;
+  }
+
+  /**
+   * Release a CLOSED instance's per-instance routing state WITHOUT retiring the key
+   * (2026-11, same-cwd sibling close). Unlike retireInstance this does NOT add the key to
+   * `_retiredInstances`: a DETERMINISTIC cwd-derived key is re-created by a later normal
+   * relaunch, so retiring it would permanently gate the legitimate rebuilt session. Only
+   * clears the closed instance's per-instance pointer + cold-start bucket so its draining
+   * traffic stops moving the live pointers. Used by the SDK close path for wasFreshKey=false.
+   */
+  releaseInstance(instKey) {
+    if (typeof instKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instKey)) return;
     const prior = this._currentSidByInstance.get(instKey);
     this._currentSidByInstance.delete(instKey);
     this._pendingNoSidByInstance.delete(instKey);

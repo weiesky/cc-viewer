@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(server): **SDK 模式同 cwd「新建工作区(会话)」改为并列 +1,不再替换旧会话** — 同一目录可并存多个 SDK 会话,header 出现两个可切换 tab(项目 [1] [2]),各自收发互不串;普通启动仍复用该目录的稳定会话。配套隔离:resume 属主守卫纳入 SDK 存活性并按当前持有者判定、并发 resume 去重、关闭会话不误伤存活兄弟。Coverage: `sdk-multi-session-route.test.js`, `sdk-force-new.test.js`, `v2-retire-instance.test.js`, `resume-route.test.js`, `live-processes-close.test.js`, `sdk-session-registry.test.js`。
+
 - fix(server+web): **forceNew「新建工作区(会话)」对话区切到新实例的空会话(PTY + SDK)** — 文件浏览器对当前项目根 forceNew 启动新实例后，聊天视图立即切到该实例的空白会话，不再停留在旧对话。PTY 与 SDK 均支持；普通启动/重启重建实例的行为不变。Coverage: `v2-session-select.test.js`, `events-instance-live-empty.test.js`, `pty-manager-instance.test.js`, `sdk-force-new.test.js`, `v2-retire-instance.test.js`, `force-new-view-blank.test.js`, `view-cache-restore.test.js`。
 
 - fix(server): **同 cwd 双实例写入侧隔离** — 文件浏览器对当前项目根「新建工作区(会话)」forceNew 起的第二个 claude 实例，在共享单 server 下不再与旧实例串日志：终端 `/resume` 切换按实例独立 arm/消费（SessionStart hook 经 env 携带发起 PTY 的 instanceKey）；无 metadata 请求（heartbeat/countTokens）按实例路由，不再落到进程级"最后发言"会话；同项目 forceNew 重绑保留存活实例的会话绑定与 owner.lock；resume 一个正被另一存活同 cwd 实例写入的会话返回 409 并提示，避免两个 claude 进程共写同一 journal。Coverage: `v2-core.test.js`, `v2-resume-switch.test.js`, `resume-route.test.js`, `session-start-bridge.test.js`, `resume-history-i18n.test.js`。

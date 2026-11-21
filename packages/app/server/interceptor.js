@@ -633,14 +633,25 @@ const _v2Writer = new V2Writer({
 export { _v2Writer };
 
 /**
- * SDK forceNew (2026-11): retire a departed SDK generation's routing so its late traffic
- * (a draining child's heartbeat/completion) can no longer move `_currentSid` /
- * `_currentSidByInstance` into its old dir. Called ONLY from the SDK forceNew launch path
- * (routes/workspaces.js) — never from initForWorkspace/resetForLiveRelaunch, whose
- * preservation of a live same-cwd twin's per-instance pointers is the R3 fix.
+ * Retire a CLOSED random-key SDK session's routing (2026-11) so its late traffic (a
+ * draining child's heartbeat/completion) can no longer move `_currentSid` /
+ * `_currentSidByInstance` into its old dir. Called ONLY from the explicit SDK close path
+ * (routes/resume.js, when closeSdkSession reports wasFreshKey===true) — never from a
+ * launch or initForWorkspace/resetForLiveRelaunch: a same-cwd sibling stays LIVE and
+ * depends on its per-instance pointers surviving a relaunch.
  */
 export function retireInstance(instanceKey) {
   try { _v2Writer.retireInstance(instanceKey); } catch (err) { reportSwallowed('interceptor.retire-instance', err); }
+}
+
+/**
+ * Release a CLOSED instance's per-instance routing state WITHOUT retiring the key
+ * (2026-11, same-cwd sibling close). Used by the SDK close path for a DETERMINISTIC cwd
+ * key (wasFreshKey=false) — that key is re-created on a normal relaunch, so it must be
+ * cleared, never retired. See v2-writer.releaseInstance.
+ */
+export function releaseInstance(instanceKey) {
+  try { _v2Writer.releaseInstance(instanceKey); } catch (err) { reportSwallowed('interceptor.release-instance', err); }
 }
 
 // S6b: the live read source — the current v2 session dir once the writer has
@@ -873,7 +884,7 @@ export { LOG_FILE, _initPromise, _projectName, _logDir };
 // same cwd) keeps the live twin's session bindings/owner.lock on a same-project
 // re-bind — the new process gets a fresh sid and a fresh dir; the twin's must
 // not be cleared.
-export function initForWorkspace(projectPath, { forceNew = false } = {}) {
+export function initForWorkspace(projectPath, { forceNew = false, preserveLiveTwin = false } = {}) {
   const projectName = projectKeyForCwd(projectPath);
   const dir = join(LOG_DIR, projectName);
   try { mkdirSync(dir, { recursive: true }); } catch {}
@@ -896,8 +907,14 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) {
   // sibling's cold-load/adoption). Only launch-boundary state that could hijack
   // or misroute the fresh twin is cleared. Any other switch keeps the old
   // scoped reset semantics.
+  //
+  // SDK +1 (preserveLiveTwin, 2026-11): the same-cwd sibling stays LIVE and the new
+  // child always carries x-ccv-instance, so it never enters the process-global
+  // `_pendingNoSid` bucket. resetForLiveRelaunch's project-level clear
+  // (`_pendingNoSidByInstance`/`_lateHandles`) would instead drain the SURVIVING
+  // sibling's in-flight buckets — so the SDK +1 path skips the writer reset entirely.
   if (forceNew && previousProject && previousProject === projectName) {
-    _v2Writer.resetForLiveRelaunch(projectName);
+    if (!preserveLiveTwin) _v2Writer.resetForLiveRelaunch(projectName);
   } else {
     _v2Writer.resetSessions(previousProject || null); // also clears the per-process `-c` adoption latch
   }

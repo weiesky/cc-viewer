@@ -44,9 +44,12 @@ export async function executeScheduledTask(task, claim, io) {
 async function _injectSdk(task, io) {
   const sdk = io.sdk;
   if (!sdk || !sdk.isSdkAvailable()) return { status: 'failed', reason: 'sdk_unavailable' };
-  // The resident session is a per-cwd singleton — find the one for the task's cwd.
-  const target = sdk.listSdkSessions().find(s => io.samePath(s.cwd, task.cwd));
-  if (!target) return { status: 'failed', reason: 'no_live_session' };
+  // A cwd may host several same-cwd sibling sessions (multi-instance, 2026-11): pick the
+  // ACTIVE one when it lives in this cwd, else the deterministic (non-fresh) primary, else
+  // the most recent — never just the first-registered.
+  const matches = sdk.listSdkSessions().filter(s => io.samePath(s.cwd, task.cwd));
+  if (!matches.length) return { status: 'failed', reason: 'no_live_session' };
+  const target = matches.find(s => s.active) || matches.find(s => s.isFreshKey === false) || matches[matches.length - 1];
 
   // Queue-full precheck (P1-4): _sendUserMessage resolves normally even when the queue
   // rejects the message (broadcasts queue-rejected and returns), so a dispatched verdict

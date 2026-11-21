@@ -1,13 +1,14 @@
 /**
- * v2-writer retireInstance (2026-11) — SDK forceNew's routing freeze for a departed
- * generation.
+ * v2-writer retireInstance (2026-11) — routing freeze for a DEPARTED random-key generation.
  *
- * forceNewSdkSession swaps a cwd's SDK session for a fresh generation (new random
- * instanceKey). The OLD generation's child may still be draining (trailing completion /
- * heartbeat). retireInstance(oldKey) marks it retired so its late traffic writes into its
- * OWN old dir (history stays consistent) but never moves `_currentSid` /
- * `_currentSidByInstance` / `_onSessionResolved` — otherwise the fresh generation's bound
- * cold-load (getLiveLogSource → currentSessionDir) would flip back to the old conversation.
+ * Same-cwd sibling sessions (createSdkSession) APPEND fresh random-key generations without
+ * closing the old ones, so retirement now runs only on an EXPLICIT close of a random-key
+ * session (routes/resume.js → closeSdkSession.wasFreshKey === true), never on a launch. A
+ * retired instance's draining traffic writes into its OWN old dir (history stays consistent)
+ * but never moves `_currentSid` / `_currentSidByInstance` / `_onSessionResolved` — otherwise a
+ * sibling's cold-load could flip back to the closed conversation. A deterministic cwd key is
+ * instead RELEASED (releaseInstance) — cleared without entering the retired set, because a
+ * normal relaunch re-creates it.
  *
  * Isolated CCV_LOG_DIR; fake entries via the V2Writer directly.
  */
@@ -48,7 +49,7 @@ function mkMainEntry(sid, instKey, over = {}) {
   };
 }
 
-describe('V2Writer.retireInstance (SDK forceNew)', () => {
+describe('V2Writer.retireInstance (random-key close)', () => {
   it('a retired instance\'s late main request still writes its own dir but never moves _currentSid', async () => {
     const w = new V2Writer({ logDir: dir, project: 'proj', enabled: true });
     const resolved = [];
@@ -131,5 +132,31 @@ describe('V2Writer.retireInstance (SDK forceNew)', () => {
     w.ingestCompletion(h, { timestamp: 't', response: { status: 200, body: { usage: {}, content: [] } } });
     await w.flush();
     assert.equal(w.currentSessionId(), SID_NEW, 'post-reset the key routes normally again');
+  });
+});
+
+describe('V2Writer.releaseInstance (deterministic-key close)', () => {
+  it('release clears the per-instance pointer WITHOUT retiring the key (a relaunch re-creates it)', async () => {
+    const w = new V2Writer({ logDir: dir, project: 'proj', enabled: true });
+    const detKey = 'ccv-' + 'd'.repeat(32);
+    // The deterministic session runs a turn → owns SID_OLD + the pointers.
+    const h1 = w.ingestRequest(mkMainEntry(SID_OLD, detKey), [textMsg('user', 'hello')]);
+    w.ingestCompletion(h1, { timestamp: 't', response: { status: 200, body: { usage: {}, content: [] } } });
+    await w.flush();
+    assert.equal(w.currentSessionId(), SID_OLD, 'the deterministic session owns the current pointer');
+
+    w.releaseInstance(detKey);
+    // Unlike retireInstance, the key is NOT added to the retired set...
+    assert.equal(w._retiredInstances.has(detKey), false, 'release does NOT retire the key');
+    // ...but its per-instance pointer + the current pointer (which pointed at its sid) are cleared.
+    assert.equal(w.currentSessionId(), null, 'release clears _currentSid when it pointed at the released sid');
+    assert.equal(w.currentSidForInstance(detKey), null, 'the per-instance pointer is cleared');
+
+    // A later request with the SAME key (a relaunch re-creating the deterministic session)
+    // routes NORMALLY — it is not gated by a retirement.
+    const h2 = w.ingestRequest(mkMainEntry(SID_NEW, detKey), [textMsg('user', 'relaunched')]);
+    w.ingestCompletion(h2, { timestamp: 't2', response: { status: 200, body: { usage: {}, content: [] } } });
+    await w.flush();
+    assert.equal(w.currentSessionId(), SID_NEW, 'a relaunched deterministic session routes normally (not frozen)');
   });
 });

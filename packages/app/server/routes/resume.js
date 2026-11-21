@@ -41,7 +41,7 @@
 import { realpathSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { LOG_DIR } from '../../findcc.js';
-import { _projectName, _v2Writer, initForWorkspace } from '../interceptor.js';
+import { _projectName, _v2Writer, initForWorkspace, retireInstance, releaseInstance } from '../interceptor.js';
 // Static import (not the route-local dynamic import) so the close-rebind helper
 // can call listLivePtys synchronously — a static import keeps the single shared
 // module instance, and module state is shared either way.
@@ -63,17 +63,94 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// In-flight resume reservations (concurrency): two concurrent resumes of the SAME session
+// must not both pass the liveness guard before either binds its writer (a TOCTOU that would
+// let two same-cwd instances share one journal). A sessionUuid is reserved synchronously at
+// the guard and released in a finally; a second resume of an already-reserved uuid is refused.
+const _inflightResumes = new Set();
+
+// Active ownership registry (2026-11, in-memory): uuid → instanceKey of the instance that
+// most recently resumed/bound that conversation. meta.json's `meta.instance` is
+// first-write-wins (never rewritten on resume), so after a resume it names a possibly-DEAD
+// prior owner — not the live writer. This registry is the live source of truth for "who is
+// writing this uuid NOW"; it lets the guard (a) refuse a SECOND resume of a conversation a
+// live sibling already holds (journal sharing), and (b) allow resuming a session whose
+// recorded owner is alive but NOT currently writing it (the deterministic boot key is
+// re-created every launch, so "owner live" alone would wrongly block every history resume).
+// Populated on successful resume (route). An entry is authoritative while its owner instance
+// is live AND still on this conversation (checked against the SDK session's own sessionId —
+// generation-scoped, cleared on teardown/rebuild); a dead-owner or moved-on entry is dropped.
+// Entries are also dropped on the owning instance's close.
+const _activeOwners = new Map(); // uuid → instanceKey
+
+// The set of LIVE claude-owned instance keys: live claude PTYs UNION live SDK sessions
+// (2026-11 — SDK sessions are not PTYs, so listLivePtys alone can never see them; without
+// this the guard fails OPEN for every SDK-owned conversation and two same-cwd SDK siblings
+// could resume one journal). Best-effort: a probe failure just narrows the set.
+function _liveClaudeInstanceKeys() {
+  const set = new Set(listLivePtys().filter(p => p.ptyKind === 'claude').map(p => p.instanceKey));
+  try {
+    for (const s of listSdkSessionInstances()) { if (s && s.instanceKey) set.add(s.instanceKey); }
+  } catch (err) { reportSwallowed('resume-route.twin-guard.sdk-live', err); }
+  return set;
+}
+
 // Same-cwd twin ownership guard (R7a): does the target conversation belong to a
 // DIFFERENT live claude instance? The pid-level owner.lock cannot arbitrate two
-// same-cwd twins (they share this process's pid), so liveness is judged by the
-// live PTY instance set, keyed off the session dir's meta.instance. Returns
+// same-cwd twins (they share this process's pid), so liveness is judged by the live
+// claude instance set (PTY ∪ SDK), keyed off the session dir's meta.instance. Returns
 // {ownedByOther, ownerInstance} — fails OPEN (not owned) on any read error, so a
 // torn meta never blocks a legitimate resume (the writer-side guard is the
 // authoritative last line against journal sharing).
-function twinOwnershipGuard({ sessionUuid, targetProject, callerInstanceKey }) {
+//
+// Caller identity (H1): a caller with NO declared instanceKey is legitimately resuming
+// its OWN conversation whenever the target project has exactly ONE live instance — that
+// instance IS the caller (SDK single-session + Mobile never stamp an instanceKey). With
+// 2+ live instances a bare caller is ambiguous → refused (must re-issue with an instanceKey).
+async function twinOwnershipGuard({ sessionUuid, targetProject, callerInstanceKey }) {
   try {
     const san = targetProject ? sanitizePathComponent(targetProject) : '';
     if (!san) return { ownedByOther: false };
+    const live = _liveClaudeInstanceKeys();
+    // A bare caller (no instanceKey — SDK single-session / Mobile) is the owner whenever it is
+    // the ONLY live instance for this project. Resolve this FIRST so the active-owner step below
+    // can compare against the RESOLVED caller (a bare caller that is the sole live instance must
+    // be allowed to re-resume its own conversation — review H1).
+    const projectKeys = [..._liveClaudeInstancesForProject(targetProject)];
+    let caller = callerInstanceKey;
+    if (!caller) {
+      if (projectKeys.length === 1) caller = projectKeys[0];
+      else if (projectKeys.length >= 2) {
+        // Ambiguous bare caller — but only refuse when the conversation is actually claimed
+        // (below); a fresh/unowned resume must not be blocked by ambiguity. We still need the
+        // meta, so continue and let the ownership checks decide.
+      }
+    }
+    // 1) Active-owner registry (live truth): a conversation a sibling resumed is owned by THAT
+    //    instance. An entry stays authoritative while the owner is live AND still on this
+    //    conversation (checked against the SDK session's own sessionId — generation-scoped,
+    //    cleared on teardown/rebuild). A dead or moved-on owner entry is dropped so a later
+    //    resume isn't wrongly blocked.
+    const activeOwner = _activeOwners.get(sessionUuid) || null;
+    if (activeOwner) {
+      if (!live.has(activeOwner)) {
+        _activeOwners.delete(sessionUuid); // owner is gone (closed / stopped) — release the hold
+      } else if (activeOwner === caller) {
+        return { ownedByOther: false }; // the caller IS the holder
+      } else {
+        let ownerSid = null;
+        try {
+          if (process.env.CCV_SDK_MODE === '1') {
+            const sdk = await import('../lib/sdk-manager.js');
+            ownerSid = sdk.getSessionIdForInstance(activeOwner);
+          }
+        } catch (err) { reportSwallowed('resume-route.twin-guard.sid', err); }
+        if (ownerSid === sessionUuid) {
+          return { ownedByOther: true, ownerInstance: activeOwner }; // actively held by a sibling
+        }
+        _activeOwners.delete(sessionUuid); // stale — owner no longer on this conversation
+      }
+    }
     const projectDir = join(LOG_DIR, san);
     // Resolve via the single-owner layout helper (exact-name, then meta.sessionId,
     // then newest startTs) so the dir checked here is the SAME one the writer
@@ -86,19 +163,47 @@ function twinOwnershipGuard({ sessionUuid, targetProject, callerInstanceKey }) {
     const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
     const owner = meta && typeof meta.instance === 'string' && meta.instance ? meta.instance : null;
     if (!owner) return { ownedByOther: false }; // legacy / pre-multi-instance dir
-    if (callerInstanceKey && owner === callerInstanceKey) return { ownedByOther: false }; // own conversation
-    // Owned by another instance: only refuse if that instance is a LIVE claude
-    // (a dead owner's dir is legitimately resumable; a shell record must not
-    // impersonate its dead claude twin).
-    const liveClaude = new Set(
-      listLivePtys().filter(p => p.ptyKind === 'claude').map(p => p.instanceKey)
-    );
-    if (liveClaude.has(owner)) return { ownedByOther: true, ownerInstance: owner };
-    return { ownedByOther: false };
+
+    // `caller` was resolved above (bare caller → sole live instance, or left null when
+    // ambiguous). An ambiguous bare caller reaching here means the conversation IS owned by a
+    // live instance — refuse with ambiguity so the client re-issues with an instanceKey.
+    if (!callerInstanceKey && !caller) {
+      return { ownedByOther: false, ambiguous: true, ownerInstance: owner };
+    }
+    if (caller && owner === caller) return { ownedByOther: false }; // own conversation
+    // The caller already holds this exact conversation (writer routing pointer) → safe.
+    if (caller) {
+      let holderSid = null;
+      try { holderSid = _v2Writer && typeof _v2Writer.currentSidForInstance === 'function' ? _v2Writer.currentSidForInstance(caller) : null; } catch (err) { reportSwallowed('resume-route.twin-guard.sid', err); }
+      if (holderSid === sessionUuid) return { ownedByOther: false };
+    }
+    // The caller does NOT hold it. A live owner puts the conversation off-limits to anyone
+    // else; a dead owner's dir is resumable.
+    if (!live.has(owner)) return { ownedByOther: false };
+    return { ownedByOther: true, ownerInstance: owner };
   } catch (err) {
     reportSwallowed('resume-route.twin-guard', err);
     return { ownedByOther: false };
   }
+}
+
+// Live claude instance keys belonging to ONE project (its sanitized name), PTY ∪ SDK.
+// Used to resolve a bare caller's identity (sole live instance = the caller).
+function _liveClaudeInstancesForProject(targetProject) {
+  // Normalize the incoming project (a raw basename may carry spaces/CJK) so it matches the
+  // sanitized form projectKeyForCwd produces — otherwise a raw-basename target yields an
+  // empty set and the "sole live = caller" fallback misfires into a false session-owned.
+  const target = sanitizePathComponent(targetProject || '');
+  const keys = new Set();
+  for (const p of listLivePtys()) {
+    if (p.ptyKind === 'claude' && projectKeyForCwd(p.cwd) === target && p.instanceKey) keys.add(p.instanceKey);
+  }
+  try {
+    for (const s of listSdkSessionInstances()) {
+      if (s && s.instanceKey && projectKeyForCwd(s.cwd) === target) keys.add(s.instanceKey);
+    }
+  } catch (err) { reportSwallowed('resume-route.twin-guard.proj', err); }
+  return keys;
 }
 
 async function getSessionsHandler(req, res, parsedUrl) {
@@ -173,11 +278,14 @@ async function getLiveProcessesHandler(req, res, parsedUrl) {
   if (process.env.CCV_SDK_MODE === '1') {
     try {
       const sdk = await import('../lib/sdk-manager.js');
-      for (const e of sdk.listSdkSessions()) {
+      const sdkRows = sdk.listSdkSessions();
+      const boundCwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      for (const e of sdkRows) {
         if (!e || !e.cwd) continue;
-        if (processes.some((p) => p && p.cwd === e.cwd)) continue; // a real PTY already covers this cwd
-        const boundCwd = process.env.CCV_PROJECT_DIR || process.cwd();
-        if (!currentInstanceKey && e.instanceKey && e.cwd === boundCwd) currentInstanceKey = e.instanceKey;
+        // Multi-instance (2026-11): dedupe only against a real PTY covering this cwd
+        // (a PTY owns the terminal surface). Do NOT dedupe against an already-pushed SDK
+        // row — a same-cwd sibling must surface as its own tab, so compare PTY rows only.
+        if (processes.some((p) => p && p.pid != null && p.cwd === e.cwd)) continue;
         processes.push({
           kind: 'main',
           project: projectKeyForCwd(e.cwd),
@@ -186,6 +294,15 @@ async function getLiveProcessesHandler(req, res, parsedUrl) {
           active: e.active === true,
           instanceKey: e.instanceKey || null,
         });
+      }
+      // Bound identity = the cwd's STABLE primary (deterministic boot key), NOT the shared
+      // `active` pointer: active flips on every send/attach/switch, so keying the bound tab
+      // to it would yank every bound-view client to whatever instance spoke last. The
+      // deterministic boot key is the identity a close+relaunch re-creates — stable.
+      if (!currentInstanceKey) {
+        const rows = sdkRows.filter((e) => e && e.cwd === boundCwd);
+        const primary = rows.find((e) => e && e.isFreshKey === false) || rows[0] || null;
+        if (primary && primary.instanceKey) currentInstanceKey = primary.instanceKey;
       }
     } catch (err) { reportSwallowed('resume-route.live-sdk', err); }
   }
@@ -337,6 +454,26 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       try {
         rebound = _maybeRebindAfterClose(r, deps, survivorRecords);
       } catch (err) { reportSwallowed('resume-route.close-rebind', err); }
+      // Retire/release the closed SDK session's writer routing (M4): a closed RANDOM
+      // (fresh) key is retired so its draining traffic can't move the live pointers back;
+      // a DETERMINISTIC cwd key is only RELEASED (cleared), never retired — a later normal
+      // relaunch re-creates that key, and retiring it would permanently freeze the
+      // legitimate rebuilt session. SDK close only (r.wasFreshKey is set by closeSdkSession;
+      // PTY kills carry no wasFreshKey and are never retired here).
+      if (r.wasFreshKey === true && r.instanceKey) {
+        try { retireInstance(r.instanceKey); } catch (err) { reportSwallowed('resume-route.close-retire', err); }
+      } else if (r.wasFreshKey === false && r.instanceKey) {
+        try { releaseInstance(r.instanceKey); } catch (err) { reportSwallowed('resume-route.close-release', err); }
+      }
+      // Drop the closed instance's active-owner entries so a conversation it held becomes
+      // resumable by the survivor (the owner is no longer live).
+      if (r.instanceKey) {
+        for (const [uuid, owner] of _activeOwners) { if (owner === r.instanceKey) _activeOwners.delete(uuid); }
+      }
+      // A same-cwd SURVIVOR (PTY or SDK) still owns this project's scope bucket + scratch
+      // shells — do NOT reap them, or the surviving sibling loses its spinner/turn state and
+      // its mini-terminals. Compute once, guard both cleanups below.
+      const survivorSharesCwd = _hasSurvivorSharingCwd(r.cwd);
       // A PTY killed here fires no Stop POST, so its scope's streaming/turn
       // bucket would stay `active:true` forever — the heartbeat/streaming timer
       // keeps re-broadcasting it and the client's 30s staleness escape is
@@ -346,7 +483,7 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       // _resolveScopeForHookPayload), NOT the instanceKey — so resolve the same
       // project-scoped key here, collapsed to '' when it was the bound project.
       try {
-        if (r.cwd && deps.clearScopeRuntimeFor) {
+        if (r.cwd && !survivorSharesCwd && deps.clearScopeRuntimeFor) {
           const { projectKeyForCwd } = await import('../lib/system-prompt-snapshots.js');
           const { normalizeProducerScope, scopeKeyOf } = await import('../lib/scope-router.js');
           const proj = projectKeyForCwd(r.cwd);
@@ -364,11 +501,7 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       // the cwd (a deliberate same-cwd second instance): its viewers still use those
       // shared scratch shells.
       try {
-        if (r.cwd) {
-          // listLivePtys() already only yields LIVE records (ptyProcess non-null), so a
-          // cwd match here is a surviving instance sharing the dir.
-          const survivorSharesCwd = listLivePtys().some((p) => p && p.cwd === r.cwd);
-          if (!survivorSharesCwd) {
+        if (r.cwd && !survivorSharesCwd) {
             // Build the candidate set in BOTH path spaces (raw spawn cwd + realpath).
             // A deleted workspace dir makes realpathSync(raw) throw — then fall back to
             // realpath(dirname)+basename, which still resolves a deleted LEAF dir through
@@ -383,7 +516,6 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
             }
             const { killScratchForCwd } = await import('../scratch-pty-manager.js');
             killScratchForCwd(cands);
-          }
         }
       } catch (err) { reportSwallowed('resume-route.close-kill-scratch', err); }
       sendJson(res, 200, { ok: true, project, instanceKey: r.instanceKey || r.key || instanceKey || null, killedActive: r.killedActive === true, rebound });
@@ -392,6 +524,22 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       sendJson(res, 500, { ok: false, reason: 'close-failed' });
     }
   });
+}
+
+// Does any LIVE claude instance (PTY or SDK) still share this cwd after a close? The
+// killed record is already out of the registry by the time this runs, so a cwd match here
+// is a SURVIVING sibling. Guards the scratch-reap AND the project-scope cleanup below:
+// reaping either while a same-cwd sibling lives would kill the sibling's shells / reset
+// its spinner+turn state (it shares the project scope bucket).
+function _hasSurvivorSharingCwd(cwd) {
+  if (!cwd) return false;
+  // Claude instances only: a scratch/shell PTY sharing the cwd must NOT count as a sibling
+  // (it would suppress the scope cleanup and re-introduce the permanent-spinner leak).
+  if (listLivePtys().some((p) => p && p.ptyKind === 'claude' && p.cwd === cwd)) return true;
+  try {
+    for (const s of listSdkSessionInstances()) { if (s && s.cwd === cwd) return true; }
+  } catch (err) { reportSwallowed('resume-route.close-survivor', err); }
+  return false;
 }
 
 // Bound-project rebound helper (2026-10). After killPtyFor removed the BOUND
@@ -564,28 +712,55 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
       // switches the session identity directly (next user message resumes it).
       // Read the env at request time (not module top) so tests can flip it per case.
       if (process.env.CCV_SDK_MODE === '1') {
-        // Same-cwd twin ownership guard (R7a): same journal-sharing risk as PTY.
-        const sdkGuard = twinOwnershipGuard({
-          sessionUuid,
-          targetProject: project || (_projectName || ''),
-          callerInstanceKey: instanceKey || null,
-        });
-        if (sdkGuard.ownedByOther) {
-          sendJson(res, 409, { ok: false, reason: 'session-owned', owner: { instanceKey: sdkGuard.ownerInstance } });
+        // Concurrency reservation (TOCTOU): two concurrent resumes of the SAME session must
+        // not both pass the ownership guard before either binds its writer — that would let
+        // two same-cwd instances share one journal. Reserve the uuid synchronously; a second
+        // resume of an already-reserved uuid is refused. Released in a finally below.
+        if (_inflightResumes.has(sessionUuid)) {
+          sendJson(res, 409, { ok: false, reason: 'busy' });
           return;
         }
-        const sdk = await import('../lib/sdk-manager.js');
-        // Multi-session (2026-10-12): honor the requested workspace — resume the VIEWED
-        // session, not always the active one. project is the workspace name from the client.
-        const anchor = (project || instanceKey)
-          ? { project: project || undefined, instanceKey: instanceKey || undefined }
-          : undefined;
-        const r = sdk.switchToSession(sessionUuid, anchor);
-        if (r.ok) { sendJson(res, 200, { ok: true }); return; }
-        if (r.reason === 'busy') { sendJson(res, 409, { ok: false, reason: 'busy' }); return; }
-        if (r.reason === 'unavailable') { sendJson(res, 409, { ok: false, reason: 'unavailable' }); return; }
-        sendJson(res, 400, { ok: false, reason: r.reason || 'bad-uuid' });
-        return;
+        _inflightResumes.add(sessionUuid);
+        try {
+          // Same-cwd twin ownership guard (R7a): same journal-sharing risk as PTY. The guard
+          // now sees SDK liveness AND resolves a bare caller (sole live instance = the caller).
+          const sdkGuard = await twinOwnershipGuard({
+            sessionUuid,
+            targetProject: project || (_projectName || ''),
+            callerInstanceKey: instanceKey || null,
+          });
+          if (sdkGuard.ambiguous) {
+            sendJson(res, 409, { ok: false, reason: 'ambiguous', owner: { instanceKey: sdkGuard.ownerInstance } });
+            return;
+          }
+          if (sdkGuard.ownedByOther) {
+            sendJson(res, 409, { ok: false, reason: 'session-owned', owner: { instanceKey: sdkGuard.ownerInstance } });
+            return;
+          }
+          const sdk = await import('../lib/sdk-manager.js');
+          // Multi-session (2026-10-12): honor the requested workspace — resume the VIEWED
+          // session, not always the active one. project is the workspace name from the client.
+          const anchor = (project || instanceKey)
+            ? { project: project || undefined, instanceKey: instanceKey || undefined }
+            : undefined;
+          const r = sdk.switchToSession(sessionUuid, anchor);
+          // Record the live owner so a LATER resume of this same conversation from a sibling
+          // is refused (the meta.instance author may be a dead prior owner). The SDK session's
+          // own sessionId now reflects the switch (switchToSession set it synchronously), so
+          // the guard's holder check reads generation-safe truth.
+          if (r.ok) {
+            const ownerKey = instanceKey || (sdk.listSdkSessions().find((s) => s.active) || {}).instanceKey || null;
+            if (ownerKey) _activeOwners.set(sessionUuid, ownerKey);
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+          if (r.reason === 'busy') { sendJson(res, 409, { ok: false, reason: 'busy' }); return; }
+          if (r.reason === 'unavailable') { sendJson(res, 409, { ok: false, reason: 'unavailable' }); return; }
+          sendJson(res, 400, { ok: false, reason: r.reason || 'bad-uuid' });
+          return;
+        } finally {
+          _inflightResumes.delete(sessionUuid);
+        }
       }
       const pm = await import('../pty-manager.js');
       const targetProject = project || (_projectName || '');
@@ -619,7 +794,7 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
       // Same-cwd twin ownership guard (R7a): refuse to resume a conversation that a
       // DIFFERENT live claude instance is actively writing — two claude processes on
       // one journal is certain corruption. Dead/legacy/own conversations pass.
-      const guard = twinOwnershipGuard({ sessionUuid, targetProject, callerInstanceKey: resolvedCallerInstance });
+      const guard = await twinOwnershipGuard({ sessionUuid, targetProject, callerInstanceKey: resolvedCallerInstance });
       if (guard.ownedByOther) {
         sendJson(res, 409, { ok: false, reason: 'session-owned', owner: { instanceKey: guard.ownerInstance } });
         return;

@@ -1,7 +1,7 @@
 // Workspace routes (moved verbatim from server.js handleRequest).
 import { existsSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
-import { initForWorkspace, resetWorkspace, getLiveLogSource, markContinuedLaunch, markForkSession, markResumeSession, isContinuedLaunch, clearScopeState, retireInstance } from '../interceptor.js';
+import { initForWorkspace, resetWorkspace, getLiveLogSource, markContinuedLaunch, markForkSession, markResumeSession, isContinuedLaunch, clearScopeState } from '../interceptor.js';
 import { LOG_DIR } from '../../findcc.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
 import { reportSwallowed } from '../lib/error-report.js';
@@ -97,7 +97,15 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // Hoisted: the SDK forceNew branch (below) and the PTY branch both assign this, and
       // the response reads it — declaring it here keeps the SDK assignment out of TDZ.
       let launchedInstanceKey = null;
-      const result = initForWorkspace(wsPath, { forceNew });
+      // SDK +1 keeps the same-cwd sibling LIVE (and the new child always carries
+      // x-ccv-instance), so initForWorkspace must NOT run resetForLiveRelaunch's
+      // project-level clear — that would drain the surviving sibling's in-flight
+      // `_pendingNoSidByInstance`/`_lateHandles`. preserveLiveTwin skips the writer reset.
+      // Gate on the EXACT cwd (not the sanitized basename): a same-named DIFFERENT directory
+      // is a different project and must still reset.
+      const prevCwd = process.env.CCV_PROJECT_DIR || '';
+      const isSameCwdSdkForceNew = !!(deps.isSdkMode && forceNew) && prevCwd === wsPath;
+      const result = initForWorkspace(wsPath, { forceNew, preserveLiveTwin: isSameCwdSdkForceNew });
       process.env.CCV_PROJECT_DIR = wsPath;
 
       // 启动日志监听（S6b: v2 live feed when the v2 writer is active）
@@ -129,25 +137,20 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // SDK mode (2026-10-12, per-cwd multi-session): launch = register/activate this cwd's
       // resident SDK session — NOT a phantom claude PTY the SDK UI never consumes. PTY mode is
       // untouched (the proxyPort branch below stays PTY-only).
-      // forceNew (2026-11): swap the cwd's resident SDK session for a fresh generation with a
-      // NEW random instanceKey (no same-cwd twin — the old resident query is torn down). The
-      // returned instanceKey lets the client pin the empty view; the old key's writer routing
-      // is retired so its draining traffic can't move the live pointers back to the old dir.
+      // forceNew (2026-11): APPEND a same-cwd sibling session with a fresh random instanceKey
+      // (createSdkSession) — the existing session(s) stay LIVE (no teardown, no retire). The
+      // returned instanceKey lets the client pin the new sibling's empty view.
       if (deps.isSdkMode) {
         try {
           const sdk = await import('../lib/sdk-manager.js');
           if (forceNew) {
-            const r = sdk.forceNewSdkSession(wsPath, sdk.getSdkLaunchConfig() || undefined);
+            // +1 SIBLING (2026-11): append a fresh same-cwd session, leaving the existing
+            // one(s) alive. The old sibling stays live, so it must NOT be retired —
+            // retirement would freeze a live session's writer routing (cold-load, the
+            // "current" pointer, fresh-launch clearing). retireInstance only ever runs on
+            // an EXPLICIT close (routes/resume.js), and only for a random fresh key.
+            const r = sdk.createSdkSession(wsPath, sdk.getSdkLaunchConfig() || undefined);
             launchedInstanceKey = (r && r.instanceKey) || null;
-            // Retire AFTER the swap returned the previous key, in the same synchronous block
-            // as the route body (the await above is the only yield) so the old child cannot
-            // re-poison _currentSid between resetForLiveRelaunch and retirement. Only a
-            // RANDOM per-generation key (previousWasFresh) is retired: the deterministic
-            // cwd-derived boot key is RE-CREATED by a later normal relaunch, so retiring it
-            // would permanently freeze that legitimate session's routing.
-            if (r && r.previousWasFresh && r.previousInstanceKey) {
-              try { retireInstance(r.previousInstanceKey); } catch (err) { reportSwallowed('workspaces.sdk-retire', err); }
-            }
           } else if (!sdk.setActiveSdkSession(wsPath)) {
             // New cwd: register a session carrying the PROCESS-LEVEL launch config template
             // (registered by cli.js at boot) so its query gets the proxy env / model /
@@ -179,7 +182,12 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       deps.setWorkspaceLaunched(true);
 
       // 通知所有 SSE 客户端
-      const startedPayload = `event: workspace_started\ndata: ${JSON.stringify({ projectName: result.projectName, path: wsPath, claudeProjectModel: readClaudeProjectModel(wsPath) })}\n\n`;
+      // SDK +1 (sibling launch): the workspace_started carries `sibling:true` + the new
+      // instanceKey so a NON-launching client does NOT hard-reset the live sibling it is
+      // currently viewing. Only a SAME-cwd forceNew is a sibling — a forceNew into a
+      // DIFFERENT directory changes the bound project and must keep the normal reset+reload.
+      const isSiblingLaunch = isSameCwdSdkForceNew && !!launchedInstanceKey;
+      const startedPayload = `event: workspace_started\ndata: ${JSON.stringify({ projectName: result.projectName, path: wsPath, claudeProjectModel: readClaudeProjectModel(wsPath), ...(isSiblingLaunch ? { sibling: true, instanceKey: launchedInstanceKey } : {}) })}\n\n`;
       deps.clients.forEach(client => {
         try {
           sseWrite(client, startedPayload);
@@ -191,22 +199,24 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // active (a fresh workspace has no session yet → empty stream, the live
       // feed picks up from the first request). Legacy-shaped reload frames —
       // serveInFlight follows the wire flag, same as /events.
-      // SDK forceNew (2026-11): the fresh generation has no session yet, so the reload must
-      // be EMPTY — getLiveLogSource() would otherwise serve the OLD conversation to every
-      // bound client right after the workspace_started reset, repainting it. '' → total 0.
-      const wsReloadSource = (deps.isSdkMode && forceNew) ? '' : getLiveLogSource({ serveInFlight: !!deps.wireV3 });
-      const wsReloadTotal = await countLogEntries(wsReloadSource);
-      deps.clients.forEach(client => {
-        try { sseWrite(client, `event: load_start\ndata: ${JSON.stringify({ total: wsReloadTotal, incremental: false })}\n\n`); } catch {}
-      });
-      await streamRawEntriesAsync(wsReloadSource, (raw) => {
+      // SDK +1 (sibling): do NOT broadcast a reload at all — the other clients are still
+      // viewing the LIVE sibling's conversation, and a global empty reload would blank it.
+      // The launcher's own empty view is delivered by its ?instance= cold-load (freshLaunch).
+      const wsReloadSource = isSiblingLaunch ? '' : getLiveLogSource({ serveInFlight: !!deps.wireV3 });
+      const wsReloadTotal = isSiblingLaunch ? 0 : await countLogEntries(wsReloadSource);
+      if (!isSiblingLaunch) {
         deps.clients.forEach(client => {
-          try { sseWrite(client, 'event: load_chunk\ndata: ['); sseWrite(client, raw.replace(/\n/g, '')); sseWrite(client, ']\n\n'); } catch {}
+          try { sseWrite(client, `event: load_start\ndata: ${JSON.stringify({ total: wsReloadTotal, incremental: false })}\n\n`); } catch {}
         });
-      });
-      deps.clients.forEach(client => {
-        try { sseWrite(client, `event: load_end\ndata: {}\n\n`); } catch {}
-      });
+        await streamRawEntriesAsync(wsReloadSource, (raw) => {
+          deps.clients.forEach(client => {
+            try { sseWrite(client, 'event: load_chunk\ndata: ['); sseWrite(client, raw.replace(/\n/g, '')); sseWrite(client, ']\n\n'); } catch {}
+          });
+        });
+        deps.clients.forEach(client => {
+          try { sseWrite(client, `event: load_end\ndata: {}\n\n`); } catch {}
+        });
+      }
 
       // 1.7.0 迁移引导（P2）：切进的项目仍有未转换 v1 日志 → 对存量连接广播
       // migrate_prompt（新连接由 /events 的连接帧覆盖）。

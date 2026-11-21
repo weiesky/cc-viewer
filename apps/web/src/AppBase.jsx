@@ -3191,6 +3191,14 @@ class AppBase extends React.Component {
       // The dir-only rebind sends NO broadcast at all (name unchanged → every
       // client's stamp still matches), so this only ever runs for a full rebind.
       const isRebound = data.rebound === true;
+      // SDK same-cwd +1 (sibling launch): the server tags workspace_started with
+      // sibling:true when a fresh sibling was ADDED alongside the live one. A client that
+      // did NOT initiate this launch (no pending _recentLaunchPin) must NOT hard-reset — it
+      // is still viewing the live sibling's conversation, and a reset would blank it. The
+      // launcher's own pin is handled by the _recentLaunchPin branch below.
+      if (data.sibling === true && !isRebound && !(this._recentLaunchPin && this._recentLaunchPin.project === (data.projectName || ''))) {
+        return; // not the launcher — keep viewing the live sibling untouched
+      }
       // Fresh-instance relaunch (forceNew from the file explorer): handleWorkspaceLaunch
       // already pinned the view to the instance it spawned. If this same-name frame
       // lands AFTER that pin (the route writes the broadcast before res.end, but the

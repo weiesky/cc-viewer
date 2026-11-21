@@ -712,4 +712,61 @@ describe('POST /api/resume-session — SDK mode branch (no PTY required)', () =>
       delete process.env.CCV_SDK_MODE;
     }
   });
+
+  it('SDK 双兄弟:兄弟 resume 一个被对方持有的会话 → 409 session-owned(共写同一 journal 防线)', async () => {
+    process.env.CCV_SDK_MODE = '1';
+    const sdk = await import('../server/lib/sdk-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    sdk.__setQueryForTests(makeOkQuery([]));
+    sdk.initSdkSession(tmpDir, 'proj', { broadcastWs: () => {}, onTurnEnd: () => {} });
+    try {
+      const bootRow = sdk.listSdkSessions().find((s) => s.isFreshKey === false);
+      const sibling = sdk.createSdkSession(tmpDir, { broadcastWs: () => {}, onTurnEnd: () => {} });
+      const proj = projectKeyForCwd(tmpDir);
+      const boot = bootRow.instanceKey;
+      // boot resumes the conversation → becomes its live owner.
+      const r1 = await callResume({ sessionUuid: RESUME_UUID, project: proj, instanceKey: boot });
+      assert.equal(r1.status, 200, 'boot resume succeeds');
+      // The sibling (a DIFFERENT instance) resuming the SAME conversation must be refused.
+      const r2 = await callResume({ sessionUuid: RESUME_UUID, project: proj, instanceKey: sibling.instanceKey });
+      assert.equal(r2.status, 409, 'sibling resume of an owned conversation is refused');
+      assert.equal(r2.body.reason, 'session-owned');
+      assert.equal(r2.body.owner.instanceKey, boot, 'the owner is the boot instance');
+      // The owner itself re-resuming its own conversation is allowed.
+      const r3 = await callResume({ sessionUuid: RESUME_UUID, project: proj, instanceKey: boot });
+      assert.equal(r3.status, 200, 'the owner re-resuming its own conversation is allowed');
+    } finally {
+      sdk.stopSession();
+      delete process.env.CCV_SDK_MODE;
+    }
+  });
+
+  it('SDK 双兄弟:裸调用方(无 instanceKey)在 2+ 存活实例下 resume 已被持有的会话 → 409 ambiguous', async () => {
+    process.env.CCV_SDK_MODE = '1';
+    const sdk = await import('../server/lib/sdk-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const { sanitizePathComponent } = await import('../server/lib/v2/layout.js');
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    sdk.__setQueryForTests(makeOkQuery([]));
+    sdk.initSdkSession(tmpDir, 'proj', { broadcastWs: () => {}, onTurnEnd: () => {} });
+    try {
+      const bootRow = sdk.listSdkSessions().find((s) => s.isFreshKey === false);
+      const boot = bootRow.instanceKey;
+      sdk.createSdkSession(tmpDir, { broadcastWs: () => {}, onTurnEnd: () => {} }); // sibling
+      const proj = projectKeyForCwd(tmpDir);
+      // Seed the conversation's dir with meta.instance = boot (a live instance owns it).
+      const san = sanitizePathComponent(proj);
+      const sessDir = join(tmpDir, san, 'sessions', `20260717120000_${RESUME_UUID}`);
+      mkdirSync(sessDir, { recursive: true });
+      writeFileSync(join(sessDir, 'meta.json'), JSON.stringify({ sessionId: RESUME_UUID, instance: boot }));
+      // A bare caller with 2 live siblings can never be told apart → ambiguous, never a guess.
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: proj });
+      assert.equal(r.status, 409);
+      assert.equal(r.body.reason, 'ambiguous', 'bare caller across 2+ live siblings is ambiguous');
+    } finally {
+      sdk.stopSession();
+      delete process.env.CCV_SDK_MODE;
+    }
+  });
 });
