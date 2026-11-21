@@ -1,0 +1,31 @@
+apps/web/test/new-ui-i18n.test.js
+  s_bd56cc1f181194::t_ec5a489a088143 58-59
+.changeset/context-menu-copy-path-simplify.md
+  s_bd56cc1f181194::t_17d69c1f2dac9a 1-5
+apps/web/src/components/git/GitChanges.jsx
+  s_bd56cc1f181194::t_4f27f2b17a8f7d 136
+apps/web/src/components/files/fileContextMenu.js
+  s_bd56cc1f181194::t_f1af5b59c8b211 42,53,61
+apps/web/src/i18n.js
+  s_bd56cc1f181194::t_5d340316f52bdb 4270-4308
+apps/web/test/file-context-menu.test.js
+  s_bd56cc1f181194::t_8c05563d93f944 25,40,49,61-64,73,81,107,128,134
+history.md
+  s_bd56cc1f181194::t_5f07c91f23471a 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "26a2338bda959ea3f3c920f8219496f9e6b8f00e",
+  "prompts": {},
+  "sessions": {
+    "s_bd56cc1f181194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0d6b53-7c83-4e3c-9a16-fa1029b884d1",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
