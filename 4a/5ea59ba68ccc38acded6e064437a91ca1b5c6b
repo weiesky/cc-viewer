@@ -1,0 +1,115 @@
+.changeset/force-new-fresh-empty-view.md
+  s_f43780ec8105fc::t_0471245154e53a 1-9
+.changeset/modal-new-workspace.md
+  s_f43780ec8105fc::t_15591614e4acf4 1-5
+.changeset/new-session-on-current-root.md
+  s_f43780ec8105fc::t_97f223ab7c1c3d 1-5
+.changeset/same-cwd-twin-write-isolation.md
+  s_f43780ec8105fc::t_39960130b5fe00 1-5
+apps/electron/electron/main.js
+  s_f43780ec8105fc::t_a8cc472188bb0b 193,550-553,557-558,560-561,566-571,941,950-957
+apps/electron/electron/tab-content-preload.js
+  s_f43780ec8105fc::t_c4b0318aecfa1d 66
+apps/electron/electron/tab-worker.js
+  s_f43780ec8105fc::t_a708b3d045cb01 104-110
+apps/electron/electron/workspace-preload.js
+  s_f43780ec8105fc::t_96a5586d0d211f 6,8
+apps/web/src/App.jsx
+  s_f43780ec8105fc::t_437408c605e2c5 683
+apps/web/src/AppBase.jsx
+  s_f43780ec8105fc::t_51797e285a86ef 670-678,918,929-950,965-966,3194-3207,4299,4302-4306,4311,4341-4359
+apps/web/src/components/dashboard/AppHeader.jsx
+  s_f43780ec8105fc::t_ef7d6e3dd5050a 1292,2319
+apps/web/src/components/files/FileBrowserModal.jsx
+  s_f43780ec8105fc::t_8001b34ad675e9 115,167-168,172-173,177,183,271,297,324,329,335,423,1140-1147,1150-1151,1153-1154,1158,1160,1326,1653
+apps/web/src/components/files/FileExplorer.jsx
+  s_f43780ec8105fc::t_3399585d589f4e 276-277,690
+apps/web/src/components/files/fileContextMenu.js
+  s_f43780ec8105fc::t_700c60d1926933 22-24
+apps/web/src/components/files/fileContextMenuActions.jsx
+  s_f43780ec8105fc::t_4aeafcb720c47e 16,32-36,47,221-222,224-230,253-263,265,268-271,273,275,285
+apps/web/src/i18n.js
+  s_f43780ec8105fc::t_95ca89c3c039bb 16530-16537
+apps/web/src/utils/workspaceLaunch.js
+  s_f43780ec8105fc::t_663e7a074b277c 20-32,38,44,50
+apps/web/test/file-browser-modal.test.js
+  s_f43780ec8105fc::t_161b2b16be20b0 366-368,373-377,395-403,405
+apps/web/test/file-context-menu-actions.test.js
+  s_f43780ec8105fc::t_0facef35e3a517 143-146,153,161-164,184,194-242,256,259,264-272,276,279
+apps/web/test/force-new-view-blank.test.js
+  s_f43780ec8105fc::t_6fec58940c56e8 1-167
+apps/web/test/resume-history-i18n.test.js
+  s_f43780ec8105fc::t_5c81db3b6e24fa 37
+apps/web/test/resume-history-menu.test.js
+  s_f43780ec8105fc::t_dda6abfa6c05ac 94
+apps/web/test/view-cache-restore.test.js
+  s_f43780ec8105fc::t_c71cd617fa7a60 111
+apps/web/test/workspace-launch.test.js
+  s_f43780ec8105fc::t_24bc9d02d95704 19,38,89-118
+history.md
+  s_f43780ec8105fc::t_d661a0b3180921 5-12
+packages/app/server/interceptor.js
+  s_f43780ec8105fc::t_0af71a2c3d4765 635-645,719-723,759-761,763,871-876,894-903
+packages/app/server/lib/continuation-args.js
+  s_f43780ec8105fc::t_97c17e5e4196c8 1-25
+packages/app/server/lib/sdk-manager.js
+  s_f43780ec8105fc::t_a68d94d2b15b59 170,439-454,513-519,990-1005,2783-2785,2861-2867,2935-2940,3084-3138
+packages/app/server/lib/session-start-bridge.js
+  s_f43780ec8105fc::t_ffbe150df04b3d 77-83
+packages/app/server/lib/v2/session-select.js
+  s_f43780ec8105fc::t_894f57f831888f 305-311,314,362-370,398
+packages/app/server/lib/v2/v2-writer.js
+  s_f43780ec8105fc::t_78dd19898e963d 93-111,135-140,213-217,227-237,245,252-257,266-292,309,311-315,325-327,329,331,537-545,551-554,573,576-586,599,602-626,655-657,665,733-737,739-742,1173-1174,1219,1225,1229-1233,1241,1251-1315
+packages/app/server/pty-manager.js
+  s_f43780ec8105fc::t_e7e2f32d244683 104-111,352-357,493-497,992,1261-1266,1475,1479,1492-1495,1676,1685-1695,1701-1714
+packages/app/server/routes/events.js
+  s_f43780ec8105fc::t_c5875078ad083c 430-436,439-441,443-444,446,478-480
+packages/app/server/routes/resume.js
+  s_f43780ec8105fc::t_bfb49fcc7f7791 41,50-51,66-103,567-576,595-596,598,602-611,619-626
+packages/app/server/routes/workspaces.js
+  s_f43780ec8105fc::t_0f9bcae2d24bd6 4,8-18,47-57,62-66,80-85,94-100,113-127,132-135,139-151,169,171-176,194-197,222,231-237
+packages/app/server/server.js
+  s_f43780ec8105fc::t_395aa34f4e8249 680-690
+packages/app/test/api-workspaces.test.js
+  s_f43780ec8105fc::t_7f391f4dad1fa6 189-201,322-378
+packages/app/test/branch-routes-workspaces.test.js
+  s_f43780ec8105fc::t_4ac5c63b369bd4 38-40,45,228-295
+packages/app/test/events-instance-live-empty.test.js
+  s_f43780ec8105fc::t_ef0ff9bcd4191c 44,54-60,64-65,301-399
+packages/app/test/interceptor-continuation-sync.test.js
+  s_f43780ec8105fc::t_caadb57dccac44 254-255
+packages/app/test/pty-manager-instance.test.js
+  s_f43780ec8105fc::t_63f64010ef56bd 222-258,269-298
+packages/app/test/resume-route.test.js
+  s_f43780ec8105fc::t_bdf596ba7053d2 484-581
+packages/app/test/sdk-force-new.test.js
+  s_f43780ec8105fc::t_dba728a6769f80 1-169
+packages/app/test/session-start-bridge.test.js
+  s_f43780ec8105fc::t_4c774ce5e06e26 122-152
+packages/app/test/v2-core.test.js
+  s_f43780ec8105fc::t_c06df56763804f 547-590,1090-1116
+packages/app/test/v2-resume-switch.test.js
+  s_f43780ec8105fc::t_7bad382cef21c8 210,251-318
+packages/app/test/v2-retire-instance.test.js
+  s_f43780ec8105fc::t_9a7ab83cf9a6ae 1-135
+packages/app/test/v2-session-select.test.js
+  s_f43780ec8105fc::t_9b5159284c0374 203-254
+scripts/tarball-baseline.json
+  s_f43780ec8105fc::t_01c4746a87af4b 1428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4a5ea59ba68ccc38acded6e064437a91ca1b5c6b",
+  "prompts": {},
+  "sessions": {
+    "s_f43780ec8105fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e7f4856-3a6f-4f51-b389-bab156716df9",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
