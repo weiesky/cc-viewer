@@ -1,0 +1,47 @@
+apps/web/src/AppBase.jsx
+  s_bd56cc1f181194::t_0cfc64532b59e5 4318-4322,4324-4326
+packages/app/server/lib/continuation-args.js
+  s_bd56cc1f181194::t_6da7ffc7e2f6be 1-25
+scripts/tarball-baseline.json
+  s_bd56cc1f181194::t_0c2cc5e76988ec 1428
+apps/web/src/components/files/fileContextMenuActions.jsx
+  s_bd56cc1f181194::t_682827a45408d7 221-222
+  s_bd56cc1f181194::t_5babcc096740bf 47
+apps/web/src/components/files/fileContextMenu.js
+  s_bd56cc1f181194::t_436d5d1739d9ec 22-24
+apps/web/src/components/files/FileExplorer.jsx
+  s_bd56cc1f181194::t_1d40fbfbfceefd 276-277
+packages/app/test/api-workspaces.test.js
+  s_bd56cc1f181194::t_9b37154feb428d 189-201
+  s_bd56cc1f181194::t_1229835e7219b2 344-371
+  s_bd56cc1f181194::t_62d2bd22c11a02 330-343
+apps/electron/electron/main.js
+  s_bd56cc1f181194::t_2cb2681fee3178 557-558,560-561
+  s_bd56cc1f181194::t_45aea5d78161a5 941
+  s_bd56cc1f181194::t_a9c074355f22d9 952-954,957
+apps/web/test/file-context-menu-actions.test.js
+  s_bd56cc1f181194::t_2db1986d4fc530 221-242
+packages/app/server/routes/workspaces.js
+  s_bd56cc1f181194::t_b2e2987b390c86 8,11-18
+  s_bd56cc1f181194::t_210c609f2cbe72 47-57
+  s_bd56cc1f181194::t_dbe3df30ac372f 209-215
+  s_bd56cc1f181194::t_195794700d5854 9-10
+apps/electron/electron/tab-worker.js
+  s_bd56cc1f181194::t_43328a2603aa8a 104-110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "66bbb00d9474bf820f9047343176c551c4a24107",
+  "prompts": {},
+  "sessions": {
+    "s_bd56cc1f181194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0d6b53-7c83-4e3c-9a16-fa1029b884d1",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
