@@ -1,0 +1,84 @@
+packages/app/test/v2-resume-switch.test.js
+  s_38cd41b2b55d0a::t_ec24e636a06090 210
+  s_38cd41b2b55d0a::t_d170c6fa7f211e 251-297,318
+  s_38cd41b2b55d0a::t_14792f8e12843a 298-317
+packages/app/server/routes/resume.js
+  s_38cd41b2b55d0a::t_de185f0fe8e1d0 619-621,623-626
+  s_38cd41b2b55d0a::t_718745763ff1ae 41
+  s_38cd41b2b55d0a::t_9bc5b029eab55d 66-69,73-74,76,83,85,87-103
+  s_38cd41b2b55d0a::t_9f91825bc4f716 70-72
+  s_38cd41b2b55d0a::t_8e92500eaf463a 567-576,611
+  s_38cd41b2b55d0a::t_982c790240f7ea 75,77-82,84
+  s_38cd41b2b55d0a::t_3cabbc24a60129 86
+  s_38cd41b2b55d0a::t_0ee8e705737593 595-596,598,602-610
+  s_38cd41b2b55d0a::t_eac1012f465416 622
+  s_38cd41b2b55d0a::t_bb53fc4eb54959 50-51
+apps/web/test/resume-history-menu.test.js
+  s_38cd41b2b55d0a::t_4a1165b7f721e7 94
+apps/web/test/resume-history-i18n.test.js
+  s_38cd41b2b55d0a::t_a084426fc7b0ff 37
+packages/app/test/session-start-bridge.test.js
+  s_38cd41b2b55d0a::t_541955ec99792f 122-152
+history.md
+  s_38cd41b2b55d0a::t_bcc6648d141299 5-6
+apps/web/src/AppBase.jsx
+  s_38cd41b2b55d0a::t_0776375ff7951e 670-678
+.changeset/same-cwd-twin-write-isolation.md
+  s_38cd41b2b55d0a::t_a51a512b6b0566 1-5
+packages/app/test/v2-core.test.js
+  s_38cd41b2b55d0a::t_4057a27e378302 547-590
+  s_38cd41b2b55d0a::t_5b7333a9eeeea3 1090-1116
+packages/app/server/pty-manager.js
+  s_38cd41b2b55d0a::t_77a4bef5df582e 984
+  s_38cd41b2b55d0a::t_a1cde45de7b445 485-489
+packages/app/server/routes/workspaces.js
+  s_38cd41b2b55d0a::t_48cd7b42f90ccd 94-96
+  s_38cd41b2b55d0a::t_55f3c8f7e0aa43 97
+packages/app/server/lib/v2/v2-writer.js
+  s_38cd41b2b55d0a::t_8e7d6e7688bb54 220-230
+  s_38cd41b2b55d0a::t_b83c739c2625f2 598-599,604-607
+  s_38cd41b2b55d0a::t_0a8ee85b87edf1 1250-1254
+  s_38cd41b2b55d0a::t_f6597c4f0b5092 128-133
+  s_38cd41b2b55d0a::t_7fd4556210b24f 716-720,722-725
+  s_38cd41b2b55d0a::t_703e565178d72e 563-573,589-597,600-603,608
+  s_38cd41b2b55d0a::t_eb938f0cdc2b80 1156-1157
+  s_38cd41b2b55d0a::t_9574b8ff08996a 638-640,648
+  s_38cd41b2b55d0a::t_75d101e5ef3a96 609,1202,1208,1212-1216
+  s_38cd41b2b55d0a::t_234edbb4332768 238,245-250
+  s_38cd41b2b55d0a::t_e3893c332f5e0a 259-271,281-285,302,304-308,318-320,322,324
+  s_38cd41b2b55d0a::t_51c8e9ea8f8c77 93-104
+  s_38cd41b2b55d0a::t_898089d1d167e8 530-532,538-541
+  s_38cd41b2b55d0a::t_1c7d2fd3403ad5 272-280
+  s_38cd41b2b55d0a::t_997b3995f9fef0 206-210
+  s_38cd41b2b55d0a::t_4af357b06c1db5 1233-1249,1255-1272
+packages/app/server/interceptor.js
+  s_38cd41b2b55d0a::t_adcbc4daccf161 860-864
+  s_38cd41b2b55d0a::t_4387ed3cd4a014 865,883-892
+  s_38cd41b2b55d0a::t_0aad189d484fdb 708-712
+  s_38cd41b2b55d0a::t_8e9af7278b120f 748-750,752
+packages/app/test/interceptor-continuation-sync.test.js
+  s_38cd41b2b55d0a::t_95f94609259637 254-255
+packages/app/test/resume-route.test.js
+  s_38cd41b2b55d0a::t_30014d5504c584 552-581
+  s_38cd41b2b55d0a::t_afefb9b996f859 484-551
+apps/web/src/i18n.js
+  s_38cd41b2b55d0a::t_dcaf59a2c6ed27 16530-16537
+packages/app/server/lib/session-start-bridge.js
+  s_38cd41b2b55d0a::t_9e3ff0205702ff 77-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a0a4d155bb9213cf19f6d633c3616fdea4724e1d",
+  "prompts": {},
+  "sessions": {
+    "s_38cd41b2b55d0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f353fa5f-ebbe-45f0-a7f8-f40a6b7e58fe",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
