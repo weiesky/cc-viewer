@@ -1,0 +1,47 @@
+.changeset/force-new-fresh-empty-view.md
+  s_f43780ec8105fc::t_988aae57f5d184 9
+.changeset/new-session-on-current-root.md
+  s_f43780ec8105fc::t_5cb337264819a2 5
+.changeset/sdk-same-cwd-sibling-sessions.md
+  s_f43780ec8105fc::t_91a2631e5f37f6 1-11
+apps/web/src/AppBase.jsx
+  s_f43780ec8105fc::t_aab9a66506e629 3194-3201
+history.md
+  s_f43780ec8105fc::t_3d64eb3dc71662 5-6
+packages/app/server/interceptor.js
+  s_f43780ec8105fc::t_190f1016ec8e6c 636-641,647-656,887,910-915,917
+packages/app/server/lib/scheduled-task-executor.js
+  s_f43780ec8105fc::t_c0fdf3c8f431cd 47-52
+packages/app/server/lib/sdk-manager.js
+  s_f43780ec8105fc::t_0e73938ac661e9 12-17,77-85,100-121,123-126,142,145-153,159,171-188,190-192,196-201,203,472-478,481,2971,3035-3038,3042-3046,3066,3114-3117,3120,3124-3131,3133-3138,3140,3143-3147,3150-3160,3163-3164,3190-3193,3211-3212,3283-3285,3287,3300-3301,3366-3368,3386-3387,3402-3409,3423,3426-3427,3431-3434,3441,3443-3449,3474,3476,3486-3495,3508
+packages/app/server/lib/v2/v2-writer.js
+  s_f43780ec8105fc::t_dc153bb8715a92 238-247,1302,1304,1306-1309,1324-1339
+packages/app/server/routes/resume.js
+  s_f43780ec8105fc::t_8a736baed29fe4 44,66-97,100-101,105-110,114-153,166-183,190-208,281-283,285-288,298-306,457-476,486,504,529-544,715-720,723-763,797
+packages/app/server/routes/workspaces.js
+  s_f43780ec8105fc::t_a1cb8e461947d7 4,100-108,140-142,147-152,185-190,202-207,209,211-219
+packages/app/test/resume-route.test.js
+  s_f43780ec8105fc::t_aff67d77af4687 715-771
+packages/app/test/sdk-force-new.test.js
+  s_f43780ec8105fc::t_5ee5f365d43663 2,4-9,12-13,32-46,49-51,53,55,60,66-70,72-73,78-79,81,83,85-128,136,138-140,143,146-147,149,157,160-166,169,172-174,176-180,183,189,191-192,201-258,261,264
+packages/app/test/sdk-multi-session-route.test.js
+  s_f43780ec8105fc::t_64847bef4c1ea6 1-183
+packages/app/test/v2-retire-instance.test.js
+  s_f43780ec8105fc::t_923764b2ddb123 2,4-11,52,137-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6f904397ada3021bb05ff5232002022df1dc5e6e",
+  "prompts": {},
+  "sessions": {
+    "s_f43780ec8105fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e7f4856-3a6f-4f51-b389-bab156716df9",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
