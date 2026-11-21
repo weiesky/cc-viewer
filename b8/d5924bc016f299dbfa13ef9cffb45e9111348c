@@ -1,0 +1,60 @@
+apps/web/src/components/files/fileContextMenuActions.jsx
+  s_f43780ec8105fc::t_450331954dba15 16-17,42-44,215-253,256-257,259
+  s_f43780ec8105fc::t_0356f1bbbc9195 254-255,258
+apps/web/test/file-context-menu.test.js
+  s_f43780ec8105fc::t_450331954dba15 25,40,49,61-99,107,128,134
+history.md
+  s_f43780ec8105fc::t_450331954dba15 5-8
+apps/web/src/components/git/GitChanges.jsx
+  s_f43780ec8105fc::t_450331954dba15 136
+apps/web/src/components/files/fileContextMenu.js
+  s_f43780ec8105fc::t_450331954dba15 20-23,29,31-33,40,42,51,53,61
+apps/web/test/new-ui-i18n.test.js
+  s_f43780ec8105fc::t_450331954dba15 54-60,188
+.changeset/context-menu-copy-path-simplify.md
+  s_f43780ec8105fc::t_14b56d0e4e27ed 1-5
+apps/web/src/i18n.js
+  s_f43780ec8105fc::t_450331954dba15 4270-4308,4570-4629,12146-12153
+.changeset/file-explorer-new-workspace.md
+  s_f43780ec8105fc::t_9575f9ff7efac1 1-5
+apps/electron/electron/main.js
+  s_f43780ec8105fc::t_1f98b2efe5dcb3 552-556,936-944
+apps/electron/electron/tab-content-preload.js
+  s_f43780ec8105fc::t_c5b76dbf4315b5 61-66
+apps/electron/electron/tab-worker.js
+  s_f43780ec8105fc::t_dc9f99616659af 100-106
+apps/web/src/App.jsx
+  s_f43780ec8105fc::t_f191db12a8b8f8 786
+apps/web/src/Mobile.jsx
+  s_f43780ec8105fc::t_e2b7ffd33530f3 1009
+apps/web/src/components/chat/ChatView.jsx
+  s_f43780ec8105fc::t_8af0536b3d0b3d 818-820,5646
+apps/web/src/components/dashboard/WorkspaceList.jsx
+  s_f43780ec8105fc::t_2f90667bbc0087 6,112-118,120-124
+apps/web/src/components/files/FileExplorer.jsx
+  s_f43780ec8105fc::t_a375541ddc9e90 34,276-277,279-280,284,286,340,346,422-423,426,428,623
+apps/web/src/utils/workspaceLaunch.js
+  s_f43780ec8105fc::t_ba3c82ef11eeac 1-40
+apps/web/test/file-browser-modal.test.js
+  s_f43780ec8105fc::t_61eaa1fc6ba4fe 366-370,375-376
+apps/web/test/file-context-menu-actions.test.js
+  s_f43780ec8105fc::t_1f5c38ce378828 18-19,22,42,56-57,59-60,140-268
+apps/web/test/workspace-launch.test.js
+  s_f43780ec8105fc::t_889611cda6a019 1-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b8d5924bc016f299dbfa13ef9cffb45e9111348c",
+  "prompts": {},
+  "sessions": {
+    "s_f43780ec8105fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e7f4856-3a6f-4f51-b389-bab156716df9",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
