@@ -1,0 +1,84 @@
+packages/app/test/pty-manager-instance.test.js
+  s_bd56cc1f181194::t_7f33a867ff41f9 222-258
+packages/app/server/routes/workspaces.js
+  s_bd56cc1f181194::t_892efda53ef4fe 153-157
+  s_bd56cc1f181194::t_e327c8889294ba 17-34
+  s_bd56cc1f181194::t_45f01fad561a22 126-127
+  s_bd56cc1f181194::t_098bdd89b82baa 143,150,152
+  s_bd56cc1f181194::t_40e6e9e326d7a7 200
+  s_bd56cc1f181194::t_29861500bbccb5 80
+  s_bd56cc1f181194::t_5ca21687f2408e 62-66
+  s_bd56cc1f181194::t_1024f205d996a5 108-112
+  s_bd56cc1f181194::t_26f08c4879eee9 81-85
+  s_bd56cc1f181194::t_db45abbe11a94b 107,113-121
+apps/web/src/AppBase.jsx
+  s_bd56cc1f181194::t_8d70a5cb7f9e4a 4318
+  s_bd56cc1f181194::t_4eddbefa77a729 3164-3171,3175-3177
+  s_bd56cc1f181194::t_660d8b3ace9a5f 3172-3174
+  s_bd56cc1f181194::t_bf81f5a2c31e67 935-936
+  s_bd56cc1f181194::t_71286903922555 4269,4272-4276,4281,4311-4317,4319-4321
+packages/app/test/api-workspaces.test.js
+  s_bd56cc1f181194::t_8510120394a6da 309-323
+apps/electron/electron/workspace-preload.js
+  s_bd56cc1f181194::t_831407555cd9d1 6,8
+apps/electron/electron/tab-content-preload.js
+  s_bd56cc1f181194::t_104907d31beb6a 66
+apps/web/test/file-context-menu-actions.test.js
+  s_bd56cc1f181194::t_e0f10e593d4c1e 143-146,153,161-164,184,194-218
+  s_bd56cc1f181194::t_e6be54474cbf84 219,234,237,242-250,254,257
+  s_4122b07c8b4292::t_54efde6e2809e2 220
+.changeset/new-session-on-current-root.md
+  s_bd56cc1f181194::t_436579699971b9 1-5
+packages/app/test/branch-routes-workspaces.test.js
+  s_bd56cc1f181194::t_f9b41556aa91b1 45
+  s_bd56cc1f181194::t_e43615cda8ba0f 38-40
+  s_bd56cc1f181194::t_ec467a9feb07df 259-291,293-295
+  s_bd56cc1f181194::t_4f50c21aa830ad 292
+  s_bd56cc1f181194::t_bfc18924f5a335 228-258
+apps/web/src/components/files/fileContextMenuActions.jsx
+  s_bd56cc1f181194::t_66fe37626dd751 228-230
+  s_bd56cc1f181194::t_d82bd61729e0a8 16
+  s_bd56cc1f181194::t_8015538a0e35af 32-36
+  s_bd56cc1f181194::t_a43700e7b65454 224-227,253-263,265,268-271,273,275
+  s_bd56cc1f181194::t_c1d0ea040fdafe 285
+history.md
+  s_bd56cc1f181194::t_2512c3d93ef7cc 5-6
+packages/app/server/pty-manager.js
+  s_bd56cc1f181194::t_c22d1c1a0a46d9 1652,1661-1671,1677-1678
+  s_bd56cc1f181194::t_cb19005f2ece07 344-349
+apps/web/src/utils/workspaceLaunch.js
+  s_bd56cc1f181194::t_557f8cdb703003 20-32,38,44,50
+apps/electron/electron/main.js
+  s_bd56cc1f181194::t_be3de03a5a9f4d 949-952,954-955,957-972
+  s_bd56cc1f181194::t_d9cfdfa19ca7e0 193
+  s_bd56cc1f181194::t_e8afaef7b3285b 948,953
+  s_bd56cc1f181194::t_bd9510c6098eb0 550-553,564-569
+apps/web/test/workspace-launch.test.js
+  s_bd56cc1f181194::t_da7340eb1dcda2 19
+  s_bd56cc1f181194::t_c410d9d6d2ca3a 38
+  s_bd56cc1f181194::t_b0e2a95698953e 89-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "267c72077a964f2d865acf684c5092bc69d16cba",
+  "prompts": {},
+  "sessions": {
+    "s_4122b07c8b4292": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1fbcc-5a47-7112-a38d-fb834f2c5f53",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    },
+    "s_bd56cc1f181194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0d6b53-7c83-4e3c-9a16-fa1029b884d1",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
