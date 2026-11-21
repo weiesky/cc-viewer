@@ -13,6 +13,8 @@ import { Modal, Input, message } from 'antd';
 import { t } from '../../i18n';
 import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { copyTextToClipboard } from '../../utils/terminalClipboard';
+import { launchWorkspace, isTransportError } from '../../utils/workspaceLaunch';
+import { reportSwallowed } from '../../utils/errorReport';
 
 // Same Modal.confirm input styling used by the sidebar's new-file/new-dir flows.
 const nameInputStyle = {
@@ -37,6 +39,9 @@ export function createFileMenuHandler({
   onAttachToChat,
   onInsertPathToChat,
   onDownload,      // optional; the modal passes its downloadFile helper
+  onLaunchWorkspace, // optional ({projectName, path}) — "New Workspace (Session)"
+                     // launch notification; the item renders only when this is
+                     // wired (allowNewWorkspace in fileContextMenu.js).
   project,
   instance,
   target,          // optional; when set, the modal is browsing a CLAUDE.md/skill
@@ -85,11 +90,6 @@ export function createFileMenuHandler({
                 .catch(() => {});
             }
           })
-          .catch(() => {});
-        break;
-      case 'copyRelPath':
-        copyTextToClipboard(path || '.')
-          .then(ok => { if (ok) message.success(t('ui.copied')); })
           .catch(() => {});
         break;
       case 'attachToChat':
@@ -211,6 +211,51 @@ export function createFileMenuHandler({
           },
         });
         break;
+      }
+      case 'newWorkspace': {
+        // Built only where the caller wires the callback (sidebar explorer); never
+        // offered in target mode (fileContextMenu.js omits the item there).
+        if (!onLaunchWorkspace || target) break;
+        const hide = message.loading(t('ui.contextMenu.newWorkspaceLaunching'), 0);
+        return Promise.all([
+          // Absolute host path, resolved against the VIEWED project root (same
+          // view-scoped call as copyPath).
+          fetch(apiUrl(viewUrl(endpoint('resolve-path'))), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+          }).then(r => r.json()),
+          // Prior-log probe for the -c heuristic (WorkspaceList logCount parity).
+          // Failure only loses auto-continue; it never blocks the launch.
+          fetch(apiUrl('/api/workspaces'))
+            .then(r => {
+              // A rejected probe is fine (fail-open to fresh session); a non-OK
+              // status is a degraded server — report it per the swallow rule.
+              if (!r.ok) {
+                reportSwallowed('fileMenu.newWorkspace.probe', new Error(`HTTP ${r.status}`));
+                return null;
+              }
+              return r.json();
+            })
+            .catch((err) => { reportSwallowed('fileMenu.newWorkspace.probe', err); return null; }),
+        ])
+          .then(async ([resolved, list]) => {
+            if (!resolved?.fullPath) throw new Error(resolved?.error || 'resolve failed');
+            const fullPath = resolved.fullPath;
+            const known = list?.workspaces?.find(w => w.path === fullPath);
+            const result = await launchWorkspace(fullPath, { logCount: known?.logCount || 0 });
+            if (!result.openedElsewhere) {
+              onLaunchWorkspace({ projectName: result.projectName, path: fullPath });
+            }
+          })
+          .catch(err => {
+            // Transport-level failures (offline, non-JSON body) carry raw
+            // browser/technical text — substitute the stable localized fallback,
+            // same as WorkspaceList's launch error handling.
+            const detail = isTransportError(err) ? t('ui.workspaces.launchFailed') : err.message;
+            message.error(t('ui.contextMenu.newWorkspaceFailed', { error: detail }));
+          })
+          .finally(hide);
       }
       case 'delete':
         Modal.confirm({

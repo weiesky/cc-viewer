@@ -31,7 +31,7 @@ async function readJsonOrThrow(res) {
   throw new Error(reason);
 }
 
-function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpand, currentFile, onFileRenamed, refreshTrigger, onHtmlPreview, onAttachToChat, onInsertPathToChat, onImportFiles, project, instance }) {
+function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpand, currentFile, onFileRenamed, refreshTrigger, onHtmlPreview, onAttachToChat, onInsertPathToChat, onImportFiles, onLaunchWorkspace, project, instance }) {
   const [children, setChildren] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -273,15 +273,17 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
 
   // 右键菜单项 — 与远程文件浏览弹窗(FileBrowserModal)共享定义与动作，
   // 按文件类型定制时只需改 fileContextMenu.js / fileContextMenuActions.jsx。
+  // The "New Workspace (Session)" item renders only where the launch callback is
+  // wired (this sidebar; never the modal/target browser).
   const contextMenuItems = useMemo(
-    () => buildFileContextMenuItems({ isDir, isRemote }),
-    [isDir, isRemote]);
+    () => buildFileContextMenuItems({ isDir, isRemote, allowNewWorkspace: !!onLaunchWorkspace }),
+    [isDir, isRemote, onLaunchWorkspace]);
   const handleMenuClick = useMemo(
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'inline',
-      startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance,
+      startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat, onLaunchWorkspace, project, instance,
     }),
-    [childPath, item.name, isDir, startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance]);
+    [childPath, item.name, isDir, startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat, onLaunchWorkspace, project, instance]);
 
   const treeItemDiv = (
     <div
@@ -335,13 +337,13 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
         <div className={styles.error} style={{ paddingLeft: 24 + depth * 16 }}>{error}</div>
       )}
       {expanded && children && children.map(child => (
-        <TreeNode key={child.name} item={child} path={childPath} depth={depth + 1} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={onHtmlPreview} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={onImportFiles} project={project} instance={instance} />
+        <TreeNode key={child.name} item={child} path={childPath} depth={depth + 1} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={onHtmlPreview} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={onImportFiles} onLaunchWorkspace={onLaunchWorkspace} project={project} instance={instance} />
       ))}
     </>
   );
 }
 
-export default function FileExplorer({ style, onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger, onManualRefresh, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance, searchOpen, onToggleSearch, searchGetDirtyPath, onSearchReplaceApplied, onOpenSearchResult }) {
+export default function FileExplorer({ style, onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger, onManualRefresh, onFileRenamed, onAttachToChat, onInsertPathToChat, onLaunchWorkspace, project, instance, searchOpen, onToggleSearch, searchGetDirtyPath, onSearchReplaceApplied, onOpenSearchResult }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [htmlPreviewPath, setHtmlPreviewPath] = useState(null);
@@ -417,13 +419,13 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
 
   // Header 右键菜单与弹窗网格空白区域共用 'container' 定义/动作（同一 builder 保证同步）。
   const headerMenuItems = useMemo(
-    () => buildFileContextMenuItems({ isDir: true, isRemote: false, scope: 'container' }),
-    []);
+    () => buildFileContextMenuItems({ isDir: true, isRemote: false, scope: 'container', allowNewWorkspace: !!onLaunchWorkspace }),
+    [onLaunchWorkspace]);
   const handleHeaderMenuClick = useMemo(
     () => createFileMenuHandler({
-      path: '', name: '', isDir: true, onFileRenamed, project, instance,
+      path: '', name: '', isDir: true, onFileRenamed, onLaunchWorkspace, project, instance,
     }),
-    [onFileRenamed, project, instance]);
+    [onFileRenamed, onLaunchWorkspace, project, instance]);
 
   // Import external files (支持批量文件夹拖入，保留目录结构) — 实现已抽取到
   // ./importFiles 与 FileBrowserModal 共享；这里仅注入本组件的 onFileRenamed。
@@ -618,7 +620,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         {error && <div className={styles.error}>{error}</div>}
         {!items && !error && <div className={styles.loading}>{t('ui.loading')}</div>}
         {items && items.map(item => (
-          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={setHtmlPreviewPath} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={handleImportFiles} project={project} instance={instance} />
+          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={setHtmlPreviewPath} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={handleImportFiles} onLaunchWorkspace={onLaunchWorkspace} project={project} instance={instance} />
         ))}
         {/* Blank area below the list: right-click = the header context menu
             (same 'container' definition). Tree rows have their own Dropdown and

@@ -1006,6 +1006,7 @@ class Mobile extends AppBase {
                     onClearContextOptimistic={this.handleClearContextOptimistic}
                     onUserMessageSent={this.handleUserMessageSent}
                     attachedSid={this.state.attachedSid || null}
+                    onLaunchWorkspace={this.handleWorkspaceLaunch}
                     sdkModel={this.state.sdkModel}
                     proxyProfiles={this.state.proxyProfiles}
                     activeProxyId={this.state.activeProxyId}

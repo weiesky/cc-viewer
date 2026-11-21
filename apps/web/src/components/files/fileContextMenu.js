@@ -17,21 +17,29 @@ import { t } from '../../i18n.js';
 // Write operations are always offered; the server enforces the write policy
 // (isWriteAllowed) and rejects what the location may not mutate, so no client-side
 // gating is needed here.
+//
+// allowNewWorkspace: adds "New Workspace (Session)" to folder/container menus.
+// Only set where the surface wires the launch callback (the sidebar explorer);
+// omitted elsewhere (FileBrowserModal, target mode) so no dead item appears.
 export function buildFileContextMenuItems({
   isDir,
   isRemote,
   scope = 'node',
   isTarget = false,
+  allowNewWorkspace = false,
 }) {
+  const newWorkspaceItems = (allowNewWorkspace && !isTarget)
+    ? [{ key: 'newWorkspace', label: t('ui.contextMenu.newWorkspace') }]
+    : [];
   if (scope === 'container') {
     return [
       { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
       { key: 'openTerminal', label: t('ui.contextMenu.openTerminal') },
       { key: 'newFile', label: t('ui.contextMenu.newFile') },
       { key: 'newDir', label: t('ui.contextMenu.newDir') },
+      ...newWorkspaceItems,
       { type: 'divider' },
-      { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
-      { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
+      { key: 'copyPath', label: t('ui.contextMenu.copyDirPath') },
     ];
   }
   if (isDir) {
@@ -40,9 +48,9 @@ export function buildFileContextMenuItems({
       { key: 'openTerminal', label: t('ui.contextMenu.openTerminal') },
       { key: 'newFile', label: t('ui.contextMenu.newFile') },
       { key: 'newDir', label: t('ui.contextMenu.newDir') },
+      ...newWorkspaceItems,
       { type: 'divider' },
-      { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
-      { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
+      { key: 'copyPath', label: t('ui.contextMenu.copyDirPath') },
       { type: 'divider' },
       { key: 'rename', label: t('ui.contextMenu.rename') },
       { key: 'delete', label: t('ui.contextMenu.delete'), danger: true },
@@ -50,8 +58,7 @@ export function buildFileContextMenuItems({
   }
   return [
     { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
-    { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
-    { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
+    { key: 'copyPath', label: t('ui.contextMenu.copyFilePath') },
     // attach/insert-to-chat only make sense where a chat can receive the file —
     // the CLAUDE.md/skill browser modal (isTarget) wires no such callback, so
     // showing them would be dead menu items. Omitted there.

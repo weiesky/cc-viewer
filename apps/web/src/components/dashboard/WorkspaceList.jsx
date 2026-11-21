@@ -3,6 +3,7 @@ import { Button, Input, Empty, Typography, Popconfirm, message, Modal } from 'an
 import { DeleteOutlined, PlusOutlined, ClockCircleOutlined, DatabaseOutlined, CloseOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
+import { launchWorkspace, isTransportError } from '../../utils/workspaceLaunch';
 import { formatSize } from '../../utils/formatters';
 import { renderMarkdown } from '../../utils/markdown';
 import DirBrowser from './DirBrowser';
@@ -108,30 +109,19 @@ export default function WorkspaceList({ onLaunch, embedded = false }) {
 
   const handleLaunch = (workspace) => {
     setLaunching(workspace.id);
-    const extraArgs = [];
-    if (workspace.logCount > 0) extraArgs.push('-c');
-    // Electron multi-tab mode: launch via IPC instead of server API
-    if (window.electronAPI?.launchWorkspace) {
-      window.electronAPI.launchWorkspace(workspace.path, extraArgs);
-      setLaunching(null);
-      return;
-    }
-    fetch(apiUrl('/api/workspaces/launch'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: workspace.path, extraArgs }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          message.error(data.error);
-          setLaunching(null);
-        } else {
-          onLaunch({ projectName: data.projectName, path: workspace.path });
-        }
+    // Shared launcher (also used by the file-explorer context menu): -c iff the
+    // folder already has logs; Electron multi-tab opens a new tab and must not
+    // re-anchor this view (openedElsewhere).
+    launchWorkspace(workspace.path, { logCount: workspace.logCount || 0 })
+      .then(result => {
+        if (result.openedElsewhere) { setLaunching(null); return; }
+        onLaunch({ projectName: result.projectName, path: workspace.path });
       })
-      .catch(() => {
-        message.error('Launch failed');
+      .catch(err => {
+        // Server-provided errors (data.error) are shown verbatim; transport-level
+        // failures fall back to the stable localized string (browser messages are
+        // locale/engine-specific — "Failed to fetch" only matches Chromium).
+        message.error(isTransportError(err) ? t('ui.workspaces.launchFailed') : err.message);
         setLaunching(null);
       });
   };

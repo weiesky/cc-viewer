@@ -549,6 +549,11 @@ function sendDeviceModeToTab(tabId) {
 // --- Tab management ---
 function createTab(projectPath, extraArgs = []) {
   devLog('[main] createTab:', projectPath, extraArgs);
+  // A vanished or non-directory cwd leaves the tab in a permanent error state
+  // (worker fork fails) — reject early; the picker/menu can relaunch anytime.
+  try {
+    if (!statSync(projectPath).isDirectory()) return;
+  } catch { return; }
   let realPath;
   try { realPath = realpathSync(projectPath); } catch { realPath = projectPath; }
 
@@ -928,7 +933,15 @@ ipcMain.on('request-workspace-mode', (event) => {
 });
 ipcMain.on('workspace-launch', (_, data) => {
   devLog('[main] workspace-launch IPC:', data);
-  createTab(data.path, data.extraArgs);
+  // Reachable from every tab renderer since tab-content-preload exposed
+  // tabBridge.launchWorkspace (file explorer "New Workspace (Session)") — validate
+  // the payload before forking a worker: a non-string path throws inside
+  // createTab, and extraArgs flow verbatim into claude's argv.
+  const wsPath = data?.path;
+  const args = data?.extraArgs;
+  if (typeof wsPath !== 'string' || !wsPath) return;
+  const safeArgs = (Array.isArray(args) ? args : []).filter((a) => typeof a === 'string');
+  createTab(wsPath, safeArgs);
 });
 ipcMain.on('approval-jump', (_, tabId) => {
   if (tabId != null && tabs.has(tabId)) switchTab(tabId);

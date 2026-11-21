@@ -363,13 +363,17 @@ describe('shared context menu wiring (sidebar tree ≡ modal)', () => {
   });
   it('both surfaces call the builder with identical per-entry args', () => {
     // The hard requirement "两边始终保持一致": a divergent call site (dropping
-    // isRemote, appending a modal-only item) must fail the suite.
-    assert.ok(FILE_EXPLORER.includes('buildFileContextMenuItems({ isDir, isRemote })'),
-      'sidebar TreeNode must call the builder with { isDir, isRemote }');
+    // isRemote, appending a modal-only item) must fail the suite. The sidebar
+    // additionally opts into the newWorkspace item (it wires the launch
+    // callback); the modal never does — no dead item there.
+    assert.ok(FILE_EXPLORER.includes('buildFileContextMenuItems({ isDir, isRemote, allowNewWorkspace: !!onLaunchWorkspace })'),
+      'sidebar TreeNode must call the builder with { isDir, isRemote, allowNewWorkspace }');
     // The modal threads isTarget so the CLAUDE.md/skill browser omits the
     // chat-only items; write operations are always offered (server enforces).
     assert.ok(FILE_BROWSER_MODAL.includes('buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target })'),
       'modal entry menu must pass isTarget alongside isDir/isRemote');
+    assert.ok(!FILE_BROWSER_MODAL.includes('allowNewWorkspace'),
+      'modal must never offer the newWorkspace item (no launch callback wired there)');
   });
   it('modal derives isRemote with the same expression as the sidebar', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('preferences?._isLocal === false'),

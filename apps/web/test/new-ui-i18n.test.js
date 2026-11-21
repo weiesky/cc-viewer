@@ -51,6 +51,13 @@ const KEYS = [
   'ui.proxyStats.tabStats',  // proxy retry-config & stats panel "stats" tab
   'ui.retryConfig.groupStrategy',  // proxy retry-config "strategy config" group heading
   'ui.retryConfig.groupExecution', // proxy retry-config "execution params" group heading
+  // file explorer "New Workspace (Session)" context-menu item (fileContextMenu.js/actions):
+  'ui.contextMenu.newWorkspace',
+  'ui.contextMenu.newWorkspaceLaunching',
+  'ui.contextMenu.newWorkspaceFailed',
+  'ui.contextMenu.copyFilePath', // copy-path label is type-aware (file)
+  'ui.contextMenu.copyDirPath',  // copy-path label is type-aware (dir/container)
+  'ui.workspaces.launchFailed', // transport-failure fallback toast (WorkspaceList launch)
   'ui.ultraplan.noneTemplate', // UltraPlan "empty template" tab (UltraplanPanel none tab / ScheduleTaskModal default)
   'ui.ultraplan.uploadTooLarge', // attachment upload size-cap error (ScheduleTaskModal)
   'ui.ultraplan.uploadFailed',   // attachment upload generic failure (ScheduleTaskModal)
@@ -178,6 +185,7 @@ describe('new UI key i18n coverage', () => {
   const PLACEHOLDER_KEYS = [
     ['ui.fileExplorer.loadFailed', '{reason}'],
     ['ui.workspaces.showMore', '{count}'],
+    ['ui.contextMenu.newWorkspaceFailed', '{error}'],
     ['ui.ultraplan.uploadTooLarge', '{max}'],
     // SDK「Context 用量」面板的插值键。
     ['ui.contextUsage.updatedAt', '{time}'],

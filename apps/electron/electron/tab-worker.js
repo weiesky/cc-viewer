@@ -97,6 +97,13 @@ async function launch({ path: projectPath, extraArgs = [], claudePath, isNpmVers
   const { initForWorkspace } = await importAbs(join(rootDir, 'server', 'interceptor.js'));
   const result = initForWorkspace(projectPath, { forceNew: false });
 
+  // 7a. Register into the shared workspace registry (mirrors cli.js and the
+  //     /api/workspaces/launch route). Without this, IPC-launched tabs never
+  //     appear in the picker history and the -c probe (GET /api/workspaces)
+  //     can never find their logs — every later launch would start fresh.
+  const { registerWorkspace } = await importAbs(join(rootDir, 'server', 'workspace-registry.js'));
+  await registerWorkspace(projectPath);
+
   // 7b. Mark workspace as launched so React app shows chat view instead of workspace selector
   serverMod.setWorkspaceLaunched(true);
 

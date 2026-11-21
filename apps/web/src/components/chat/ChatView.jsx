@@ -815,6 +815,9 @@ class ChatView extends React.Component {
       nextProps.viewInstance !== this.props.viewInstance ||
       nextProps.attachedSid !== this.props.attachedSid ||
       nextProps.onResumeSession !== this.props.onResumeSession ||
+      // File-explorer "New Workspace (Session)" launch callback — stable class field
+      // today, but an inline replacement must still reach FileExplorer.
+      nextProps.onLaunchWorkspace !== this.props.onLaunchWorkspace ||
       // Input-bar proxy hot-switch chip (2026-10-22, migrated from AppHeader): the proxy/model
       // props must reach ChatInputBar, or the chip never re-renders on hot-switch, role assignment,
       // or SDK launch-model lift.
@@ -5640,6 +5643,7 @@ class ChatView extends React.Component {
               currentFile={this.state.currentFile}
               onAttachToChat={(filePath) => this._addPendingImage(filePath, 'explorer')}
               onInsertPathToChat={this._handleInsertPathToChat}
+              onLaunchWorkspace={this.props.onLaunchWorkspace}
               onFileRenamed={(oldPath, newPath) => {
                 this.setState(prev => ({
                   currentFile: prev.currentFile === oldPath ? newPath : prev.currentFile,

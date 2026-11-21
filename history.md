@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web): **右键菜单移除「复制相对路径」,「复制路径」按类型区分文案** — 文件浏览器与 GIT 变更面板的右键菜单去掉「复制相对路径」项；原「复制路径」在文件上显示为「复制文件路径」、文件夹与项目根（空白区）上显示为「复制文件夹路径」。Coverage: `file-context-menu.test.js`, `new-ui-i18n.test.js`。
+
+- feat(web): **文件浏览器右键菜单新增「新建工作区(会话)」** — 文件夹节点与空白区（项目根）右键菜单新增该项，直接以该文件夹为根启动工作区，无需再经目录选择器；行为与工作区选择器一致（已有历史日志的文件夹自动带 `-c` 续接；Electron 多标签页经 IPC 新开标签页，当前标签页不被改绑）。Coverage: `file-context-menu.test.js`, `file-context-menu-actions.test.js`, `workspace-launch.test.js`。
+
 - feat(web): **GIT 变更面板显示当前分支** — 单仓库项目在面板顶部新增「当前分支: xxx」行（服务端明确 detached 时显示回退文案，旧服务器/请求失败等未知状态不显示 chip）；多仓库项目在每个仓库标题行内显示对应分支名。Coverage: `git-changes-branch.test.js`。
 
 - feat(web): **SDK 活跃代理面板支持浏览器刷新恢复** — SDK 模式的活跃代理（subAgent/teammate）面板状态经 localStorage 按 sessionId 持久化（LRU 上限 10、TTL 24h），浏览器刷新后从检查点恢复显示；种子恢复为 seed-only，服务器权威快照到达后再 reconcile，空快照保留旧面板不再误清。同时修复 boot 首次激活把 WS replay 刚恢复的面板重置掉的问题（boot 不再当视图切换处理），并覆盖 `sdkMode` 水合窗口：以 tracker 实际状态（`hasSdkState()`）为门禁防止 boot 期 hook 路径误清已恢复的面板，sdkMode 翻 true 后 `restoreFromStorage` 在持有未验证种子时重新发布以恢复显示。Coverage: `sdkTaskTracker-persist.test.js`, `chat-active-agents-wiring.test.js`。
