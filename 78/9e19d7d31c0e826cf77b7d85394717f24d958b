@@ -1,0 +1,41 @@
+history.md
+  s_bd56cc1f181194::t_0b37598e8cd505 5-6
+apps/web/test/file-browser-modal.test.js
+  s_bd56cc1f181194::t_9b02d832bcce07 366-368,373-377
+  s_bd56cc1f181194::t_af1646e25faa8e 396
+.changeset/modal-new-workspace.md
+  s_bd56cc1f181194::t_7b69464f0930c9 1-5
+apps/web/src/components/files/FileExplorer.jsx
+  s_bd56cc1f181194::t_adc84f91f6d98c 690
+apps/web/src/App.jsx
+  s_bd56cc1f181194::t_9053c8d1253520 683
+apps/web/src/components/files/FileBrowserModal.jsx
+  s_bd56cc1f181194::t_64ebee81d7212c 271
+  s_bd56cc1f181194::t_176a1738e0ad35 1645
+  s_bd56cc1f181194::t_1f703bf2eaf0b3 297
+  s_bd56cc1f181194::t_c12c98146762ae 423
+  s_bd56cc1f181194::t_4ffeb67204eea2 324,329,335
+  s_bd56cc1f181194::t_418a810ce0f9a1 1142-1143,1145-1146,1150,1152
+  s_bd56cc1f181194::t_529f0d7a9132fa 167-168,172-173,177,183
+  s_bd56cc1f181194::t_2cb7a6bc39b45f 115
+  s_bd56cc1f181194::t_c4d2de3f9cabbc 1318
+apps/web/src/components/dashboard/AppHeader.jsx
+  s_bd56cc1f181194::t_52f31699187a20 1292
+  s_bd56cc1f181194::t_c6b9935bf3ee5d 2319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "789e19d7d31c0e826cf77b7d85394717f24d958b",
+  "prompts": {},
+  "sessions": {
+    "s_bd56cc1f181194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0d6b53-7c83-4e3c-9a16-fa1029b884d1",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
