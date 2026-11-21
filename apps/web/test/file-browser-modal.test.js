@@ -363,17 +363,18 @@ describe('shared context menu wiring (sidebar tree ≡ modal)', () => {
   });
   it('both surfaces call the builder with identical per-entry args', () => {
     // The hard requirement "两边始终保持一致": a divergent call site (dropping
-    // isRemote, appending a modal-only item) must fail the suite. The sidebar
-    // additionally opts into the newWorkspace item (it wires the launch
-    // callback); the modal never does — no dead item there.
+    // isRemote, appending a modal-only item) must fail the suite. Both surfaces
+    // opt into the newWorkspace item when the launch callback is wired (target
+    // mode still omits it — the builder's isTarget guard wins).
     assert.ok(FILE_EXPLORER.includes('buildFileContextMenuItems({ isDir, isRemote, allowNewWorkspace: !!onLaunchWorkspace })'),
       'sidebar TreeNode must call the builder with { isDir, isRemote, allowNewWorkspace }');
     // The modal threads isTarget so the CLAUDE.md/skill browser omits the
     // chat-only items; write operations are always offered (server enforces).
-    assert.ok(FILE_BROWSER_MODAL.includes('buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target })'),
-      'modal entry menu must pass isTarget alongside isDir/isRemote');
-    assert.ok(!FILE_BROWSER_MODAL.includes('allowNewWorkspace'),
-      'modal must never offer the newWorkspace item (no launch callback wired there)');
+    // Both the tree rows and the grid cells opt into newWorkspace via the callback.
+    const modalEntryCalls = FILE_BROWSER_MODAL.split('buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target, allowNewWorkspace: !!onLaunchWorkspace })').length - 1;
+    assert.equal(modalEntryCalls, 2, 'modal tree rows AND grid cells must pass isTarget alongside isDir/isRemote plus allowNewWorkspace');
+    assert.ok(FILE_BROWSER_MODAL.includes("buildFileContextMenuItems({ isDir: true, isRemote, scope: 'container', isTarget: !!target, allowNewWorkspace: !!onLaunchWorkspace })"),
+      'modal blank-area container menu must opt into newWorkspace too');
   });
   it('modal derives isRemote with the same expression as the sidebar', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('preferences?._isLocal === false'),
@@ -391,8 +392,17 @@ describe('shared context menu wiring (sidebar tree ≡ modal)', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('e.stopPropagation();'),
       'grid cells must stopPropagation on contextmenu or the blank-area menu also opens');
   });
+  it('a successful in-place workspace launch closes the modal (Electron new-tab launch does not)', () => {
+    // The callback only fires for in-place launches (browser/CLI); the Electron
+    // IPC branch never calls back, so the modal stays open when a new tab took over.
+    assert.ok(FILE_BROWSER_MODAL.includes('(payload) => { onLaunchWorkspace(payload); onClose(); }'),
+      'modal must wrap onLaunchWorkspace so a successful launch closes it');
+    const wrappedCount = FILE_BROWSER_MODAL.split('onLaunchWorkspace: launchAndClose').length - 1
+      + FILE_BROWSER_MODAL.split('onLaunchWorkspace={launchAndClose}').length - 1;
+    assert.ok(wrappedCount >= 3, `all modal launch paths (tree rows, grid cells, container) must use the closing wrapper, got ${wrappedCount}`);
+  });
   it('FileExplorer threads the chat callbacks and refresh into the modal', () => {
-    for (const token of ['onAttachToChat={onAttachToChat}', 'onInsertPathToChat={onInsertPathToChat}', 'onFileRenamed={onFileRenamed}']) {
+    for (const token of ['onAttachToChat={onAttachToChat}', 'onInsertPathToChat={onInsertPathToChat}', 'onFileRenamed={onFileRenamed}', 'onLaunchWorkspace={onLaunchWorkspace}']) {
       assert.ok(FILE_EXPLORER.includes(token), `FileBrowserModal render must receive ${token}`);
     }
     assert.ok(FILE_BROWSER_MODAL.includes('handleAfterMutation'),

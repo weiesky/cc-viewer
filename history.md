@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- fix(server+web): **forceNew「新建工作区(会话)」对话区切到新实例的空会话(PTY + SDK)** — 文件浏览器对当前项目根 forceNew 启动新实例后，聊天视图立即切到该实例的空白会话，不再停留在旧对话。PTY 与 SDK 均支持；普通启动/重启重建实例的行为不变。Coverage: `v2-session-select.test.js`, `events-instance-live-empty.test.js`, `pty-manager-instance.test.js`, `sdk-force-new.test.js`, `v2-retire-instance.test.js`, `force-new-view-blank.test.js`, `view-cache-restore.test.js`。
+
+- fix(server): **同 cwd 双实例写入侧隔离** — 文件浏览器对当前项目根「新建工作区(会话)」forceNew 起的第二个 claude 实例，在共享单 server 下不再与旧实例串日志：终端 `/resume` 切换按实例独立 arm/消费（SessionStart hook 经 env 携带发起 PTY 的 instanceKey）；无 metadata 请求（heartbeat/countTokens）按实例路由，不再落到进程级"最后发言"会话；同项目 forceNew 重绑保留存活实例的会话绑定与 owner.lock；resume 一个正被另一存活同 cwd 实例写入的会话返回 409 并提示，避免两个 claude 进程共写同一 journal。Coverage: `v2-core.test.js`, `v2-resume-switch.test.js`, `resume-route.test.js`, `session-start-bridge.test.js`, `resume-history-i18n.test.js`。
+
+- feat(web): **右键当前项目根「新建工作区(会话)」改为新开全新会话实例** — 右键文件夹等于当前项目根时，启动一个不带 `-c` 的全新 claude 实例（同目录双进程，互不共享对话），视图自动锚定到新实例（header 出现同项目第二个 tab）；右键其他目录保持原语义（有历史日志带 `-c` 续接）。Electron 多标签页下同目录新开标签页；SDK 模式降级为普通启动。Coverage: `pty-manager-instance.test.js`, `branch-routes-workspaces.test.js`, `api-workspaces.test.js`, `workspace-launch.test.js`, `file-context-menu-actions.test.js`。
+
+- feat(web): **弹窗文件浏览器（FileBrowserModal）同步支持「新建工作区(会话)」** — 目录树行、网格/列表单元格与空白区（当前目录）的右键菜单均新增该项，行为与侧栏文件浏览器一致；启动成功后弹窗自动关闭（Electron 多标签页新开标签页时弹窗保留在当前标签页）。Coverage: `file-browser-modal.test.js`。
+
 - feat(web): **右键菜单移除「复制相对路径」,「复制路径」按类型区分文案** — 文件浏览器与 GIT 变更面板的右键菜单去掉「复制相对路径」项；原「复制路径」在文件上显示为「复制文件路径」、文件夹与项目根（空白区）上显示为「复制文件夹路径」。Coverage: `file-context-menu.test.js`, `new-ui-i18n.test.js`。
 
 - feat(web): **文件浏览器右键菜单新增「新建工作区(会话)」** — 文件夹节点与空白区（项目根）右键菜单新增该项，直接以该文件夹为根启动工作区，无需再经目录选择器；行为与工作区选择器一致（已有历史日志的文件夹自动带 `-c` 续接；Electron 多标签页经 IPC 新开标签页，当前标签页不被改绑）。Coverage: `file-context-menu.test.js`, `file-context-menu-actions.test.js`, `workspace-launch.test.js`。

@@ -38,7 +38,7 @@
 // The aggregation itself lives in lib/v2/resume-list.js (pure, unit-tested);
 // this handler is a thin HTTP wrapper.
 
-import { realpathSync } from 'node:fs';
+import { realpathSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { LOG_DIR } from '../../findcc.js';
 import { _projectName, _v2Writer, initForWorkspace } from '../interceptor.js';
@@ -47,6 +47,8 @@ import { _projectName, _v2Writer, initForWorkspace } from '../interceptor.js';
 // module instance, and module state is shared either way.
 import { listLivePtys } from '../pty-manager.js';
 import { listResumeSessions } from '../lib/v2/resume-list.js';
+import { sanitizePathComponent } from '../lib/v2/layout.js';
+import { resolveSessionDirName } from '../lib/v2/session-select.js';
 import { projectKeyForCwd } from '../lib/system-prompt-snapshots.js';
 import { readClaudeProjectModel } from '../lib/context-watcher.js';
 import { bumpWorkspacesVersion } from '../lib/file-access-policy.js';
@@ -59,6 +61,44 @@ import { findSdkSessionByInstance, listSdkSessionInstances } from '../lib/sdk-se
 function sendJson(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
+}
+
+// Same-cwd twin ownership guard (R7a): does the target conversation belong to a
+// DIFFERENT live claude instance? The pid-level owner.lock cannot arbitrate two
+// same-cwd twins (they share this process's pid), so liveness is judged by the
+// live PTY instance set, keyed off the session dir's meta.instance. Returns
+// {ownedByOther, ownerInstance} — fails OPEN (not owned) on any read error, so a
+// torn meta never blocks a legitimate resume (the writer-side guard is the
+// authoritative last line against journal sharing).
+function twinOwnershipGuard({ sessionUuid, targetProject, callerInstanceKey }) {
+  try {
+    const san = targetProject ? sanitizePathComponent(targetProject) : '';
+    if (!san) return { ownedByOther: false };
+    const projectDir = join(LOG_DIR, san);
+    // Resolve via the single-owner layout helper (exact-name, then meta.sessionId,
+    // then newest startTs) so the dir checked here is the SAME one the writer
+    // would adopt into — a bare readdir suffix-match could read the wrong meta
+    // when several dirs share one uuid.
+    const dirName = resolveSessionDirName(projectDir, sessionUuid, 'sessions');
+    if (!dirName) return { ownedByOther: false }; // never recorded — fresh resume
+    const metaPath = join(projectDir, 'sessions', dirName, 'meta.json');
+    if (!existsSync(metaPath)) return { ownedByOther: false };
+    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
+    const owner = meta && typeof meta.instance === 'string' && meta.instance ? meta.instance : null;
+    if (!owner) return { ownedByOther: false }; // legacy / pre-multi-instance dir
+    if (callerInstanceKey && owner === callerInstanceKey) return { ownedByOther: false }; // own conversation
+    // Owned by another instance: only refuse if that instance is a LIVE claude
+    // (a dead owner's dir is legitimately resumable; a shell record must not
+    // impersonate its dead claude twin).
+    const liveClaude = new Set(
+      listLivePtys().filter(p => p.ptyKind === 'claude').map(p => p.instanceKey)
+    );
+    if (liveClaude.has(owner)) return { ownedByOther: true, ownerInstance: owner };
+    return { ownedByOther: false };
+  } catch (err) {
+    reportSwallowed('resume-route.twin-guard', err);
+    return { ownedByOther: false };
+  }
 }
 
 async function getSessionsHandler(req, res, parsedUrl) {
@@ -524,6 +564,16 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
       // switches the session identity directly (next user message resumes it).
       // Read the env at request time (not module top) so tests can flip it per case.
       if (process.env.CCV_SDK_MODE === '1') {
+        // Same-cwd twin ownership guard (R7a): same journal-sharing risk as PTY.
+        const sdkGuard = twinOwnershipGuard({
+          sessionUuid,
+          targetProject: project || (_projectName || ''),
+          callerInstanceKey: instanceKey || null,
+        });
+        if (sdkGuard.ownedByOther) {
+          sendJson(res, 409, { ok: false, reason: 'session-owned', owner: { instanceKey: sdkGuard.ownerInstance } });
+          return;
+        }
         const sdk = await import('../lib/sdk-manager.js');
         // Multi-session (2026-10-12): honor the requested workspace — resume the VIEWED
         // session, not always the active one. project is the workspace name from the client.
@@ -542,17 +592,36 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
       // Multi-instance: a project-name-only resume that matches 2+ live same-basename
       // instances is ambiguous — refuse with the candidates so the client re-issues
       // with an instanceKey (mirror of attach/close).
-      if (!instanceKey && targetProject) {
+      let resolvedCallerInstance = instanceKey || null;
+      if (targetProject) {
         const live = pm.liveInstancesForProject(targetProject);
-        if (live.length > 1) {
+        if (!instanceKey && live.length > 1) {
           sendJson(res, 409, { ok: false, reason: 'ambiguous', candidates: live });
           return;
+        }
+        // Caller-identity fallback (review P0): when the client sends no instanceKey
+        // (single-instance bound view, Electron tabs, older bundles) and the project
+        // has exactly ONE live claude instance, that instance IS the caller. Without
+        // this the twin guard below would misread "no declared identity" as "another
+        // instance" and 409 a legitimate self-resume of the live instance's own
+        // conversation. Only a single live instance is unambiguous; 0 or 2+ leave it
+        // null (2+ already returned above).
+        if (!resolvedCallerInstance && live.length === 1) {
+          resolvedCallerInstance = live[0].instanceKey || null;
         }
       }
       // Strict target-kind gate (no active-PTY fallback): never inject into the wrong
       // project's conversation when the anchor doesn't resolve, and never into a shell.
       if (pm.getPtyKindFor({ project: targetProject || undefined, instanceKey: instanceKey || undefined }) !== 'claude') {
         sendJson(res, 404, { ok: false, reason: 'not-found' });
+        return;
+      }
+      // Same-cwd twin ownership guard (R7a): refuse to resume a conversation that a
+      // DIFFERENT live claude instance is actively writing — two claude processes on
+      // one journal is certain corruption. Dead/legacy/own conversations pass.
+      const guard = twinOwnershipGuard({ sessionUuid, targetProject, callerInstanceKey: resolvedCallerInstance });
+      if (guard.ownedByOther) {
+        sendJson(res, 409, { ok: false, reason: 'session-owned', owner: { instanceKey: guard.ownerInstance } });
         return;
       }
       const chatQueue = await import('../lib/chat-queue.js');

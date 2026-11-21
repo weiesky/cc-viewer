@@ -302,9 +302,16 @@ export function isDiscardableSession(dir, meta) {
  *   cross-instance FALLBACK pool to sessions stamped with this cwd (or with NO meta.cwd —
  *   keep-missing). Applies ONLY to the fallback pool, never the instance filter; an empty
  *   value disables the cwd filter. No effect without `instanceKey`.
+ *   `suppressFallback` (forceNew, 2026-11): when set WITH `instanceKey`, skip the
+ *   cross-instance fallback entirely — a deliberately brand-new instance ("New Workspace
+ *   (Session)") has NO conversation yet, and the fallback would serve the live twin's OLD
+ *   one. Returns null when the instance has no own main-turn session (events.js then serves
+ *   the empty-view contract). The instance's OWN main turn always wins (the `own` check
+ *   above runs first). No effect without `instanceKey`; default false preserves today's
+ *   fallback for reused/rebuilt instances and header chip clicks.
  * @returns {{dir:string, sessionId:string}|null}
  */
-export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive = false, instanceKey = '', targetCwd = '' } = {}) {
+export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive = false, instanceKey = '', targetCwd = '', suppressFallback = false } = {}) {
   if (!projectDir) return null;
   const instanceCandidates = []; // session dirs stamped with the requested instanceKey
   const projectCandidates = [];  // every eligible session dir of the project (any/no instance)
@@ -352,6 +359,15 @@ export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive
   if (instanceKey) {
     const own = newestWithMainTurn(instanceCandidates);
     if (own) return own;
+    // forceNew (2026-11): a deliberately brand-new instance has no conversation yet. The
+    // cross-instance fallback below would serve the project's newest content-bearing
+    // session — the live twin's OLD conversation — which is exactly the "new workspace
+    // still shows the OLD conversation" bug. Return null so events.js serves the empty
+    // view (load_start{empty:true}); the live feed streams the first turn in place.
+    // NOTE: we must NOT degrade to `ownAny` here — a launch-time quota probe writes a
+    // session dir stamped with this instance but no main turn, and serving it would
+    // defeat the empty view. `own` above already guarantees a real main turn wins.
+    if (suppressFallback) return null;
     // Same-name isolation (2026-10-07): scope the cross-instance fallback to the
     // TARGET cwd so a cross-dir same-basename project sharing this pool can't be
     // served. Keep-missing: legacy dirs with NO meta.cwd (null) stay eligible —
@@ -379,7 +395,7 @@ export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive
  * Absolute dir of the newest readable, non-teammate session that HAS a main
  * turn, or '' if there is none. Thin wrapper over {@link latestMainSession}.
  * @param {string} projectDir - absolute LOG_DIR/<project>
- * @param {{excludeDir?: string, skipForeignLive?: boolean, instanceKey?: string, targetCwd?: string}} [opts] - see {@link latestMainSession}
+ * @param {{excludeDir?: string, skipForeignLive?: boolean, instanceKey?: string, targetCwd?: string, suppressFallback?: boolean}} [opts] - see {@link latestMainSession}
  * @returns {string} absolute session dir, or ''
  */
 export function latestMainSessionDir(projectDir, opts) {  return latestMainSession(projectDir, opts)?.dir || '';

@@ -63,7 +63,7 @@ contextBridge.exposeInMainWorld('tabBridge', {
   // view's window.electronAPI.launchWorkspace uses). The per-tab worker is NOT
   // under CCV_ELECTRON_MULTITAB, so POSTing /api/workspaces/launch from here would
   // re-root THIS tab in place — forbidden.
-  launchWorkspace: (path, extraArgs) => ipcRenderer.send('workspace-launch', { path, extraArgs }),
+  launchWorkspace: (path, extraArgs, forceNew) => ipcRenderer.send('workspace-launch', { path, extraArgs, forceNew: !!forceNew }),
   onDeviceModeChange: (cb) => {
     const handler = (_, on) => cb(on);
     ipcRenderer.on('device-mode-changed', handler);

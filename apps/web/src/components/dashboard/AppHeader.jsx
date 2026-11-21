@@ -1289,6 +1289,7 @@ class AppHeader extends React.Component {
       nextProps.viewProject !== this.props.viewProject ||
       nextProps.onDetachView !== this.props.onDetachView ||
       nextProps.onCloseProject !== this.props.onCloseProject ||
+      nextProps.onLaunchWorkspace !== this.props.onLaunchWorkspace ||
       nextProps.onLiveProjectsChange !== this.props.onLiveProjectsChange ||
       nextProps.liveProcessRefreshToken !== this.props.liveProcessRefreshToken ||
       nextState !== this.state
@@ -2315,6 +2316,7 @@ class AppHeader extends React.Component {
             instance={this.props.viewedInstance}
             zIndex={1120}
             onClose={this.closeTargetBrowser}
+            onLaunchWorkspace={this.props.onLaunchWorkspace}
           />
         )}
         <Drawer

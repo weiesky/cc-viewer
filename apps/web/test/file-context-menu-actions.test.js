@@ -140,15 +140,17 @@ describe('file context menu target-scoped requests (CLAUDE.md / skill browser)',
 
 describe('file context menu newWorkspace (launch from folder)', () => {
   // The launch chain is: POST resolve-path (view-scoped, like copyPath) + GET
-  // /api/workspaces (logCount probe for the -c heuristic, best-effort) → POST
-  // /api/workspaces/launch. Requests run in parallel — locate by URL, never by index.
+  // /api/workspaces (logCount probe for the -c heuristic, best-effort) + GET
+  // /api/project-dir (bound-root probe for the forceNew decision, best-effort)
+  // → POST /api/workspaces/launch. Requests run in parallel — locate by URL,
+  // never by index.
   function launchMenu({ onLaunchWorkspace = () => {}, target } = {}) {
     return createFileMenuHandler({
       path: 'apps/web', name: 'web', isDir: true, renameMode: 'inline',
       project: 'other project', instance: 'ccv-a1b2', onLaunchWorkspace, target,
     });
   }
-  function stubLaunchChain({ logCount = 0, launchError = null } = {}) {
+  function stubLaunchChain({ logCount = 0, launchError = null, projectDir = '/abs/other-project', instanceKey = undefined } = {}) {
     fetchImpl = async (url) => {
       if (url.startsWith('/api/resolve-path')) {
         return { ok: true, json: async () => ({ ok: true, fullPath: '/abs/apps/web' }) };
@@ -156,7 +158,10 @@ describe('file context menu newWorkspace (launch from folder)', () => {
       if (url.startsWith('/api/workspaces/launch')) {
         return launchError
           ? { ok: false, status: 400, json: async () => ({ error: launchError }) }
-          : { ok: true, json: async () => ({ ok: true, projectName: 'web' }) };
+          : { ok: true, json: async () => ({ ok: true, projectName: 'web', ...(instanceKey ? { instanceKey } : {}) }) };
+      }
+      if (url.startsWith('/api/project-dir')) {
+        return { ok: true, json: async () => ({ dir: projectDir }) };
       }
       if (url.startsWith('/api/workspaces')) {
         return { ok: true, json: async () => ({ workspaces: logCount > 0 ? [{ path: '/abs/apps/web', logCount }] : [] }) };
@@ -176,7 +181,7 @@ describe('file context menu newWorkspace (launch from folder)', () => {
     assert.equal(JSON.parse(resolveReq.options.body).path, 'apps/web');
     // Launch uses the resolved absolute path; unknown folder → fresh session, no -c.
     assert.deepEqual(JSON.parse(launchRequest().options.body), { path: '/abs/apps/web', extraArgs: [] });
-    assert.deepEqual(launched, [{ projectName: 'web', path: '/abs/apps/web' }]);
+    assert.deepEqual(launched, [{ projectName: 'web', path: '/abs/apps/web', instanceKey: null }]);
     assert.equal(globalThis.__fileMenuErrors.length, 0);
   });
 
@@ -184,6 +189,55 @@ describe('file context menu newWorkspace (launch from folder)', () => {
     stubLaunchChain({ logCount: 3 });
     await launchMenu()({ key: 'newWorkspace' });
     assert.deepEqual(JSON.parse(launchRequest().options.body), { path: '/abs/apps/web', extraArgs: ['-c'] });
+  });
+
+  it('current project root (fullPath === /api/project-dir) → forceNew: no -c, instanceKey forwarded', async () => {
+    stubLaunchChain({ logCount: 7, projectDir: '/abs/apps/web', instanceKey: 'ccv-fresh1' });
+    const launched = [];
+    await launchMenu({ onLaunchWorkspace: (ws) => launched.push(ws) })({ key: 'newWorkspace' });
+    assert.deepEqual(JSON.parse(launchRequest().options.body), { path: '/abs/apps/web', extraArgs: [], forceNew: true });
+    assert.deepEqual(launched, [{ projectName: 'web', path: '/abs/apps/web', instanceKey: 'ccv-fresh1' }]);
+  });
+
+  it('current root with a trailing slash in /api/project-dir still counts as same directory', async () => {
+    stubLaunchChain({ logCount: 2, projectDir: '/abs/apps/web/', instanceKey: 'ccv-fresh2' });
+    await launchMenu()({ key: 'newWorkspace' });
+    assert.equal(JSON.parse(launchRequest().options.body).forceNew, true);
+  });
+
+  it('project-dir probe failure degrades to legacy semantics (no forceNew)', async () => {
+    stubLaunchChain({ logCount: 5 });
+    const base = fetchImpl;
+    fetchImpl = async (url) => url.startsWith('/api/project-dir')
+      ? Promise.reject(new Error('network down'))
+      : base(url);
+    await launchMenu()({ key: 'newWorkspace' });
+    const body = JSON.parse(launchRequest().options.body);
+    assert.equal('forceNew' in body, false);
+    assert.deepEqual(body.extraArgs, ['-c'], 'logCount heuristic still applies');
+    assert.equal(globalThis.__fileMenuErrors.length, 0, 'probe failure is silent (reported, not toasted)');
+  });
+
+  it('a second click while a launch is in flight is a no-op (re-entrancy guard)', async () => {
+    stubLaunchChain();
+    const handler = launchMenu();
+    // First launch never settles (hung server) — the guard must swallow the second click.
+    const base = fetchImpl;
+    let releaseFirst;
+    const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+    fetchImpl = async (url) => {
+      if (url.startsWith('/api/resolve-path')) return firstGate.then(() => ({ ok: true, json: async () => ({ ok: true, fullPath: '/abs/apps/web' }) }));
+      return base(url);
+    };
+    const first = handler({ key: 'newWorkspace' });
+    await new Promise((resolve) => setImmediate(resolve)); // let the first click register
+    const second = handler({ key: 'newWorkspace' });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(second, undefined, 'the guarded click returns nothing');
+    assert.equal(requests.filter(r => r.url.startsWith('/api/resolve-path')).length, 1, 'no second resolve-path fired');
+    releaseFirst();
+    await first;
+    assert.ok(launchRequest(), 'the first launch completes after the gate releases');
   });
 
   it('launches without -c when the workspaces probe fails (fresh-session fallback)', async () => {
@@ -199,21 +253,30 @@ describe('file context menu newWorkspace (launch from folder)', () => {
   it('Electron workspace view: IPC launch, no POST, no callback (main opens the tab)', async () => {
     stubLaunchChain();
     const ipcCalls = [];
-    globalThis.window.electronAPI = { launchWorkspace: (path, args) => ipcCalls.push([path, args]) };
+    globalThis.window.electronAPI = { launchWorkspace: (path, args, forceNew) => ipcCalls.push([path, args, forceNew]) };
     const launched = [];
     await launchMenu({ onLaunchWorkspace: (ws) => launched.push(ws) })({ key: 'newWorkspace' });
-    assert.deepEqual(ipcCalls, [['/abs/apps/web', []]]);
+    assert.deepEqual(ipcCalls, [['/abs/apps/web', [], false]]);
     assert.equal(launchRequest(), undefined);
     assert.equal(launched.length, 0);
+  });
+
+  it('Electron workspace view: current root → IPC with forceNew=true', async () => {
+    stubLaunchChain({ projectDir: '/abs/apps/web' });
+    const ipcCalls = [];
+    globalThis.window.electronAPI = { launchWorkspace: (path, args, forceNew) => ipcCalls.push([path, args, forceNew]) };
+    await launchMenu()({ key: 'newWorkspace' });
+    assert.deepEqual(ipcCalls, [['/abs/apps/web', [], true]]);
+    assert.equal(launchRequest(), undefined);
   });
 
   it('Electron tab content (tabBridge.launchWorkspace): IPC to main, no POST, no callback', async () => {
     stubLaunchChain();
     const ipcCalls = [];
-    globalThis.window.tabBridge = { launchWorkspace: (path, args) => ipcCalls.push([path, args]) };
+    globalThis.window.tabBridge = { launchWorkspace: (path, args, forceNew) => ipcCalls.push([path, args, forceNew]) };
     const launched = [];
     await launchMenu({ onLaunchWorkspace: (ws) => launched.push(ws) })({ key: 'newWorkspace' });
-    assert.deepEqual(ipcCalls, [['/abs/apps/web', []]]);
+    assert.deepEqual(ipcCalls, [['/abs/apps/web', [], false]]);
     assert.equal(launchRequest(), undefined, 'tab content must never POST the launch');
     assert.equal(launched.length, 0, 'main opens a new tab that owns the workspace');
   });

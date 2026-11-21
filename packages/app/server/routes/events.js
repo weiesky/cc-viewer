@@ -427,14 +427,23 @@ export async function serveEventStream(sink, params, deps) {
         // Instance dead / no live record / lookup failure → '' → no cwd filter
         // (conservative, identical to today's whole-pool fallback; never mis-excludes history).
         let targetCwd = '';
+        // forceNew (2026-11): a brand-new instance ("New Workspace (Session)") carries the
+        // `freshLaunch` mark — on its PTY record (PTY mode) or its SDK session row (SDK mode,
+        // projected through listSdkSessions). Suppress the same-cwd cold-load fallback for it
+        // so the view starts EMPTY instead of serving the old conversation. Server-authoritative,
+        // so it holds for a reload or a second tab, not just the launching client. Lookup
+        // failure / dead record → false → today's fallback (sid-not-found handles a dead one).
+        let suppressFallback = false;
         if (instanceParam) {
           try {
-            const rec = listLivePtys().find((p) => p && p.instanceKey === instanceParam)
-              || findSdkSessionByInstance(instanceParam);
+            const ptyRec = listLivePtys().find((p) => p && p.instanceKey === instanceParam);
+            const sdkRec = findSdkSessionByInstance(instanceParam);
+            const rec = ptyRec || sdkRec;
             targetCwd = rec && rec.cwd ? normalizeSessionCwd(rec.cwd) : '';
-          } catch (err) { targetCwd = ''; reportSwallowed('events.target-cwd', err); }
+            suppressFallback = !!((ptyRec && ptyRec.freshLaunch) || (sdkRec && sdkRec.freshLaunch));
+          } catch (err) { targetCwd = ''; suppressFallback = false; reportSwallowed('events.target-cwd', err); }
         }
-        return latestMainSessionDir(join(LOG_DIR, sanitizePathComponent(projectParam)), { skipForeignLive: true, instanceKey: instanceParam || '', targetCwd }) || null;
+        return latestMainSessionDir(join(LOG_DIR, sanitizePathComponent(projectParam)), { skipForeignLive: true, instanceKey: instanceParam || '', targetCwd, suppressFallback }) || null;
       } catch (err) {
         reportSwallowed('events.project-resolve', err, { project: projectParam });
         return null;
@@ -466,6 +475,9 @@ export async function serveEventStream(sink, params, deps) {
   // per-project live feed streams its first turn in place the moment the PTY writes its
   // first session dir. Only a DEAD instance keeps the explicit sid-not-found posture (the
   // client toasts + auto-detaches to the bound view — unchanged from before this fix).
+  // forceNew (2026-11) reaches this same empty view a third way: the freshLaunch mark makes
+  // resolveColdSource return null (suppressFallback), so a same-cwd twin's OLD conversation
+  // is never served to the brand-new instance.
   const instanceNoSession = !!(instanceParam && !sidParam && !viewColdDir);
   let instanceAlive = false;
   if (instanceNoSession) {

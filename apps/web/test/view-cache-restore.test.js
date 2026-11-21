@@ -108,7 +108,7 @@ describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
   it('handleActivateChip 开头快照当前视图（resumeSwitch 守卫）', () => {
     // 快照必须在 resumeSwitch 守卫下、且先于任何 setState（允许前导注释块 + 多实例的
     // instanceKey 提前 return）。
-    assert.ok(/handleActivateChip = \(chip\) => \{[\s\S]{0,900}?if \(!this\.state\.resumeSwitch\) this\._snapshotCurrentView\(\);/.test(APPBASE_SRC),
+    assert.ok(/handleActivateChip = \(chip(?:, opts = \{\})?\) => \{[\s\S]{0,900}?if \(!this\.state\.resumeSwitch\) this\._snapshotCurrentView\(\);/.test(APPBASE_SRC),
       'handleActivateChip 缺少开头快照');
   });
 

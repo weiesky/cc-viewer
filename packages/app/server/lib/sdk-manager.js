@@ -167,7 +167,7 @@ export function __getSessionKeyForTests(cwd) { return _normalizeCwd(cwd); }
  * for killPtyFor-shape parity (resume.js consumes `r.key === reattachedTo`). Callers
  * must not mix the two namespaces. */
 export function listSdkSessions() {
-  return [..._sessions.values()].map((s) => ({ key: s.key, cwd: s.cwd, active: s.key === _activeKey, instanceKey: s.instanceKey }));
+  return [..._sessions.values()].map((s) => ({ key: s.key, cwd: s.cwd, active: s.key === _activeKey, instanceKey: s.instanceKey, freshLaunch: s.freshLaunch === true }));
 }
 
 registerSdkSessionLister(listSdkSessions);
@@ -436,8 +436,22 @@ function _foldSdkTask(prev, frame) {
 // that are process-global by contract (see file header). Arrays stay closure
 // `let` (rebinding, not a frozen property) so assignment paths like
 // `_messageQueue = []` keep working.
-function _createSession(key, cwd) {
-  const instanceKey = `ccv-${createHash('sha256').update(key).digest('hex').slice(0, 32)}`;
+function _createSession(key, cwd, { freshKey = false } = {}) {
+  // instanceKey identity: deterministic `ccv-sha256(cwd)` for a normal session so a
+  // close/restart re-registers the same identity (pre-existing dirs stay resolvable).
+  // forceNew ("New Workspace (Session)") replaces the session object with a FRESH random
+  // key (freshKey) so the new generation's dirs/frames are distinguishable from the old
+  // one's (which carry the old key in meta.instance) — the same identity separation PTY
+  // gets from _mintInstanceKey.
+  const instanceKey = freshKey
+    ? `ccv-${randomBytes(16).toString('hex')}`
+    : `ccv-${createHash('sha256').update(key).digest('hex').slice(0, 32)}`;
+  // Whether this generation's instanceKey is a random per-generation key (forceNew) rather
+  // than the deterministic cwd-derived one. The deterministic key is RE-CREATED whenever the
+  // registry slot is rebuilt (close + normal relaunch), so it must NEVER be writer-retired —
+  // retiring it would permanently gate the legitimate recreated session. Only random fresh
+  // keys (never reused) are safe to retire.
+  const _isFreshKey = freshKey === true;
   // Launch config (per-session identity; adopted on lazy reconstruction)
   let _cwd = cwd;
   let _permissionMode = 'default';
@@ -496,6 +510,13 @@ function _createSession(key, cwd) {
   let _suspectGeneration = false;
   let _lastFailedTurn = null; // { turnId, retryable, apiStatus, attempt, maxRetries, code, ts } — drives the manual [retry] affordance
   let _sessionId = null;
+  // forceNew (2026-11): true while this is a freshly forceNew'd generation that has not yet
+  // written its own main-turn session. events.js reads it (via the listSdkSessions projection)
+  // to suppress the same-cwd cold-load fallback so the new conversation starts EMPTY. Cleared
+  // when the writer binds this generation's first session (see setOnSessionResolved wiring in
+  // server.js → clearSdkFreshLaunch) and on switchToSession. NOT cleared by _resetFullState —
+  // a re-init/self-heal of a still-fresh generation must keep suppressing the OLD twin's history.
+  let _freshLaunch = false;
   let _initAnnouncedSid = ''; // sessionId whose slash-command surface was already announced (reset on full reset)
   let _lastInitSnapshot = null; // last sdk-init payload for WS reconnect replay
   // Last sdk-skills frame (supportedCommands() result) for WS reconnect replay, and the
@@ -966,8 +987,22 @@ function _createSession(key, cwd) {
         // spinner/queue bubbles) and cold-load instance filters never match SDK sessions.
         const instanceHeader = `x-ccv-instance: ${instanceKey}`;
         const injected = `${projectHeader}\n${instanceHeader}`;
-        options.env.ANTHROPIC_CUSTOM_HEADERS = options.env.ANTHROPIC_CUSTOM_HEADERS
-          ? `${options.env.ANTHROPIC_CUSTOM_HEADERS}\n${injected}` : injected;
+        // Strip-then-append (forceNew / re-init hygiene): options.env is the SHARED launch
+        // env object (cli.js hands the same childEnv to the boot session and every new cwd),
+        // so without stripping, a re-mint / re-construction would stack a SECOND
+        // x-ccv-project-dir/x-ccv-instance pair. The interceptor validates instance against
+        // /^ccv-[0-9a-f]+$/ and DROPS a combined value (interceptor.js) — the fresh
+        // generation's requests would fall back to project/_currentSid routing and write into
+        // the OLD generation's dir. Strip stale ccv routing lines (case-insensitive,
+        // CRLF-tolerant), keep every unrelated header, then append exactly one fresh pair.
+        const prior = typeof options.env.ANTHROPIC_CUSTOM_HEADERS === 'string'
+          ? options.env.ANTHROPIC_CUSTOM_HEADERS
+              .split('\n')
+              .filter((l) => !/^x-ccv-(project-dir|instance)\s*:/i.test(l.trim()))
+              .join('\n')
+              .trim()
+          : '';
+        options.env.ANTHROPIC_CUSTOM_HEADERS = prior ? `${prior}\n${injected}` : injected;
       }
     }
     if (_settings) options.settings = _settings;
@@ -2745,6 +2780,9 @@ function _createSession(key, cwd) {
       }
       _sessionId = sessionId;
       _launchResume = null;
+      // Switching INTO a concrete existing conversation lifts the forceNew empty-view
+      // suppression — this generation now owns real content (the resumed one).
+      _freshLaunch = false;
       _initAnnouncedSid = '';
       _lastInitSnapshot = null; // don't replay the OLD session's sdk-init to the new one
       _lastSkillsSnapshot = null; // same for the skill surface
@@ -2820,6 +2858,13 @@ function _createSession(key, cwd) {
     key,
     instanceKey,
     get cwd() { return _cwd; },
+    // forceNew (2026-11): whether this generation is a fresh "New Workspace (Session)"
+    // instance that has not yet written its own main-turn session. Read live (getter) —
+    // events.js / resume.js see it through the listSdkSessions projection.
+    get freshLaunch() { return _freshLaunch === true; },
+    // True when this generation's instanceKey is a random per-generation key (safe to retire);
+    // false for the deterministic cwd-derived key (re-created on relaunch — never retire it).
+    get isFreshKey() { return _isFreshKey; },
     get config() {
       return {
         permissionMode: _permissionMode,
@@ -2887,6 +2932,12 @@ function _createSession(key, cwd) {
     },
     switchToSession: _switchToSession,
     getSessionId: () => _sessionId,
+    // forceNew (2026-11): the writer's main-turn `_onSessionResolved` calls this once the
+    // new generation owns its first session dir — the empty-view suppression lifts (PTY
+    // parity with setPtySessionIdForInstance clearing the PTY record's freshLaunch).
+    clearFreshLaunch: () => { _freshLaunch = false; },
+    // forceNewSdkSession marks the freshly-swapped generation (NOT a method for general use).
+    _markFreshLaunch: () => { _freshLaunch = true; },
     retryInterruptedTurn: _retryInterruptedTurn,
     runEphemeralTurn: _runEphemeralTurn,
     close: () => {
@@ -3028,6 +3079,61 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
   const sess = _getOrCreateSession(cwd);
   sess.init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable });
   _activeKey = sess.key;
+}
+
+/**
+ * forceNew ("New Workspace (Session)" on the CURRENT root) for SDK mode (2026-11).
+ * The resident SDK registry is cwd-keyed with a deterministic instanceKey, so a normal
+ * launch can never express "a NEW empty conversation here". This REPLACES the cwd's
+ * Session object with a fresh one carrying a random instanceKey (PTY-style generation
+ * identity): the old generation's session dirs keep the OLD meta.instance key, so every
+ * instance-scoped reader (cold-load picker, live feed, SSE attach) excludes them from the
+ * new view. The old generation is torn down (its resident query closed) — there is no
+ * same-cwd twin in SDK mode.
+ *
+ * Returns { instanceKey, previousInstanceKey, previousWasFresh } so the route can pin the
+ * client view and retire the old generation's writer routing. previousInstanceKey is captured
+ * BEFORE the swap (reading listSdkSessions after would yield the NEW key and self-retire).
+ * previousWasFresh tells the route whether the old key is a random per-generation key (safe
+ * to retire) or the deterministic cwd-derived one (which a close+relaunch RE-creates — never
+ * retire it, or the legitimate rebuilt session is permanently frozen).
+ */
+export function forceNewSdkSession(cwd, cfg) {
+  const key = _normalizeCwd(cwd);
+  if (!key) return null;
+  const prev = _sessions.get(key) || null;
+  const previousInstanceKey = prev ? prev.instanceKey : null;
+  const previousWasFresh = prev ? prev.isFreshKey === true : false;
+  // Close the outgoing generation: close() (NOT bare teardown) also broadcasts the
+  // approval-dismiss frames for any pending modal so clients don't keep a ghost modal over
+  // an approval the server just auto-denied. close() only clears INTERNAL state — it never
+  // touches the `_sessions` registry (that lives in closeSdkSession), so replacing the slot
+  // here is safe.
+  if (prev) { try { prev.close(); } catch (err) { reportSwallowed('sdk-manager.force-new-teardown', err); } }
+  const sess = _createSession(key, cwd, { freshKey: true });
+  _sessions.set(key, sess);
+  // Adopt the process-level launch config template so the fresh query gets the proxy env /
+  // model / permission / executable; launchResume is forced null (a boot -c/-r intent must
+  // never resume into a forceNew conversation). Fall back to the outgoing session's own
+  // config for direct/test callers with no template registered.
+  const base = cfg || _launchConfigTemplate || (prev && prev.config) || {};
+  sess.init({ ...base, launchResume: null });
+  sess._markFreshLaunch();
+  _adoptProcessWiring();
+  _activeKey = key;
+  return { instanceKey: sess.instanceKey, previousInstanceKey, previousWasFresh };
+}
+
+/**
+ * Lift a forceNew generation's empty-view suppression. Called from server.js's
+ * v2-writer `_onSessionResolved` wiring (the main-turn gate) once the instance owns its
+ * first session dir — PTY parity with setPtySessionIdForInstance clearing the PTY mark.
+ */
+export function clearSdkFreshLaunch(instanceKey) {
+  if (typeof instanceKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instanceKey)) return;
+  for (const s of _sessions.values()) {
+    if (s.instanceKey === instanceKey && typeof s.clearFreshLaunch === 'function') { s.clearFreshLaunch(); return; }
+  }
 }
 
 /**

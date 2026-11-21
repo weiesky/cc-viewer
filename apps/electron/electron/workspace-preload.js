@@ -3,9 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 console.log('[workspace-preload] loading...');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  launchWorkspace: (path, extraArgs) => {
+  launchWorkspace: (path, extraArgs, forceNew) => {
     console.log('[workspace-preload] launchWorkspace called:', path, extraArgs);
-    ipcRenderer.send('workspace-launch', { path, extraArgs });
+    ipcRenderer.send('workspace-launch', { path, extraArgs, forceNew: !!forceNew });
   },
   // 工作区选择器浮层模式：close 收起浮层；requestWorkspaceMode 挂载即同步当前模式；
   // onWorkspaceMode 监听 main 推来的 'full' | 'popup'。

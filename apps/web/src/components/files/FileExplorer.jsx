@@ -273,8 +273,8 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
 
   // 右键菜单项 — 与远程文件浏览弹窗(FileBrowserModal)共享定义与动作，
   // 按文件类型定制时只需改 fileContextMenu.js / fileContextMenuActions.jsx。
-  // The "New Workspace (Session)" item renders only where the launch callback is
-  // wired (this sidebar; never the modal/target browser).
+  // The "New Workspace (Session)" item renders where the launch callback is wired
+  // (this sidebar and the embedded file-browser modal; never the target browser).
   const contextMenuItems = useMemo(
     () => buildFileContextMenuItems({ isDir, isRemote, allowNewWorkspace: !!onLaunchWorkspace }),
     [isDir, isRemote, onLaunchWorkspace]);
@@ -687,6 +687,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         onAttachToChat={onAttachToChat}
         onInsertPathToChat={onInsertPathToChat}
         onFileRenamed={onFileRenamed}
+        onLaunchWorkspace={onLaunchWorkspace}
         refreshTrigger={refreshTrigger}
         project={project}
         instance={instance}

@@ -16,7 +16,7 @@ globalThis.fetch = async (url, options) => {
 };
 
 // apiUrl reads window.location at module load — window shim must precede import.
-const { launchWorkspace, isTransportError } = await import('../src/utils/workspaceLaunch.js');
+const { launchWorkspace, isTransportError, isSameDirectory } = await import('../src/utils/workspaceLaunch.js');
 
 beforeEach(() => {
   requests.length = 0;
@@ -35,7 +35,7 @@ describe('launchWorkspace', () => {
     assert.equal(requests.length, 1);
     assert.equal(requests[0].url, '/api/workspaces/launch');
     assert.deepEqual(JSON.parse(requests[0].options.body), { path: '/abs/apps/web', extraArgs: [] });
-    assert.deepEqual(result, { openedElsewhere: false, projectName: 'web' });
+    assert.deepEqual(result, { openedElsewhere: false, projectName: 'web', instanceKey: null });
   });
 
   it('injects -c when the folder already has logs', async () => {
@@ -85,5 +85,35 @@ describe('launchWorkspace', () => {
     assert.equal(isTransportError(new Error('Invalid directory path')), false);
     assert.equal(isTransportError(new Error('HTTP 500')), true);
     assert.equal(isTransportError(new TypeError('Failed to fetch')), true);
+  });
+
+  it('forceNew: no -c even with logs, forceNew flag in the body, instanceKey returned', async () => {
+    fetchImpl = async () => ({ ok: true, json: async () => ({ ok: true, projectName: 'web', instanceKey: 'ccv-new1' }) });
+    const result = await launchWorkspace('/abs/apps/web', { logCount: 9, forceNew: true });
+    assert.deepEqual(JSON.parse(requests[0].options.body), { path: '/abs/apps/web', extraArgs: [], forceNew: true });
+    assert.deepEqual(result, { openedElsewhere: false, projectName: 'web', instanceKey: 'ccv-new1' });
+  });
+
+  it('non-forceNew launch omits the forceNew field (body shape regression guard)', async () => {
+    await launchWorkspace('/abs/apps/web', { logCount: 0 });
+    const body = JSON.parse(requests[0].options.body);
+    assert.equal('forceNew' in body, false);
+    assert.equal(body.instanceKey, undefined);
+  });
+
+  it('Electron IPC carries forceNew as the third argument', async () => {
+    const ipcCalls = [];
+    globalThis.window.tabBridge = { launchWorkspace: (path, args, forceNew) => ipcCalls.push([path, args, forceNew]) };
+    await launchWorkspace('/abs/apps/web', { logCount: 4, forceNew: true });
+    assert.deepEqual(ipcCalls, [['/abs/apps/web', [], true]]);
+  });
+
+  it('isSameDirectory: trailing slashes, mismatch, non-strings', async () => {
+    assert.equal(isSameDirectory('/a/b', '/a/b/'), true);
+    assert.equal(isSameDirectory('/a/b/', '/a/b'), true);
+    assert.equal(isSameDirectory('/a/b', '/a/b/c'), false);
+    assert.equal(isSameDirectory('/a/b', ''), false);
+    assert.equal(isSameDirectory(null, '/a/b'), false);
+    assert.equal(isSameDirectory('/', '/'), true);
   });
 });

@@ -16527,6 +16527,14 @@ const i18nData = {
     "ar": "فشل استئناف الجلسة", "no": "Kunne ikke gjenoppta økten", "pt-BR": "Falha ao retomar a sessão",
     "th": "เริ่มเซสชันต่อไม่สำเร็จ", "tr": "Oturum sürdürülemedi", "uk": "Не вдалося відновити сеанс"
   },
+  "ui.resume.sessionOwned": {
+    "zh": "该会话正被另一个同名实例使用", "en": "This conversation is in use by another instance of the same project", "zh-TW": "該會話正被另一個同名實例使用",
+    "ko": "이 대화는 같은 프로젝트의 다른 인스턴스가 사용 중입니다", "ja": "この会話は同じプロジェクトの別インスタンスが使用中です", "de": "Diese Unterhaltung wird von einer anderen Instanz desselben Projekts verwendet",
+    "es": "Esta conversación está en uso por otra instancia del mismo proyecto", "fr": "Cette conversation est utilisée par une autre instance du même projet", "it": "Questa conversazione è in uso da un'altra istanza dello stesso progetto",
+    "da": "Denne samtale bruges af en anden instans af samme projekt", "pl": "Ta rozmowa jest używana przez inną instancję tego samego projektu", "ru": "Этот диалог используется другим экземпляром того же проекта",
+    "ar": "هذه المحادثة قيد الاستخدام من قبل مثيل آخر لنفس المشروع", "no": "Denne samtalen er i bruk av en annen instans av samme prosjekt", "pt-BR": "Esta conversa está em uso por outra instância do mesmo projeto",
+    "th": "การสนทนานี้กำลังถูกใช้โดยอินสแตนซ์อื่นของโปรเจกต์เดียวกัน", "tr": "Bu konuşma aynı projenin başka bir örneği tarafından kullanılıyor", "uk": "Цю розмову використовує інший екземпляр того самого проєкту"
+  },
   "ui.projectTabs.closeTip": {
     "zh": "关闭项目主进程", "en": "Close project process", "zh-TW": "關閉專案主行程",
     "ko": "프로젝트 프로세스 닫기", "ja": "プロジェクトのプロセスを閉じる", "de": "Projektprozess schließen",

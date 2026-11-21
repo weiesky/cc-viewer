@@ -1425,6 +1425,7 @@
   "server/lib/codefuse-managed-mode.js",
   "server/lib/config-backup.js",
   "server/lib/context-watcher.js",
+  "server/lib/continuation-args.js",
   "server/lib/create_system_prompt.js",
   "server/lib/credential-access.js",
   "server/lib/credential-migrate.js",

@@ -34,6 +34,7 @@ const NEW_KEYS = [
   'ui.resume.confirmOk',       // Modal.confirm ok button
   'ui.resume.busy',            // TUI-busy toast (true-resume deferred/refused)
   'ui.resume.failed',          // inject-failure toast
+  'ui.resume.sessionOwned',    // R7a: conversation owned by another live twin instance
 ];
 
 const REUSED_KEYS = [

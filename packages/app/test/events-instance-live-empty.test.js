@@ -41,7 +41,7 @@ const interceptor = await import('../server/interceptor.js');
 const { initForWorkspace } = interceptor;
 const ptyMgr = await import('../server/pty-manager.js');
 const { registerSdkSessionLister } = await import('../server/lib/sdk-session-index.js');
-const { spawnClaude, _setPtyImportForTests, _resetForTests, listLivePtys } = ptyMgr;
+const { spawnClaude, ensurePtyForCwd, _setPtyImportForTests, _resetForTests, listLivePtys } = ptyMgr;
 
 // Bound project (has a session — the pre-fix bleed source) and the viewed
 // foreign project projB (starts with NO sessions at all). projC is a SECOND
@@ -51,9 +51,18 @@ const { spawnClaude, _setPtyImportForTests, _resetForTests, listLivePtys } = pty
 const boundDir = join(tmpDir, 'boundProj');
 const dirB = join(tmpDir, 'b', 'projB');
 const dirC = join(tmpDir, 'c', 'projC');
+// projD: forceNew ("New Workspace (Session)") on a project that ALREADY has the twin's
+// history — the core regression (the fresh instance must NOT cold-load the twin's session).
+const dirD = join(tmpDir, 'd', 'projD');
+// projE: the non-forceNew carve-out guard — a SEPARATE cwd from projD so the ordinary
+// launch spawns its OWN unmarked record (a non-forceNew ensurePtyForCwd on projD would
+// attach to projD's already-forceNew-marked live record and inherit its key).
+const dirE = join(tmpDir, 'e', 'projE');
 mkdirSync(boundDir, { recursive: true });
 mkdirSync(dirB, { recursive: true });
 mkdirSync(dirC, { recursive: true });
+mkdirSync(dirD, { recursive: true });
+mkdirSync(dirE, { recursive: true });
 
 // Minimal controllable mock pty (same shape as events-samename-cwd.test.js).
 function makeImport(spawned) {
@@ -288,5 +297,104 @@ describe('/events live-instance empty view', () => {
     assert.ok(ls && ls.total > 0, 'existing project history must still cold-load');
     assert.equal(ls.oldestTs, iso(3), 'the seeded projC session is the cold-load pick');
     assert.ok(!ls.empty, 'a history-bearing view is NOT flagged empty');
+  });
+
+  it('forceNew (freshLaunch) on a project WITH history gets the empty view, NOT the twin\'s session', async () => {
+    // projD already has the OLD twin's content-bearing session (same cwd, same pid). A
+    // forceNew-spawned instance carries the freshLaunch mark → resolveColdSource passes
+    // suppressFallback → the same-cwd fallback is skipped → viewColdDir is null → empty view.
+    seed('projD', 'dddd-old-twin', { startTs: iso(3), instance: 'ccv-' + 'e'.repeat(36), cwd: dirD });
+    const r = await ensurePtyForCwd({ cwd: dirD, proxyPort: 9000, claudePath: '/bin/echo', forceNew: true });
+    const freshKey = r.key;
+    assert.equal(listLivePtys().find((p) => p.instanceKey === freshKey).freshLaunch, true, 'spawned record is marked');
+    const res = mkRes();
+    const parsedUrl = new URL(`/events?project=projD&instance=${freshKey}&limit=400`, 'http://localhost');
+    await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
+    assert.ok(!res.frames.join('').includes('sid-not-found'), 'live fresh instance must not be flagged');
+    const ls = loadStart(res);
+    assert.ok(ls, 'load_start must be sent');
+    assert.equal(ls.total, 0, 'the twin\'s history must NOT be cold-loaded into the fresh instance');
+    assert.equal(ls.empty, true, 'the empty-view flag is set');
+    assert.equal(frameNamed(res, 'load_chunk').length, 0, 'no twin content bleeds into the fresh view');
+    assert.equal(res._ccvViewInstance, freshKey);
+  });
+
+  it('forceNew mark lifts after the instance binds its own session: its own content then cold-loads', async () => {
+    // Lifecycle: once the fresh instance writes its own main turn, the writer binds the sid
+    // (setPtySessionIdForInstance) which clears freshLaunch → the instance is served normally.
+    seed('projD', 'dddd-old-twin-2', { startTs: iso(3), instance: 'ccv-' + 'e'.repeat(36), cwd: dirD });
+    const r = await ensurePtyForCwd({ cwd: dirD, proxyPort: 9000, claudePath: '/bin/echo', forceNew: true });
+    const freshKey = r.key;
+    // The instance's own main-turn session appears (meta.instance = freshKey).
+    seed('projD', 'dddd-fresh-own', { startTs: iso(5), instance: freshKey, cwd: dirD });
+    // Simulate the writer's sid binding (clears the mark).
+    ptyMgr.setPtySessionIdForInstance(freshKey, 'dddd-fresh-own');
+    assert.equal(listLivePtys().find((p) => p.instanceKey === freshKey).freshLaunch, false, 'mark cleared on first session bind');
+    const res = mkRes();
+    const parsedUrl = new URL(`/events?project=projD&instance=${freshKey}&limit=400`, 'http://localhost');
+    await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
+    const ls = loadStart(res);
+    assert.ok(ls && ls.total > 0, 'the instance\'s own session cold-loads once it has content');
+    assert.ok(!ls.empty, 'no longer the empty view');
+  });
+
+  it('a NON-forceNew launch on a project with history still cold-loads that history (carve-out guard)', async () => {
+    // Regression guard for the freshLaunch gating: an ordinary (non-forceNew) launch must NOT
+    // be marked, so the same-cwd fallback is preserved for it (header-chip / reopen semantics).
+    // projE is a separate cwd so this spawn is its own unmarked record (not an attach to projD's
+    // forceNew-marked live record).
+    seed('projE', 'eeee-old-twin', { startTs: iso(3), instance: 'ccv-' + 'a'.repeat(36), cwd: dirE });
+    const r = await ensurePtyForCwd({ cwd: dirE, proxyPort: 9000, claudePath: '/bin/echo' }); // NO forceNew
+    const key = r.key;
+    assert.equal(listLivePtys().find((p) => p.instanceKey === key).freshLaunch, false, 'non-forceNew record is unmarked');
+    const res = mkRes();
+    const parsedUrl = new URL(`/events?project=projE&instance=${key}&limit=400`, 'http://localhost');
+    await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
+    const ls = loadStart(res);
+    assert.ok(ls && ls.total > 0, 'a normal launch still falls back to the project history');
+    assert.ok(!ls.empty, 'not flagged empty');
+  });
+
+  it('an SDK forceNew generation (freshLaunch mark) on a project WITH history gets the empty view', async () => {
+    // SDK forceNew swaps the cwd's session for a fresh generation with a NEW random key, marked
+    // freshLaunch (projected via listSdkSessions → findSdkSessionByInstance). The OLD session's
+    // dir carries the OLD key. The fresh instance must cold-load EMPTY, not the old conversation.
+    const oldKey = 'ccv-' + 'b'.repeat(32);
+    const freshKey = 'ccv-' + 'c'.repeat(32);
+    seed('projE', 'eeee-sdk-old', { startTs: iso(3), instance: oldKey, cwd: dirE }); // old generation's content
+    registerSdkSessionLister(() => [{ cwd: dirE, instanceKey: freshKey, active: true, freshLaunch: true }]);
+    try {
+      const res = mkRes();
+      const parsedUrl = new URL(`/events?project=projE&instance=${freshKey}&limit=400`, 'http://localhost');
+      await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
+      assert.ok(!res.frames.join('').includes('sid-not-found'), 'live SDK fresh instance must not be flagged');
+      const ls = loadStart(res);
+      assert.ok(ls, 'load_start must be sent');
+      assert.equal(ls.total, 0, 'the old SDK conversation must NOT cold-load into the fresh generation');
+      assert.equal(ls.empty, true, 'empty-view flag set');
+      assert.equal(frameNamed(res, 'load_chunk').length, 0, 'no old content bleeds in');
+    } finally {
+      registerSdkSessionLister(null);
+    }
+  });
+
+  it('an SDK instance WITHOUT freshLaunch on a project with history still falls back (carve-out)', async () => {
+    // Same-cwd fallback is preserved for a normal SDK instance (no freshLaunch mark). The viewed
+    // instance has NO dir of its own; another instance's content-bearing dir exists. The fallback
+    // must serve it — proving the suppressFallback gate keys off the mark, not mere SDK-ness.
+    const otherKey = 'ccv-' + 'b'.repeat(32);
+    const viewKey = 'ccv-' + 'f'.repeat(32); // the viewed SDK instance: no own dir
+    seed('projE', 'eeee-sdk-old2', { startTs: iso(4), instance: otherKey, cwd: dirE });
+    registerSdkSessionLister(() => [{ cwd: dirE, instanceKey: viewKey, active: true }]); // NO freshLaunch
+    try {
+      const res = mkRes();
+      const parsedUrl = new URL(`/events?project=projE&instance=${viewKey}&limit=400`, 'http://localhost');
+      await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
+      const ls = loadStart(res);
+      assert.ok(ls && ls.total > 0, 'normal SDK instance with no own dir falls back to project history');
+      assert.ok(!ls.empty, 'not flagged empty (fallback preserved)');
+    } finally {
+      registerSdkSessionLister(null);
+    }
   });
 });

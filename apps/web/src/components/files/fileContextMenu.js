@@ -19,8 +19,9 @@ import { t } from '../../i18n.js';
 // gating is needed here.
 //
 // allowNewWorkspace: adds "New Workspace (Session)" to folder/container menus.
-// Only set where the surface wires the launch callback (the sidebar explorer);
-// omitted elsewhere (FileBrowserModal, target mode) so no dead item appears.
+// Set where the surface wires the launch callback (sidebar explorer + the project
+// file-browser modal); never shown in target mode (isTarget), which needs no
+// workspace launch.
 export function buildFileContextMenuItems({
   isDir,
   isRemote,

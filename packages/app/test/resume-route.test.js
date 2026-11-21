@@ -481,6 +481,104 @@ describe('POST /api/resume-session', () => {
     }
   });
 
+  it('409 session-owned when resuming a conversation a DIFFERENT live claude instance holds (R7a)', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const { sanitizePathComponent } = await import('../server/lib/v2/layout.js');
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const cq = await import('../server/lib/chat-queue.js');
+    cq.__resetForTests();
+    ptyMgr._resetForTests();
+    let pid = 71000;
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: pid++ }) }));
+    await initResumeQueue({ onWrite: () => {} });
+    try {
+      const dir = join(tmpDir, 'resumeOwnedProj');
+      await spawnClaudeAt(dir); // twin A (first live claude instance)
+      await spawnClaudeAt(dir); // twin B (second live claude instance, same cwd)
+      const proj = projectKeyForCwd(dir);
+      const [instA, instB] = ptyMgr.listLivePtys().map(p => p.instanceKey);
+      // Seed the target conversation's dir with meta.instance = twin A.
+      const san = sanitizePathComponent(proj);
+      const sessDir = join(tmpDir, san, 'sessions', `20260717120000_${RESUME_UUID}`);
+      mkdirSync(sessDir, { recursive: true });
+      writeFileSync(join(sessDir, 'meta.json'), JSON.stringify({ sessionId: RESUME_UUID, instance: instA }));
+
+      // Resuming it INTO twin B must be refused — A is live and owns it.
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: proj, instanceKey: instB });
+      assert.equal(r.status, 409);
+      assert.equal(r.body.reason, 'session-owned');
+      assert.equal(r.body.owner.instanceKey, instA);
+
+      // Resuming it into its OWN instance A is allowed.
+      const r2 = await callResume({ sessionUuid: RESUME_UUID, project: proj, instanceKey: instA });
+      assert.equal(r2.status, 200);
+    } finally {
+      cq.__resetForTests();
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+    }
+  });
+
+  it('R7a allows resuming a conversation whose recorded owner instance is DEAD', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const { sanitizePathComponent } = await import('../server/lib/v2/layout.js');
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const cq = await import('../server/lib/chat-queue.js');
+    cq.__resetForTests();
+    ptyMgr._resetForTests();
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 72000 }) }));
+    await initResumeQueue({ onWrite: () => {} });
+    try {
+      const dir = join(tmpDir, 'resumeDeadOwnerProj');
+      await spawnClaudeAt(dir); // only one live claude instance
+      const proj = projectKeyForCwd(dir);
+      const instB = ptyMgr.listLivePtys()[0].instanceKey;
+      // Seed meta.instance = a DIFFERENT, no-longer-live instance.
+      const san = sanitizePathComponent(proj);
+      const sessDir = join(tmpDir, san, 'sessions', `20260717120000_${RESUME_UUID}`);
+      mkdirSync(sessDir, { recursive: true });
+      writeFileSync(join(sessDir, 'meta.json'), JSON.stringify({ sessionId: RESUME_UUID, instance: 'ccv-dead0000' }));
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: proj, instanceKey: instB });
+      assert.equal(r.status, 200, 'dead owner does not block resume');
+    } finally {
+      cq.__resetForTests();
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+    }
+  });
+
+  it('R7a does NOT mis-reject a single live instance resuming its OWN conversation with no instanceKey (review P0)', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const { sanitizePathComponent } = await import('../server/lib/v2/layout.js');
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const cq = await import('../server/lib/chat-queue.js');
+    cq.__resetForTests();
+    ptyMgr._resetForTests();
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 73000 }) }));
+    await initResumeQueue({ onWrite: () => {} });
+    try {
+      const dir = join(tmpDir, 'resumeSelfNoKeyProj');
+      await spawnClaudeAt(dir); // exactly ONE live claude instance
+      const proj = projectKeyForCwd(dir);
+      const selfInst = ptyMgr.listLivePtys()[0].instanceKey;
+      // Seed the conversation's meta.instance = the SAME single live instance.
+      const san = sanitizePathComponent(proj);
+      const sessDir = join(tmpDir, san, 'sessions', `20260717120000_${RESUME_UUID}`);
+      mkdirSync(sessDir, { recursive: true });
+      writeFileSync(join(sessDir, 'meta.json'), JSON.stringify({ sessionId: RESUME_UUID, instance: selfInst }));
+      // Client sends NO instanceKey (single-instance bound view / Electron / older bundle).
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: proj });
+      assert.equal(r.status, 200, 'the single live instance is resolved as the caller — self-resume allowed');
+    } finally {
+      cq.__resetForTests();
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+    }
+  });
+
   it('409 busy when the TUI is streaming (never blind-injects)', async () => {
     const ptyMgr = await import('../server/pty-manager.js');
     const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');

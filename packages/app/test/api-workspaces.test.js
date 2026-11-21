@@ -186,6 +186,19 @@ describe('POST /api/workspaces/add', () => {
     assert.ok(persisted.workspaces.some((w) => w.path === wsDir));
   });
 
+  it('cross-site browser POST is rejected with 403 (CSRF gate)', async () => {
+    const handler = routeFor('POST', '/api/workspaces/add');
+    const req = new EventEmitter();
+    req.headers = { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' };
+    const status = await new Promise((resolve) => {
+      const res = { writeHead(c) { this.status = c; }, end() { resolve(this.status); } };
+      handler(req, res, { pathname: '/api/workspaces/add' }, true, baseDeps());
+      req.emit('data', JSON.stringify({ path: wsDir }));
+      req.emit('end');
+    });
+    assert.equal(status, 403);
+  });
+
   it('rejects a non-existent path with 400', async () => {
     const { status, data } = await postAdd({ path: join(tmpDir, 'does-not-exist') });
     assert.equal(status, 400);
@@ -304,6 +317,63 @@ describe('POST /api/workspaces/launch — Electron multi-tab branch', () => {
     const deps = baseDeps({ launchCallback: (p, extra) => { cbArgs = { p, extra }; } });
     await launch({ path: wsDir, extraArgs: 'not-an-array' }, deps);
     assert.deepEqual(cbArgs.extra, []);
+  });
+
+  it('forwards forceNew as the third launchCallback argument', async () => {
+    let cbArgs = null;
+    const deps = baseDeps({ launchCallback: (...args) => { cbArgs = args; } });
+    const { status } = await launch({ path: wsDir, extraArgs: [], forceNew: true }, deps);
+    assert.equal(status, 200);
+    assert.deepEqual(cbArgs, [wsDir, [], true]);
+  });
+
+  it('forceNew strips continuation flags (incl. resume values) before forwarding', async () => {
+    let cbArgs = null;
+    const deps = baseDeps({ launchCallback: (...args) => { cbArgs = args; } });
+    await launch({ path: wsDir, extraArgs: ['-c', '-r', 'uuid-9', '--model', 'opus'], forceNew: true }, deps);
+    assert.deepEqual(cbArgs, [wsDir, ['--model', 'opus'], true]);
+  });
+
+  it('non-forceNew forwards extraArgs untouched (control)', async () => {
+    let cbArgs = null;
+    const deps = baseDeps({ launchCallback: (...args) => { cbArgs = args; } });
+    await launch({ path: wsDir, extraArgs: ['-c'] }, deps);
+    assert.deepEqual(cbArgs, [wsDir, ['-c'], false]);
+  });
+
+  it('cross-site browser POST is rejected with 403 (CSRF gate)', async () => {
+    const handler = routeFor('POST', '/api/workspaces/launch');
+    const req = new EventEmitter();
+    req.headers = { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' };
+    const { status, data } = await new Promise((resolve) => {
+      const res = { writeHead(c) { this.status = c; }, end(b) { resolve({ status: this.status, data: JSON.parse(b || '{}') }); } };
+      handler(req, res, { pathname: '/api/workspaces/launch' }, true, baseDeps());
+      req.emit('data', JSON.stringify({ path: wsDir }));
+      req.emit('end');
+    });
+    assert.equal(status, 403);
+    assert.equal(data.error, 'forbidden');
+  });
+
+  it('non-admin remote caller is rejected with 403 even same-origin', async () => {
+    const handler = routeFor('POST', '/api/workspaces/launch');
+    const req = new EventEmitter();
+    req.headers = {};
+    const { status } = await new Promise((resolve) => {
+      const res = { writeHead(c) { this.status = c; }, end(b) { resolve({ status: this.status, data: b }); } };
+      // isLocal=false + no ccvIsAdmin → not an admin request.
+      handler(req, res, { pathname: '/api/workspaces/launch' }, false, baseDeps());
+      req.emit('data', JSON.stringify({ path: wsDir }));
+      req.emit('end');
+    });
+    assert.equal(status, 403);
+  });
+
+  it('forceNew defaults to false for the callback', async () => {
+    let cbArgs = null;
+    const deps = baseDeps({ launchCallback: (...args) => { cbArgs = args; } });
+    await launch({ path: wsDir, extraArgs: [] }, deps);
+    assert.deepEqual(cbArgs, [wsDir, [], false]);
   });
 
   it('rejects an invalid path with 400', async () => {

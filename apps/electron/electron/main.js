@@ -190,7 +190,7 @@ async function startMgmtServer() {
       mgmtServerMod.setWorkspaceClaudeArgs([]);
       mgmtServerMod.setWorkspaceClaudePath(claudePath, isNpmVersion);
     }
-    mgmtServerMod.setLaunchCallback((path, extraArgs) => createTab(path, extraArgs));
+    mgmtServerMod.setLaunchCallback((path, extraArgs, forceNew) => createTab(path, extraArgs, { forceNew: !!forceNew }));
   } catch (err) {
     // mgmt server 起不来后续所有 loadURL 会拼出 `http://127.0.0.1:null` 白屏。
     // 先落 diag 日志，再弹 errorBox 告知用户，最后 exit(1) 让用户能立刻定位到日志而非
@@ -547,21 +547,28 @@ function sendDeviceModeToTab(tabId) {
 }
 
 // --- Tab management ---
-function createTab(projectPath, extraArgs = []) {
+// forceNew (file explorer "New Workspace (Session)" on the CURRENT directory):
+// skip the realpath dedupe so a second tab on the same folder actually opens —
+// the whole point is two concurrent sessions in one cwd.
+function createTab(projectPath, extraArgs = [], { forceNew = false } = {}) {
   devLog('[main] createTab:', projectPath, extraArgs);
   // A vanished or non-directory cwd leaves the tab in a permanent error state
   // (worker fork fails) — reject early; the picker/menu can relaunch anytime.
+  // The rejection is silent in the UI, so keep a diag trail for "clicked and
+  // nothing happened" reports.
   try {
-    if (!statSync(projectPath).isDirectory()) return;
-  } catch { return; }
+    if (!statSync(projectPath).isDirectory()) { appendDiag('tab:invalid-cwd', { projectPath, reason: 'not-a-directory' }); return; }
+  } catch (err) { appendDiag('tab:invalid-cwd', { projectPath, reason: err?.message || 'stat-failed' }); return; }
   let realPath;
   try { realPath = realpathSync(projectPath); } catch { realPath = projectPath; }
 
   // Deduplicate: if already open, switch to it
-  for (const [id, tab] of tabs) {
-    if (tab.realPath === realPath) {
-      switchTab(id);
-      return;
+  if (!forceNew) {
+    for (const [id, tab] of tabs) {
+      if (tab.realPath === realPath) {
+        switchTab(id);
+        return;
+      }
     }
   }
 
@@ -931,7 +938,7 @@ ipcMain.on('request-workspace-mode', (event) => {
     event.sender.send('workspace-mode', workspacePopupOpen ? 'popup' : 'full');
   }
 });
-ipcMain.on('workspace-launch', (_, data) => {
+ipcMain.on('workspace-launch', async (_, data) => {
   devLog('[main] workspace-launch IPC:', data);
   // Reachable from every tab renderer since tab-content-preload exposed
   // tabBridge.launchWorkspace (file explorer "New Workspace (Session)") — validate
@@ -940,8 +947,14 @@ ipcMain.on('workspace-launch', (_, data) => {
   const wsPath = data?.path;
   const args = data?.extraArgs;
   if (typeof wsPath !== 'string' || !wsPath) return;
-  const safeArgs = (Array.isArray(args) ? args : []).filter((a) => typeof a === 'string');
-  createTab(wsPath, safeArgs);
+  const forceNew = data?.forceNew === true;
+  // forceNew must never continue the existing conversation — strip the
+  // continuation family with the server's shared helper (single source of truth;
+  // top-level await imports already populate rootDir above).
+  const { stripContinuationArgs } = await import(pathToFileURL(join(rootDir, 'server', 'lib', 'continuation-args.js')).href);
+  const safeArgs = (Array.isArray(args) ? args : [])
+    .filter((a) => typeof a === 'string');
+  createTab(wsPath, forceNew ? stripContinuationArgs(safeArgs) : safeArgs, { forceNew });
 });
 ipcMain.on('approval-jump', (_, tabId) => {
   if (tabId != null && tabs.has(tabId)) switchTab(tabId);

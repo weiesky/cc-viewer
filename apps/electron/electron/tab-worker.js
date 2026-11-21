@@ -101,8 +101,13 @@ async function launch({ path: projectPath, extraArgs = [], claudePath, isNpmVers
   //     /api/workspaces/launch route). Without this, IPC-launched tabs never
   //     appear in the picker history and the -c probe (GET /api/workspaces)
   //     can never find their logs — every later launch would start fresh.
-  const { registerWorkspace } = await importAbs(join(rootDir, 'server', 'workspace-registry.js'));
-  await registerWorkspace(projectPath);
+  //     Best-effort: a locked/corrupt registry must never block the tab launch.
+  try {
+    const { registerWorkspace } = await importAbs(join(rootDir, 'server', 'workspace-registry.js'));
+    await registerWorkspace(projectPath);
+  } catch (err) {
+    console.warn('[worker] registerWorkspace failed (continuing):', err?.message || err);
+  }
 
   // 7b. Mark workspace as launched so React app shows chat view instead of workspace selector
   serverMod.setWorkspaceLaunched(true);

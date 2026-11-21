@@ -680,6 +680,7 @@ class App extends AppBase {
               viewProject={this.state.viewedProject || this.state.projectName || null}
               onDetachView={this.handleDetachView}
               onCloseProject={this.handleCloseProject}
+              onLaunchWorkspace={this.handleWorkspaceLaunch}
               onLiveProjectsChange={this.handleLiveProjectsChange}
               liveProcessRefreshToken={this.state.liveProcessRefreshToken}
             />

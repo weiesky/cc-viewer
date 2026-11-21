@@ -677,6 +677,17 @@ function startLogWatch() {
         } catch (err) { reportSwallowed('server.sid-pin', err); }
       })
       .catch((err) => { reportSwallowed('server.sid-pin-import', err); });
+    // SDK forceNew (2026-11): this main-turn gate is the exact moment the instance owns its
+    // first session dir. Lift the freshLaunch empty-view suppression (PTY parity with
+    // setPtySessionIdForInstance clearing the PTY record's mark). SDK sessions are not in
+    // pty-manager, so their clear path is separate; a no-op for PTY / non-fresh instances.
+    // Gated on isSdkMode: importing sdk-manager eagerly loads the Agent SDK (hard dep), which
+    // must NOT happen in a PTY-only install (sdk-session-index.js's stated rule).
+    if (isSdkMode && instanceKey) {
+      import('./lib/sdk-manager.js')
+        .then((sdk) => { try { sdk.clearSdkFreshLaunch?.(instanceKey); } catch (err) { reportSwallowed('server.sdk-fresh-clear', err); } })
+        .catch((err) => { reportSwallowed('server.sdk-fresh-clear-import', err); });
+    }
   });
 }
 

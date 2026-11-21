@@ -119,6 +119,37 @@ describe('session-start-bridge.js', { concurrency: false }, () => {
     }
   });
 
+  it('forwards CCVIEWER_INSTANCE_KEY as instanceKey (R1 twin routing); invalid shape → null', async () => {
+    const { server, hitPromise } = captureServer();
+    const port = await listen(server);
+    try {
+      const runP = runBridge({
+        env: { CCVIEWER_PORT: String(port), CCVIEWER_INTERNAL_TOKEN: '', CCVIEWER_INSTANCE_KEY: 'ccv-ab12cd34' },
+        stdin: JSON.stringify(HOOK_PAYLOAD),
+      });
+      const cap = await hitPromise;
+      await runP;
+      assert.equal(JSON.parse(cap.body).instanceKey, 'ccv-ab12cd34', 'valid instance key forwarded');
+    } finally {
+      server.close();
+    }
+
+    // Invalid / non-ccv shape must NOT steer routing — dropped to null.
+    const bad = captureServer();
+    const badPort = await listen(bad.server);
+    try {
+      const runP = runBridge({
+        env: { CCVIEWER_PORT: String(badPort), CCVIEWER_INTERNAL_TOKEN: '', CCVIEWER_INSTANCE_KEY: 'not-an-instance' },
+        stdin: JSON.stringify(HOOK_PAYLOAD),
+      });
+      const cap = await bad.hitPromise;
+      await runP;
+      assert.equal(JSON.parse(cap.body).instanceKey, null, 'invalid instance key dropped');
+    } finally {
+      bad.server.close();
+    }
+  });
+
   it('forwards X-CCViewer-Internal when CCVIEWER_INTERNAL_TOKEN is set', async () => {
     const { server, hitPromise } = captureServer();
     const port = await listen(server);
