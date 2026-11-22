@@ -200,6 +200,58 @@ describe('latestMainSessionDir', () => {
     assert.equal(latestMainSessionDir(projectDir), good);
   });
 
+  // forceNew "New Workspace (Session)" (2026-11): a deliberately brand-new instance must NOT
+  // fall back to the live twin's OLD conversation while it has no main turn of its own.
+  // `suppressFallback` (passed by events.js only for freshLaunch-marked instances) makes the
+  // instance scope return null in that case, so /events serves the empty-view contract.
+  describe('suppressFallback (forceNew)', () => {
+    it('returns the instance\'s OWN main-turn session even when older than the twin\'s (own always wins)', () => {
+      seed('old-twin', { startTs: iso(9), instance: 'ccv-old' });        // live twin's content (newest)
+      const mine = seed('fresh-mine', { startTs: iso(2), instance: 'ccv-fresh' }); // fresh instance's own main turn (older)
+      assert.equal(
+        latestMainSessionDir(projectDir, { instanceKey: 'ccv-fresh', suppressFallback: true }),
+        mine);
+    });
+
+    it('returns "" (NOT the fallback) when the fresh instance has no session of its own', () => {
+      seed('old-twin', { startTs: iso(9), instance: 'ccv-old' }); // only the twin's history exists
+      // Without suppression this falls back to the twin (the bug). With it → "" → empty view.
+      assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-fresh' }), join(projectDir, 'sessions', 'old-twin'));
+      assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-fresh', suppressFallback: true }), '');
+    });
+
+    it('returns "" (NOT ownAny) when the instance has only a quota-probe / sub-only dir', () => {
+      // Claude Code fires a throwaway quota-probe session at launch, stamped with this instance
+      // but with NO main turn. Serving that shell would defeat the empty view — suppressFallback
+      // must NOT degrade to the instance's own newest dir (ownAny) here.
+      seed('old-twin', { startTs: iso(9), instance: 'ccv-old' });
+      seed('probe', { startTs: iso(5), instance: 'ccv-fresh', mainTurn: false }); // sub-only
+      assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-fresh', suppressFallback: true }), '');
+    });
+
+    it('returns "" when NO session anywhere has a main turn (truly fresh project)', () => {
+      seed('fresh-quiet', { startTs: iso(5), instance: 'ccv-fresh', mainTurn: false });
+      // The non-suppressed path degrades to ownAny; the suppressed path returns "" (empty view).
+      assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-fresh' }), join(projectDir, 'sessions', 'fresh-quiet'));
+      assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-fresh', suppressFallback: true }), '');
+    });
+
+    it('has NO effect without instanceKey (whole-pool path unchanged)', () => {
+      seed('s1', { startTs: iso(1) });
+      const newest = seed('s2', { startTs: iso(3) });
+      assert.equal(latestMainSessionDir(projectDir, { suppressFallback: true }), newest);
+    });
+
+    it('has NO effect on the legacy / targetCwd fallback when the instance DOES have a main turn', () => {
+      // Defensive: suppression only kicks in when `own` is null. A contented instance is served
+      // normally regardless of the flag.
+      seed('mine', { startTs: iso(1), instance: 'ccv-fresh', cwd: '/x/proj' });
+      assert.equal(
+        latestMainSessionDir(projectDir, { instanceKey: 'ccv-fresh', targetCwd: '/x/proj', suppressFallback: true }),
+        join(projectDir, 'sessions', 'mine'));
+    });
+  });
+
   it('skips an unsupported wireFormat session (future v3)', () => {
     seed('v3', { startTs: iso(5), wireFormat: 3 });
     const good = seed('good', { startTs: iso(2) });

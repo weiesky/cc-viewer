@@ -133,8 +133,7 @@ function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onResto
         return (
         <Dropdown key={`${commitHash || 'wt'}::${file.fullPath}`} menu={{ items: [
           { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
-          { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
-          { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
+          { key: 'copyPath', label: t('ui.contextMenu.copyFilePath') },
           // Keyboard / no-drag affordance mirroring FileExplorer's file menu.
           { key: 'attachToChat', label: t('ui.contextMenu.attachToChat') },
           { key: 'insertPathToChat', label: t('ui.contextMenu.insertPathToChat') },
@@ -145,8 +144,6 @@ function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onResto
           } else if (key === 'copyPath') {
             fetch(apiUrl('/api/resolve-path'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: resolvedPath }) })
               .then(r => r.json()).then(data => { if (data.fullPath) navigator.clipboard.writeText(data.fullPath).then(() => message.success(t('ui.copied'))).catch(() => {}); }).catch(() => {});
-          } else if (key === 'copyRelPath') {
-            navigator.clipboard.writeText(resolvedPath).then(() => message.success(t('ui.copied'))).catch(() => {});
           } else if (key === 'attachToChat') {
             onAttachToChat && onAttachToChat(resolvedPath);
           } else if (key === 'insertPathToChat') {

@@ -207,7 +207,7 @@ describe('consumption discipline', () => {
     const w = newWriter();
     w.beginResumeSwitch({ transcriptUuid: SID_R, hookSid: HOOK_SID });
     w.beginResumeSwitch({ transcriptUuid: SID_A, hookSid: HOOK_SID });
-    assert.equal(w._pendingResumeSwitch.get('proj').transcriptUuid, SID_A, 'last pick wins');
+    assert.equal(w._pendingResumeSwitch.get('proj').get('').transcriptUuid, SID_A, 'last pick wins');
     w.resetSessions();
     assert.equal(w._pendingResumeSwitch.get('proj'), undefined, 'workspace switch clears a stale signal');
     await w.close();
@@ -246,5 +246,73 @@ describe('cross-project resume switch (parallel viewed project, 2026-10-06)', ()
     assert.equal(boundWriter._pendingResumeSwitch.get('projB'), undefined, 'B main request consumed B switch');
     assert.ok(boundWriter._pendingResumeSwitch.get('projA'), 'bound A switch still armed (not consumed by B)');
     await boundWriter.close();
+  });
+});
+
+describe('same-cwd twin instance isolation (R1)', () => {
+  const INST_A = 'ccv-aaaa0001';
+  const INST_B = 'ccv-bbbb0002';
+  const instEntry = (messages, { sid, inst, ts } = {}) => {
+    const e = mainEntry(messages, { sid, ts });
+    e._ccvInstance = inst;
+    return e;
+  };
+
+  it("twin A's armed switch is consumed only by A's main request, never by twin B's", async () => {
+    await seedResumedDir();
+    const w = newWriter();
+    // Both twins have run a main turn (each holds its own session binding).
+    fire(w, instEntry([textMsg('user', 'A pre-resume')], { sid: SID_A, inst: INST_A }));
+    fire(w, instEntry([textMsg('user', 'B turn')], { sid: 'bbbb9999-89ab-4cde-8f01-23456789abcd', inst: INST_B }));
+    await w.flush();
+
+    // Twin A arms an in-terminal /resume switch (carries A's instanceKey).
+    w.beginResumeSwitch({ transcriptUuid: SID_R, hookSid: HOOK_SID, instanceKey: INST_A });
+    assert.ok(w._pendingResumeSwitch.get('proj').get(INST_A), 'A switch armed under A instance');
+
+    // Twin B's next main request must NOT consume A's switch — it keeps its own dir.
+    const bBefore = dirsInProject();
+    fire(w, instEntry([textMsg('user', 'B another turn')], { sid: 'bbbb9999-89ab-4cde-8f01-23456789abcd', inst: INST_B }));
+    await w.flush();
+    assert.ok(w._pendingResumeSwitch.get('proj').get(INST_A), 'A switch survives B main request');
+    assert.deepEqual(dirsInProject(), bBefore, 'B did not mint a resume dir');
+
+    // Twin A's own main request consumes it and re-joins the resumed dir.
+    fire(w, instEntry([textMsg('user', 'A resumed turn')], { sid: SID_A, inst: INST_A, ts: '2026-07-17T09:05:00.000Z' }));
+    await w.flush();
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined, 'A consumed its own switch');
+    const seedName = dirOf(SID_R);
+    assert.ok(journalLen(seedName) >= 2, 'resumed dir received A resumed turn');
+    await w.close();
+  });
+
+  it("a twin arming a switch does not clobber its sibling's (per-instance last-wins)", async () => {
+    const w = newWriter();
+    w.beginResumeSwitch({ transcriptUuid: SID_R, hookSid: HOOK_SID, instanceKey: INST_A });
+    w.beginResumeSwitch({ transcriptUuid: SID_A, hookSid: HOOK_SID, instanceKey: INST_B });
+    const bucket = w._pendingResumeSwitch.get('proj');
+    assert.equal(bucket.get(INST_A).transcriptUuid, SID_R, 'A switch intact');
+    assert.equal(bucket.get(INST_B).transcriptUuid, SID_A, 'B switch independent');
+    await w.close();
+  });
+
+  it("manual /resume targeting ANOTHER live twin's bound dir falls back to fork (never shares the journal)", async () => {
+    const w = newWriter();
+    // Twin A establishes a live binding on its own session dir.
+    fire(w, instEntry([textMsg('user', 'A active conversation')], { sid: SID_A, inst: INST_A }));
+    await w.flush();
+    const aName = dirOf(SID_A);
+    const aJournalBefore = journalLen(aName);
+
+    // Twin B (same process) manually /resumes A's transcript. A's dir is bound to
+    // INST_A in this writer's _sessions, so the same-process guard must force B to
+    // fork into a FRESH dir — never re-join A's live journal.
+    w.beginResumeSwitch({ transcriptUuid: SID_A, hookSid: HOOK_SID, instanceKey: INST_B });
+    fire(w, instEntry([textMsg('user', 'B resumed attempt')], { sid: SID_A, inst: INST_B, ts: '2026-07-17T09:06:00.000Z' }));
+    await w.flush();
+
+    assert.equal(journalLen(aName), aJournalBefore, "A's journal NOT written by B (no shared journal)");
+    assert.ok(dirOf(HOOK_SID), 'B fell back to a fresh hookSid dir (fork semantics)');
+    await w.close();
   });
 });

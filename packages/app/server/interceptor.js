@@ -632,6 +632,28 @@ const _v2Writer = new V2Writer({
 });
 export { _v2Writer };
 
+/**
+ * Retire a CLOSED random-key SDK session's routing (2026-11) so its late traffic (a
+ * draining child's heartbeat/completion) can no longer move `_currentSid` /
+ * `_currentSidByInstance` into its old dir. Called ONLY from the explicit SDK close path
+ * (routes/resume.js, when closeSdkSession reports wasFreshKey===true) — never from a
+ * launch or initForWorkspace/resetForLiveRelaunch: a same-cwd sibling stays LIVE and
+ * depends on its per-instance pointers surviving a relaunch.
+ */
+export function retireInstance(instanceKey) {
+  try { _v2Writer.retireInstance(instanceKey); } catch (err) { reportSwallowed('interceptor.retire-instance', err); }
+}
+
+/**
+ * Release a CLOSED instance's per-instance routing state WITHOUT retiring the key
+ * (2026-11, same-cwd sibling close). Used by the SDK close path for a DETERMINISTIC cwd
+ * key (wasFreshKey=false) — that key is re-created on a normal relaunch, so it must be
+ * cleared, never retired. See v2-writer.releaseInstance.
+ */
+export function releaseInstance(instanceKey) {
+  try { _v2Writer.releaseInstance(instanceKey); } catch (err) { reportSwallowed('interceptor.release-instance', err); }
+}
+
 // S6b: the live read source — the current v2 session dir once the writer has
 // resolved a session; '' before the first request (readers treat a missing
 // path as an empty stream, same as v1's not-yet-created file did).
@@ -705,6 +727,11 @@ export function getLiveLogSource({ serveInFlight = true } = {}) {
 export function markSessionStart(payload) {
   try {
     const { source, sessionId, transcriptPath, cwd } = payload || {};
+    // Same-cwd twin routing (R1): the PTY that spawned this claude stamped its
+    // instanceKey into the env, forwarded by session-start-bridge. Validate the
+    // shape before letting it steer the resume-switch routing.
+    const rawInst = (payload && typeof payload.instanceKey === 'string') ? payload.instanceKey : '';
+    const instanceKey = /^ccv-[0-9a-f]+$/.test(rawInst) ? rawInst : null;
     // 'resume' re-binds the writer AND feeds snapshot Bind B; 'fork' feeds only
     // Bind B (a fork mints a fresh wire sid + the fork mark suppresses adoption,
     // so the writer routes it correctly without a switch). Everything else is
@@ -740,8 +767,11 @@ export function markSessionStart(payload) {
         _v2Writer.beginResumeSwitch({
           transcriptUuid,
           hookSid: (typeof sessionId === 'string' && sessionId) ? sessionId : null,
-          // Keyed by the resumed conversation's project (bound = undefined default).
+          // Keyed by the resumed conversation's project (bound = undefined default)
+          // AND by this instance, so a same-cwd twin's /resume switch is consumed
+          // only by that twin's own next main request, never a sibling's.
           project: resumeProject || undefined,
+          instanceKey,
         });
       };
       if (!resumeProject || (_projectName && resumeProject === _projectName)) {
@@ -849,10 +879,12 @@ const _initPromise = Promise.resolve();
 
 export { LOG_FILE, _initPromise, _projectName, _logDir };
 
-// 工作区模式：绑定指定路径的项目（v2 会话目录由 V2Writer 按需创建）。
-// forceNew 仅存于签名兼容（Electron multi-tab 传入）：v2 下每个 claude 进程
-// 天然是新 session，无旧文件可复用。
-export function initForWorkspace(projectPath, { forceNew = false } = {}) { // eslint-disable-line no-unused-vars
+// Workspace mode: bind the project at the given path (v2 session dirs are
+// created on demand by V2Writer). forceNew (a second claude instance in the
+// same cwd) keeps the live twin's session bindings/owner.lock on a same-project
+// re-bind — the new process gets a fresh sid and a fresh dir; the twin's must
+// not be cleared.
+export function initForWorkspace(projectPath, { forceNew = false, preserveLiveTwin = false } = {}) {
   const projectName = projectKeyForCwd(projectPath);
   const dir = join(LOG_DIR, projectName);
   try { mkdirSync(dir, { recursive: true }); } catch {}
@@ -870,7 +902,22 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) { // es
   // Fresh workspace context — no carried names apply; future requests must
   // create session dirs under the NEW project.
   _agentSpawnRegistry.clear();
-  _v2Writer.resetSessions(previousProject || null); // also clears the per-process `-c` adoption latch
+  // forceNew on the SAME project: a live same-cwd twin keeps its session
+  // bindings + owner.lock claims (releasing them would expose its dirs to a
+  // sibling's cold-load/adoption). Only launch-boundary state that could hijack
+  // or misroute the fresh twin is cleared. Any other switch keeps the old
+  // scoped reset semantics.
+  //
+  // SDK +1 (preserveLiveTwin, 2026-11): the same-cwd sibling stays LIVE and the new
+  // child always carries x-ccv-instance, so it never enters the process-global
+  // `_pendingNoSid` bucket. resetForLiveRelaunch's project-level clear
+  // (`_pendingNoSidByInstance`/`_lateHandles`) would instead drain the SURVIVING
+  // sibling's in-flight buckets — so the SDK +1 path skips the writer reset entirely.
+  if (forceNew && previousProject && previousProject === projectName) {
+    if (!preserveLiveTwin) _v2Writer.resetForLiveRelaunch(projectName);
+  } else {
+    _v2Writer.resetSessions(previousProject || null); // also clears the per-process `-c` adoption latch
+  }
   // A `--fork-session` / `-r` launch marks fork/resume intent; neither must
   // leak into a LATER workspace's `-c` (in a long-lived server that would
   // permanently suppress adoption). Clear both marks per launch and re-sync —

@@ -251,8 +251,8 @@ describe('markSessionStart arms the writer resume switch', () => {
       cwd: '/Users/x/work/projHook',
     });
     assert.ok(writer()._pendingResumeSwitch.get('projHook'), 'armed');
-    assert.equal(writer()._pendingResumeSwitch.get('projHook').transcriptUuid, T_UUID);
-    assert.equal(writer()._pendingResumeSwitch.get('projHook').hookSid, 'eeee5555-89ab-4cde-8f01-23456789abcd');
+    assert.equal(writer()._pendingResumeSwitch.get('projHook').get('').transcriptUuid, T_UUID);
+    assert.equal(writer()._pendingResumeSwitch.get('projHook').get('').hookSid, 'eeee5555-89ab-4cde-8f01-23456789abcd');
   });
 
   it('non-resume sources are ignored (teammate startup events land here too)', () => {

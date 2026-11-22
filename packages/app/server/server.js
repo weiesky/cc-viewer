@@ -677,6 +677,17 @@ function startLogWatch() {
         } catch (err) { reportSwallowed('server.sid-pin', err); }
       })
       .catch((err) => { reportSwallowed('server.sid-pin-import', err); });
+    // SDK forceNew (2026-11): this main-turn gate is the exact moment the instance owns its
+    // first session dir. Lift the freshLaunch empty-view suppression (PTY parity with
+    // setPtySessionIdForInstance clearing the PTY record's mark). SDK sessions are not in
+    // pty-manager, so their clear path is separate; a no-op for PTY / non-fresh instances.
+    // Gated on isSdkMode: importing sdk-manager eagerly loads the Agent SDK (hard dep), which
+    // must NOT happen in a PTY-only install (sdk-session-index.js's stated rule).
+    if (isSdkMode && instanceKey) {
+      import('./lib/sdk-manager.js')
+        .then((sdk) => { try { sdk.clearSdkFreshLaunch?.(instanceKey); } catch (err) { reportSwallowed('server.sdk-fresh-clear', err); } })
+        .catch((err) => { reportSwallowed('server.sdk-fresh-clear-import', err); });
+    }
   });
 }
 
@@ -2026,7 +2037,10 @@ async function setupTerminalWebSocket(httpServer) {
       // unstamped (receiving all workspaces' frames).
       wss.handleUpgrade(req, socket, head, (ws) => {
         try { ws._ccvViewProject = viewProject || null; } catch {}
-        try { ws._ccvViewInstance = viewInstance || null; } catch {}
+        // Twin-window coherence applies at the initial upgrade too, not just on re-attach:
+        // connect precedes the first attach, so without it the null stamp (and the cross-twin
+        // frame delivery) persists for the whole pre-poll window.
+        try { ws._ccvViewInstance = _cohereAttachInstance(viewProject || null, viewInstance); } catch {}
         wss.emit('connection', ws, req);
       });
     });
@@ -2628,7 +2642,7 @@ async function setupTerminalWebSocket(httpServer) {
           // 新视图的 sdk-session-state/审批/队列帧会被静默丢弃。
           if (msg.type === 'attach') {
             try { ws._ccvViewProject = (typeof msg.project === 'string' && msg.project) || null; } catch {}
-            try { ws._ccvViewInstance = (typeof msg.instanceKey === 'string' && msg.instanceKey) || null; } catch {}
+            try { ws._ccvViewInstance = _cohereAttachInstance(ws._ccvViewProject, msg.instanceKey); } catch {}
             if (isSdkMode) {
               // Re-attach switched the viewed workspace — re-send that view's sdk-skills
               // surface so the `/` menu isn't stuck on the /api/skills fallback until the next
@@ -2800,7 +2814,7 @@ async function setupTerminalWebSocket(httpServer) {
             try { res = (target || targetInstance) ? attachPtyFor({ project: target || undefined, instanceKey: targetInstance || undefined }) : null; } catch { res = null; }
             if (res && res.ok) {
               ws._ccvViewProject = target || null;
-              ws._ccvViewInstance = targetInstance || null;
+              ws._ccvViewInstance = _cohereAttachInstance(ws._ccvViewProject, targetInstance);
               replayQueueSnapshot();
               try { ws.send(JSON.stringify({ type: 'attached', project: target, running: res.running, ptyKind: res.ptyKind, exitCode: res.exitCode })); } catch { }
               const snap = getOutputBuffer();
@@ -2811,7 +2825,7 @@ async function setupTerminalWebSocket(httpServer) {
               // The queue belongs to the view, not to a live PTY. A history view or
               // a dead instance still needs its own queue snapshot after re-stamping.
               ws._ccvViewProject = target || null;
-              ws._ccvViewInstance = targetInstance || null;
+              ws._ccvViewInstance = _cohereAttachInstance(ws._ccvViewProject, targetInstance);
               replayQueueSnapshot();
               // Multi-instance: surface an ambiguous project-name attach (with the live
               // candidates) so the client re-issues with an instanceKey instead of silently
@@ -4234,6 +4248,39 @@ export function setSdkGetSessionStateSnapshot(fn) { _sdkGetSessionStateSnapshot 
 /** Reference to sdk-manager's getSdkTaskSnapshot (set by cli.js after import). */
 let _sdkGetSdkTaskSnapshot = null;
 export function setSdkGetSdkTaskSnapshot(fn) { _sdkGetSdkTaskSnapshot = fn; }
+
+/** Reference to sdk-manager's resolveBoundPrimaryInstanceKey (set by cli.js after import). */
+let _sdkResolveBoundPrimaryInstanceKey = null;
+export function setSdkResolveBoundPrimaryInstanceKey(fn) { _sdkResolveBoundPrimaryInstanceKey = fn; }
+
+/**
+ * Cohere a WS attach's `_ccvViewInstance` stamp for the same-cwd twin window (2026-11).
+ * A bound-project client whose `boundInstance` hasn't hydrated yet attaches with NO
+ * instanceKey, so the stamp would be null and broadcastWsMessage's instance narrowing
+ * ("exclude only the differently-stamped") would deliver EVERY same-cwd twin's frames to
+ * it. The bound identity is a deterministic function of the cwd, so resolve it HERE at
+ * attach time instead of waiting for the client's first /api/live-processes poll.
+ * Only ever NARROWS (null → the bound primary): an explicit instanceKey is returned
+ * untouched, a non-bound project is left alone (parallel views keep their own anchor), and
+ * a single-instance cwd resolves to its only session (narrowing to it is behaviorally
+ * identical to project-level for that cwd — no twin frames exist to drop). PTY mode is
+ * untouched (isSdkMode gate). Resolution failure / no live session → null (unchanged).
+ */
+function _cohereAttachInstance(viewProject, sentInstanceKey) {
+  const sent = (typeof sentInstanceKey === 'string' && sentInstanceKey) ? sentInstanceKey : null;
+  if (sent) return sent;
+  if (!isSdkMode || typeof _sdkResolveBoundPrimaryInstanceKey !== 'function') return null;
+  if (!viewProject || viewProject !== (_projectName || '')) return null;
+  try {
+    const boundCwd = process.env.CCV_PROJECT_DIR || process.cwd();
+    return _sdkResolveBoundPrimaryInstanceKey(boundCwd) || null;
+  } catch (err) {
+    reportSwallowed('server.attach-cohere-instance', err);
+    return null;
+  }
+}
+// Test seam: exercise _cohereAttachInstance's resolution logic without a live socket.
+export { _cohereAttachInstance };
 
 /** Reference to sdk-manager's sendQueuedNow (set by cli.js after import). */
 let _sdkSendQueuedNow = null;

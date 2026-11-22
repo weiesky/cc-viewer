@@ -22,7 +22,7 @@ describe('buildFileContextMenuItems — node scope (per-entry menus)', () => {
     const items = buildFileContextMenuItems({ isDir: true, isRemote: false });
     assert.deepEqual(seq(items), [
       'reveal', 'openTerminal', 'newFile', 'newDir', 'divider',
-      'copyPath', 'copyRelPath', 'divider', 'rename', 'delete',
+      'copyPath', 'divider', 'rename', 'delete',
     ]);
     assert.equal(items.at(-1).danger, true, 'delete must stay a danger item');
   });
@@ -37,7 +37,7 @@ describe('buildFileContextMenuItems — node scope (per-entry menus)', () => {
   it('file menu matches the sidebar tree file menu exactly (local)', () => {
     const items = buildFileContextMenuItems({ isDir: false, isRemote: false });
     assert.deepEqual(seq(items), [
-      'reveal', 'copyPath', 'copyRelPath', 'attachToChat', 'insertPathToChat',
+      'reveal', 'copyPath', 'attachToChat', 'insertPathToChat',
       'divider', 'rename', 'delete',
     ]);
     assert.equal(items.at(-1).danger, true);
@@ -46,7 +46,7 @@ describe('buildFileContextMenuItems — node scope (per-entry menus)', () => {
   it('file menu inserts download before the divider when remote', () => {
     const items = buildFileContextMenuItems({ isDir: false, isRemote: true });
     assert.deepEqual(seq(items), [
-      'reveal', 'copyPath', 'copyRelPath', 'attachToChat', 'insertPathToChat',
+      'reveal', 'copyPath', 'attachToChat', 'insertPathToChat',
       'download', 'divider', 'rename', 'delete',
     ]);
   });
@@ -58,6 +58,45 @@ describe('buildFileContextMenuItems — node scope (per-entry menus)', () => {
     const fileItems = buildFileContextMenuItems({ isDir: false, isRemote: true });
     const download = fileItems.find(i => i.key === 'download');
     assert.equal(download.label, t('ui.contextMenu.downloadToLocal'));
+    // copyPath label is type-aware: file → copyFilePath, dir/container → copyDirPath.
+    assert.equal(fileItems.find(i => i.key === 'copyPath').label, t('ui.contextMenu.copyFilePath'));
+    assert.equal(items.find(i => i.key === 'copyPath').label, t('ui.contextMenu.copyDirPath'));
+    assert.equal(buildFileContextMenuItems({ isDir: true, scope: 'container' }).find(i => i.key === 'copyPath').label, t('ui.contextMenu.copyDirPath'));
+  });
+});
+
+describe('buildFileContextMenuItems — newWorkspace item (allowNewWorkspace)', () => {
+  it('directory node inserts newWorkspace after newDir when allowed', () => {
+    const items = buildFileContextMenuItems({ isDir: true, isRemote: false, allowNewWorkspace: true });
+    assert.deepEqual(seq(items), [
+      'reveal', 'openTerminal', 'newFile', 'newDir', 'newWorkspace', 'divider',
+      'copyPath', 'divider', 'rename', 'delete',
+    ]);
+    assert.equal(items.find(i => i.key === 'newWorkspace').label, t('ui.contextMenu.newWorkspace'));
+  });
+
+  it('container scope inserts newWorkspace after newDir when allowed', () => {
+    const items = buildFileContextMenuItems({ isDir: true, isRemote: false, scope: 'container', allowNewWorkspace: true });
+    assert.deepEqual(seq(items), [
+      'reveal', 'openTerminal', 'newFile', 'newDir', 'newWorkspace', 'divider', 'copyPath',
+    ]);
+  });
+
+  it('file menu never gets newWorkspace, even when allowed', () => {
+    const items = buildFileContextMenuItems({ isDir: false, isRemote: false, allowNewWorkspace: true });
+    assert.ok(!seq(items).includes('newWorkspace'));
+  });
+
+  it('target mode omits newWorkspace even when allowed', () => {
+    const dirItems = buildFileContextMenuItems({ isDir: true, isTarget: true, allowNewWorkspace: true });
+    assert.ok(!seq(dirItems).includes('newWorkspace'));
+    const container = buildFileContextMenuItems({ isDir: true, scope: 'container', isTarget: true, allowNewWorkspace: true });
+    assert.ok(!seq(container).includes('newWorkspace'));
+  });
+
+  it('default (no allowNewWorkspace) keeps the legacy sequences', () => {
+    assert.ok(!seq(buildFileContextMenuItems({ isDir: true })).includes('newWorkspace'));
+    assert.ok(!seq(buildFileContextMenuItems({ isDir: true, scope: 'container' })).includes('newWorkspace'));
   });
 });
 
@@ -65,7 +104,7 @@ describe('buildFileContextMenuItems — container scope (header / blank-area par
   it('matches the sidebar header menu exactly, no rename/delete', () => {
     const items = buildFileContextMenuItems({ isDir: true, isRemote: false, scope: 'container' });
     assert.deepEqual(seq(items), [
-      'reveal', 'openTerminal', 'newFile', 'newDir', 'divider', 'copyPath', 'copyRelPath',
+      'reveal', 'openTerminal', 'newFile', 'newDir', 'divider', 'copyPath',
     ]);
     assert.ok(!seq(items).includes('rename') && !seq(items).includes('delete'));
     assert.ok(!seq(items).includes('download'));
@@ -86,13 +125,13 @@ describe('buildFileContextMenuItems — target mode (CLAUDE.md / skill browser)'
     const dirItems = buildFileContextMenuItems({ isDir: true, isRemote: false, isTarget: true });
     assert.deepEqual(seq(dirItems), [
       'reveal', 'openTerminal', 'newFile', 'newDir', 'divider',
-      'copyPath', 'copyRelPath', 'divider', 'rename', 'delete',
+      'copyPath', 'divider', 'rename', 'delete',
     ]);
     // The target browser modal wires no attach/insert-to-chat callback, so those
     // two chat-only items are omitted for files (everything else preserved).
     const fileItems = buildFileContextMenuItems({ isDir: false, isRemote: false, isTarget: true });
     assert.deepEqual(seq(fileItems), [
-      'reveal', 'copyPath', 'copyRelPath',
+      'reveal', 'copyPath',
       'divider', 'rename', 'delete',
     ]);
   });

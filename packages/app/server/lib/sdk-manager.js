@@ -9,11 +9,12 @@
  * - canUseTool callback for AskUserQuestion + permission approval
  * - Turn-end signaling (SDK 'result' message → Stop-hook equivalent)
  *
- * Registry (2026-10-12, PTY parity): one Session per cwd, kept alive across
- * workspace switches. `_activeKey` selects the session the composer/WS handlers
- * act on (the SDK analogue of pty-manager's activePtyKey). Each Session is a
- * factory closure — NO classes (avoids this-binding traps; the module's entire
- * history is arrow functions). GLOBAL, deliberately kept module-level: `_query`
+ * Registry (2026-11, multi-instance): keyed by instanceKey, so ONE cwd may host several
+ * concurrent Sessions (file-explorer "New Workspace (Session)" on the current root is a
+ * +1 sibling, not a replace). `_activeKey` holds the active session's instanceKey (the
+ * SDK analogue of pty-manager's activePtyKey). Sessions are kept alive across workspace
+ * switches. Each Session is a factory closure — NO classes (avoids this-binding traps).
+ * State is GLOBAL, deliberately kept module-level: `_query`
  * (test injection must be settable before any init — 161+ test cases depend on
  * set-then-init), `_onTurnEnd`/`_onQueryError`/`_broadcastWs`/`_runWaterfallHook`
  * (cli.js registers ONE wiring for the whole process; every session reuses it),
@@ -73,12 +74,15 @@ export function __ephemeralHostCountForTests() { return _ephemeralHosts.size; }
 export function __ephemeralAbortCountForTests() { return _ephemeralAborts.size; }
 
 // ── Session registry ─────────────────────────────────────────────────────────
-// Keyed by path.resolve(cwd) — normalize only, NO realpath (house exact-string
-// convention, routes/resume.js, so `/tmp` vs `/private/tmp` stay distinct). The
-// per-session state machine lives in each _createSession closure; `_activeKey`
-// selects which session the SDK composer and WS handlers act on.
-const _sessions = new Map();
-let _activeKey = null;
+// Multi-instance (2026-11): keyed by instanceKey (NOT cwd) so one cwd may host
+// several concurrent Sessions (file-explorer "New Workspace (Session)" on the
+// current root is +1, not a replace). Each Session records its own `cwd`; cwd
+// lookups scan _sessions.values() (n is tiny — a second index would just be a
+// second source of truth). `_activeKey` holds the active session's instanceKey —
+// the SDK analogue of pty-manager's activePtyKey. cwd is normalized only, NO
+// realpath (house exact-string convention, routes/resume.js).
+const _sessions = new Map(); // Map<instanceKey, Session>
+let _activeKey = null;       // instanceKey of the active session
 // Ephemeral-turn hosts (scheduled-task spawn): sessions whose approval plumbing is
 // currently borrowed by a standalone run. resolveApproval/cancelApproval/
 // getPendingApprovals scan the UNION of _sessions and this set, so an ephemeral run's
@@ -93,12 +97,41 @@ function _normalizeCwd(cwd) {
   try { return _pathResolve(cwd); } catch { return String(cwd); }
 }
 
-// Get-or-create the per-cwd Session. The record holds the launch config so a
-// kept-alive background session can reconstruct with ITS OWN config.
+// The PRIMARY session for a cwd: the active one when it lives in that cwd, else the
+// deterministic boot session (its key is re-created on relaunch — the stable identity a
+// plain launch/bound view should land on), else the most-recently-registered. A plain
+// launch (non-forceNew) reuses this session rather than spawning a sibling.
+// The deterministic-boot-first / newest-fallback scan shared by _primaryForCwd and
+// resolveBoundPrimaryInstanceKey — the two MUST agree on the "which session is the cwd's
+// stable primary" tie-break, so the loop body lives here once (a future weighting change
+// then can't drift them apart). `_primaryForCwd` prepends an active-first head on top.
+function _deterministicOrLatestForCwd(n) {
+  let det = null; let latest = null;
+  for (const s of _sessions.values()) {
+    if (_normalizeCwd(s.cwd) !== n) continue;
+    latest = s; // Map insertion order → last match is the newest
+    if (!s.isFreshKey) det = s;
+  }
+  return det || latest;
+}
+
+function _primaryForCwd(cwd) {
+  const n = _normalizeCwd(cwd);
+  if (!n) return null;
+  const active = _active();
+  if (active && _normalizeCwd(active.cwd) === n) return active;
+  return _deterministicOrLatestForCwd(n);
+}
+
+// Get-or-create the cwd's PRIMARY Session (deterministic key). Only creates when the
+// cwd has no session at all — never spawns a sibling. Used by initSdkSession (plain
+// launch). The record holds the launch config so a kept-alive background session can
+// reconstruct with ITS OWN config.
 function _getOrCreateSession(cwd) {
-  const key = _normalizeCwd(cwd);
-  let s = _sessions.get(key);
-  if (!s) { s = _createSession(key, cwd); _sessions.set(key, s); }
+  const existing = _primaryForCwd(cwd);
+  if (existing) return existing;
+  const s = _createSession(cwd); // deterministic boot key
+  _sessions.set(s.instanceKey, s);
   return s;
 }
 
@@ -114,26 +147,24 @@ function _matchesProject(sess, project) {
 // A project stamp matches a session when it names the session's exact normalized cwd
 // (absolute-path form) or its sanitized/raw basename (the web client's usual form).
 function _sessionMatchesProject(sess, project) {
-  return sess.key === _normalizeCwd(project) || _matchesProject(sess, project);
+  return _normalizeCwd(sess.cwd) === _normalizeCwd(project) || _matchesProject(sess, project);
 }
 
-// Resolve an anchor { instanceKey|cwd|project } to a Session WITHOUT switching active (read ops).
-// `cwd` is an absolute path (exact key match); `project` is the SANITIZED project name the
-// web client sends (ChatView stamps `viewProject || projectName`, where projectName =
-// projectKeyForCwd(cwd) — non [a-zA-Z0-9_-] chars become `_`, so a dir with spaces/CJK sends
-// the sanitized name, NOT the raw basename). Match each session by projectKeyForCwd(s.cwd)
-// (with a raw-basename fallback for exact-dir callers). Same-name collision → null (never
-// guess). Returns null when the anchor resolves to no registered session.
-function _sessionForAnchor(anchor) {
+// Resolve an anchor { instanceKey|cwd|project } to a Session WITHOUT switching active.
+// `cwd` is an absolute path; `project` is the SANITIZED project name the web client sends
+// (ChatView stamps `viewProject || projectName`). Multi-instance: instanceKey is the only
+// unambiguous anchor.
+// Ambiguity policy (2026-11): for an ACTION (a user message/Stop — better routed to the
+// workspace's default session than dropped), a cwd/project matching 2+ same-cwd siblings
+// resolves to that cwd's PRIMARY (`allowPrimaryFallback: true`); for a DESTRUCTIVE op
+// (close/attach — never guess), it resolves to null. Returns null when nothing resolves.
+function _sessionForAnchor(anchor, { allowPrimaryFallback = false } = {}) {
   if (!anchor || typeof anchor !== 'object') return null;
   const instanceKey = (typeof anchor.instanceKey === 'string' && anchor.instanceKey) || null;
   const cwd = (typeof anchor.cwd === 'string' && anchor.cwd) || null;
   const project = (typeof anchor.project === 'string' && anchor.project) || null;
   if (instanceKey) {
-    let byInstance = null;
-    for (const s of _sessions.values()) {
-      if (s.instanceKey === instanceKey) { byInstance = s; break; }
-    }
+    const byInstance = _sessions.get(instanceKey) || null;
     // An exact instance that no longer exists must never fall back to a
     // same-basename sibling — that would execute the user's action in the
     // wrong workspace. The caller's unknown-anchor path drops + reports it.
@@ -145,32 +176,59 @@ function _sessionForAnchor(anchor) {
     if (project && !_sessionMatchesProject(byInstance, project)) return null;
     return byInstance;
   }
-  if (cwd) return _sessions.get(_normalizeCwd(cwd)) || null;
-  if (!project) return null;
-  // exact-path form of a project (an absolute path was passed as `project`) — try key first.
-  const byKey = _sessions.get(_normalizeCwd(project));
-  if (byKey) return byKey;
-  let found = null;
-  for (const s of _sessions.values()) {
-    if (_matchesProject(s, project)) { if (found) return null; found = s; } // ambiguous → null
+  // Multi-match helper for an ACTION anchor (allowPrimaryFallback): exact sole match → it;
+  // several matches IN THE SAME cwd → that cwd's primary (a same-cwd sibling set). Matches
+  // spanning DIFFERENT cwds (two same-named dirs) are genuinely ambiguous — the anchor named
+  // no directory, so never guess across workspaces → null. Destructive anchors never guess.
+  const pick = (matches) => {
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      if (!allowPrimaryFallback) return null;
+      const cwds = new Set(matches.map((s) => _normalizeCwd(s.cwd)));
+      if (cwds.size !== 1) return null; // same project name across different directories — ambiguous
+      const p = _primaryForCwd(matches[0].cwd);
+      return (p && matches.includes(p)) ? p : matches[0];
+    }
+    return null;
+  };
+  if (cwd) {
+    const n = _normalizeCwd(cwd);
+    return pick([..._sessions.values()].filter((s) => _normalizeCwd(s.cwd) === n));
   }
-  return found;
+  if (!project) return null;
+  const matches = [..._sessions.values()].filter((s) => _sessionMatchesProject(s, project));
+  return pick(matches);
 }
 
 // Test seams (house `__…ForTests` convention) — assert registry behavior without a real SDK query.
-export function __listSessionsForTests() { return [..._sessions.keys()]; }
-export function __getSessionKeyForTests(cwd) { return _normalizeCwd(cwd); }
+export function __listSessionsForTests() { return [..._sessions.keys()]; } // instanceKeys
 
-/** Enumerate the per-cwd SDK session registry for live workspace routing. Each entry:
- * { key, cwd, active, instanceKey }. Read-only. NOTE: `key` is the registry's
- * normalized-cwd key; attach/close responses instead alias `key` to the instanceKey
- * for killPtyFor-shape parity (resume.js consumes `r.key === reattachedTo`). Callers
- * must not mix the two namespaces. */
+/** Enumerate the SDK session registry for live workspace routing. Each entry:
+ * { key, cwd, active, instanceKey, freshLaunch, isFreshKey }. Read-only. `key` IS the
+ * instanceKey (multi-instance registry; matches the attach/close responses' key alias,
+ * which resume.js consumes as `r.key === reattachedTo`). */
 export function listSdkSessions() {
-  return [..._sessions.values()].map((s) => ({ key: s.key, cwd: s.cwd, active: s.key === _activeKey, instanceKey: s.instanceKey }));
+  return [..._sessions.values()].map((s) => ({ key: s.instanceKey, cwd: s.cwd, active: s.instanceKey === _activeKey, instanceKey: s.instanceKey, freshLaunch: s.freshLaunch === true, isFreshKey: s.isFreshKey === true, sessionId: s.getSessionId() }));
 }
 
 registerSdkSessionLister(listSdkSessions);
+
+/**
+ * The BOUND cwd's primary session instanceKey (2026-11, WS attach-stamp coherence).
+ * The single source of truth for the bound identity: resume.js's `/api/live-processes`
+ * `currentInstanceKey` delegates here, and server.js's WS `_ccvViewInstance` coherence
+ * (`_cohereAttachInstance`) resolves through it, so the header's `boundInstance` and the WS
+ * stamp always agree on the same instance for the same cwd. Returns the deterministic boot
+ * session (non-fresh key) — NOT the ACTIVE sibling (`_primaryForCwd` is active-first for
+ * input-side routing; the bound identity must stay stable while a fresh sibling is active).
+ * Falls back to the newest same-cwd row; null when the cwd has no live session. Read-only.
+ */
+export function resolveBoundPrimaryInstanceKey(boundCwd) {
+  const n = _normalizeCwd(boundCwd);
+  if (!n) return null;
+  const primary = _deterministicOrLatestForCwd(n);
+  return primary ? primary.instanceKey : null;
+}
 
 // The turn can legally wait on approval ceilings: perm/plan = 5min, AskUserQuestion =
 // 24h ("GUI effectively has no timeout" is a product contract). A pending approval
@@ -436,8 +494,22 @@ function _foldSdkTask(prev, frame) {
 // that are process-global by contract (see file header). Arrays stay closure
 // `let` (rebinding, not a frozen property) so assignment paths like
 // `_messageQueue = []` keep working.
-function _createSession(key, cwd) {
-  const instanceKey = `ccv-${createHash('sha256').update(key).digest('hex').slice(0, 32)}`;
+function _createSession(cwd, { freshKey = false } = {}) {
+  // instanceKey identity: deterministic `ccv-sha256(normalizedCwd)` for the cwd's primary
+  // (boot) session so a close/restart re-registers the same identity (pre-existing dirs
+  // stay resolvable); a forceNew "New Workspace (Session)" generation and an isolated
+  // ephemeral host get a FRESH random key (freshKey) so their dirs/frames are
+  // distinguishable from the resident sibling's — the same identity separation PTY gets
+  // from _mintInstanceKey.
+  const instanceKey = freshKey
+    ? `ccv-${randomBytes(16).toString('hex')}`
+    : `ccv-${createHash('sha256').update(_normalizeCwd(cwd)).digest('hex').slice(0, 32)}`;
+  // Whether this generation's instanceKey is a random per-generation key (forceNew) rather
+  // than the deterministic cwd-derived one. The deterministic key is RE-CREATED whenever the
+  // registry slot is rebuilt (close + normal relaunch), so it must NEVER be writer-retired —
+  // retiring it would permanently gate the legitimate recreated session. Only random fresh
+  // keys (never reused) are safe to retire.
+  const _isFreshKey = freshKey === true;
   // Launch config (per-session identity; adopted on lazy reconstruction)
   let _cwd = cwd;
   let _permissionMode = 'default';
@@ -496,6 +568,13 @@ function _createSession(key, cwd) {
   let _suspectGeneration = false;
   let _lastFailedTurn = null; // { turnId, retryable, apiStatus, attempt, maxRetries, code, ts } — drives the manual [retry] affordance
   let _sessionId = null;
+  // forceNew (2026-11): true while this is a freshly forceNew'd generation that has not yet
+  // written its own main-turn session. events.js reads it (via the listSdkSessions projection)
+  // to suppress the same-cwd cold-load fallback so the new conversation starts EMPTY. Cleared
+  // when the writer binds this generation's first session (see setOnSessionResolved wiring in
+  // server.js → clearSdkFreshLaunch) and on switchToSession. NOT cleared by _resetFullState —
+  // a re-init/self-heal of a still-fresh generation must keep suppressing the OLD twin's history.
+  let _freshLaunch = false;
   let _initAnnouncedSid = ''; // sessionId whose slash-command surface was already announced (reset on full reset)
   let _lastInitSnapshot = null; // last sdk-init payload for WS reconnect replay
   // Last sdk-skills frame (supportedCommands() result) for WS reconnect replay, and the
@@ -966,8 +1045,22 @@ function _createSession(key, cwd) {
         // spinner/queue bubbles) and cold-load instance filters never match SDK sessions.
         const instanceHeader = `x-ccv-instance: ${instanceKey}`;
         const injected = `${projectHeader}\n${instanceHeader}`;
-        options.env.ANTHROPIC_CUSTOM_HEADERS = options.env.ANTHROPIC_CUSTOM_HEADERS
-          ? `${options.env.ANTHROPIC_CUSTOM_HEADERS}\n${injected}` : injected;
+        // Strip-then-append (forceNew / re-init hygiene): options.env is the SHARED launch
+        // env object (cli.js hands the same childEnv to the boot session and every new cwd),
+        // so without stripping, a re-mint / re-construction would stack a SECOND
+        // x-ccv-project-dir/x-ccv-instance pair. The interceptor validates instance against
+        // /^ccv-[0-9a-f]+$/ and DROPS a combined value (interceptor.js) — the fresh
+        // generation's requests would fall back to project/_currentSid routing and write into
+        // the OLD generation's dir. Strip stale ccv routing lines (case-insensitive,
+        // CRLF-tolerant), keep every unrelated header, then append exactly one fresh pair.
+        const prior = typeof options.env.ANTHROPIC_CUSTOM_HEADERS === 'string'
+          ? options.env.ANTHROPIC_CUSTOM_HEADERS
+              .split('\n')
+              .filter((l) => !/^x-ccv-(project-dir|instance)\s*:/i.test(l.trim()))
+              .join('\n')
+              .trim()
+          : '';
+        options.env.ANTHROPIC_CUSTOM_HEADERS = prior ? `${prior}\n${injected}` : injected;
       }
     }
     if (_settings) options.settings = _settings;
@@ -2745,6 +2838,9 @@ function _createSession(key, cwd) {
       }
       _sessionId = sessionId;
       _launchResume = null;
+      // Switching INTO a concrete existing conversation lifts the forceNew empty-view
+      // suppression — this generation now owns real content (the resumed one).
+      _freshLaunch = false;
       _initAnnouncedSid = '';
       _lastInitSnapshot = null; // don't replay the OLD session's sdk-init to the new one
       _lastSkillsSnapshot = null; // same for the skill surface
@@ -2817,9 +2913,15 @@ function _createSession(key, cwd) {
   // `teardown` = _teardownResident + _resetFullState (the old module-level stopSession
   // body, now per-session). `init` = config adoption + that teardown/reset pair.
   return {
-    key,
     instanceKey,
     get cwd() { return _cwd; },
+    // forceNew (2026-11): whether this generation is a fresh "New Workspace (Session)"
+    // instance that has not yet written its own main-turn session. Read live (getter) —
+    // events.js / resume.js see it through the listSdkSessions projection.
+    get freshLaunch() { return _freshLaunch === true; },
+    // True when this generation's instanceKey is a random per-generation key (safe to retire);
+    // false for the deterministic cwd-derived key (re-created on relaunch — never retire it).
+    get isFreshKey() { return _isFreshKey; },
     get config() {
       return {
         permissionMode: _permissionMode,
@@ -2887,6 +2989,12 @@ function _createSession(key, cwd) {
     },
     switchToSession: _switchToSession,
     getSessionId: () => _sessionId,
+    // forceNew (2026-11): the writer's main-turn `_onSessionResolved` calls this once the
+    // new generation owns its first session dir — the empty-view suppression lifts (PTY
+    // parity with setPtySessionIdForInstance clearing the PTY record's freshLaunch).
+    clearFreshLaunch: () => { _freshLaunch = false; },
+    // createSdkSession marks the freshly-ADDED sibling generation (NOT a method for general use).
+    _markFreshLaunch: () => { _freshLaunch = true; },
     retryInterruptedTurn: _retryInterruptedTurn,
     runEphemeralTurn: _runEphemeralTurn,
     close: () => {
@@ -2949,12 +3057,18 @@ export async function spawnEphemeralSession(prompt, { cwd, project, timeoutMs = 
   if (!cwd) return { ok: false, reason: 'not_initialized' };
 
   const key = _normalizeCwd(cwd);
-  let host = _sessions.get(key) || null;
+  // Borrow the cwd's resident session to carry approvals (its canUseTool plumbing).
+  // Active-first so a same-cwd sibling set resolves to the foreground workspace. No
+  // resident session → an isolated, unregistered host is created below.
+  let host = _primaryForCwd(cwd);
   let created = false;
   if (!host) {
     // No resident session for this cwd in this boot: create an isolated host purely to
-    // carry approvals (its canUseTool plumbing). It is NOT registered in _sessions.
-    host = _createSession(`__ephemeral_host__:${key}`, cwd);
+    // carry approvals (its canUseTool plumbing). It is NOT registered in _sessions. A fresh
+    // random key keeps its approval frames distinct from any FUTURE resident boot session
+    // for this cwd (a deterministic key would alias them).
+    host = _createSession(cwd, { freshKey: true });
+    host.__ephemeralCwd = key; // test seam marker (isolated host for an unregistered cwd)
     try { host.init({ ...cfg }); }
     catch (err) { reportSwallowed('sdk-manager.ephemeral-init', err); return { ok: false, reason: 'not_initialized', error: String(err?.message || err) }; }
     created = true;
@@ -2974,7 +3088,7 @@ export async function spawnEphemeralSession(prompt, { cwd, project, timeoutMs = 
 export function __isEphemeralHostForTests(cwd) {
   const key = _normalizeCwd(cwd);
   for (const host of _ephemeralHosts) {
-    if (host.key === key || host.key === `__ephemeral_host__:${key}`) return true;
+    if (host.__ephemeralCwd === key || _normalizeCwd(host.cwd) === key) return true;
   }
   return false;
 }
@@ -3022,12 +3136,69 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
   // registration). A workspace stop→relaunch omits these callbacks, so without this every
   // sdk-* frame would silently stop broadcasting after returning to the workspace list.
   _adoptProcessWiring();
-  // Register this workspace's session (per-cwd, re-using the record on re-init) and make
-  // it active. init() adopts the launch config and tears down ONLY this session's prior
-  // generation (tests / hot reload) — other workspaces' sessions are untouched.
+  // Register this cwd's PRIMARY session (re-using the record on re-init — a plain launch
+  // never spawns a same-cwd sibling) and make it active. init() adopts the launch config
+  // and tears down ONLY this session's prior generation (tests / hot reload) — other
+  // workspaces' sessions (and same-cwd siblings) are untouched.
   const sess = _getOrCreateSession(cwd);
   sess.init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable });
-  _activeKey = sess.key;
+  _activeKey = sess.instanceKey;
+}
+
+/**
+ * "New Workspace (Session)" on the CURRENT root for SDK mode (2026-11) — a same-cwd
+ * SIBLING, not a replacement. The resident registry is keyed by instanceKey so one cwd
+ * may host several concurrent Sessions. This APPENDS a fresh Session carrying a random
+ * instanceKey (PTY-style generation identity) and leaves every existing same-cwd session
+ * alive (its resident query, conversation, and writer routing untouched). The new
+ * generation's dirs/frames are distinguishable via the new meta.instance key; the old
+ * sibling's dirs keep the OLD key, so instance-scoped readers (cold-load picker, live
+ * feed, SSE attach) keep each view on its own conversation.
+ *
+ * Unlike PTY's retired-generation model, the old sibling stays live — so the route must
+ * NOT retireInstance the old key (retirement freezes a LIVE session's routing). The new
+ * session is marked freshLaunch so its cold-load starts EMPTY instead of falling back to
+ * the sibling's history; the mark lifts on its first main-turn bind.
+ *
+ * Returns { instanceKey } for the route to pin the client view to the new instance.
+ */
+export function createSdkSession(cwd, cfg) {
+  const key = _normalizeCwd(cwd);
+  if (!key) return null;
+  // Capture a same-cwd sibling's config BEFORE registering the new one (fallback for
+  // direct/test callers with no process template registered).
+  const sibling = _primaryForCwd(cwd);
+  const sess = _createSession(cwd, { freshKey: true }); // random per-generation key
+  _sessions.set(sess.instanceKey, sess);
+  // Adopt the process-level launch config template so the fresh query gets the proxy env /
+  // model / permission / executable; launchResume is forced null (a boot -c/-r intent must
+  // never resume into a forceNew conversation).
+  const base = cfg || _launchConfigTemplate || (sibling && sibling.config) || {};
+  try {
+    sess.init({ ...base, launchResume: null });
+  } catch (err) {
+    // init failed — roll back the registration so the registry never holds a half-init'd
+    // session, and leave _activeKey on the previous session.
+    _sessions.delete(sess.instanceKey);
+    reportSwallowed('sdk-manager.create-session-init', err);
+    return null;
+  }
+  sess._markFreshLaunch();
+  _adoptProcessWiring();
+  _activeKey = sess.instanceKey;
+  return { instanceKey: sess.instanceKey };
+}
+
+/**
+ * Lift a forceNew generation's empty-view suppression. Called from server.js's
+ * v2-writer `_onSessionResolved` wiring (the main-turn gate) once the instance owns its
+ * first session dir — PTY parity with setPtySessionIdForInstance clearing the PTY mark.
+ */
+export function clearSdkFreshLaunch(instanceKey) {
+  if (typeof instanceKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instanceKey)) return;
+  for (const s of _sessions.values()) {
+    if (s.instanceKey === instanceKey && typeof s.clearFreshLaunch === 'function') { s.clearFreshLaunch(); return; }
+  }
 }
 
 /**
@@ -3041,7 +3212,10 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
 export async function sendUserMessage(text, anchor) {
   if (!_query) throw new Error('Agent SDK not available');
   if (anchor && (anchor.cwd || anchor.project || anchor.instanceKey)) {
-    const target = _sessionForAnchor(anchor);
+    // An action anchor: a same-cwd ambiguous cwd/project resolves to the cwd's PRIMARY
+    // rather than dropping the user's message (Mobile / pre-poll desktop sends carry no
+    // instanceKey).
+    const target = _sessionForAnchor(anchor, { allowPrimaryFallback: true });
     if (!target) {
       // A mis-resolved anchor must not silently drop the user's message — log + report,
       // and surface a toast through the same channel query errors use (the composer was
@@ -3059,8 +3233,8 @@ export async function sendUserMessage(text, anchor) {
       }
       return;
     }
-    if (target.key !== _activeKey) {
-      _activeKey = target.key; // an action re-routes the active session (lazy: no teardown)
+    if (target.instanceKey !== _activeKey) {
+      _activeKey = target.instanceKey; // an action re-routes the active session (lazy: no teardown)
     }
     return target.sendUserMessage(text);
   }
@@ -3131,9 +3305,11 @@ export function getPendingApprovals(anchor) {
  * cancelled-approval list (see the Session factory's interruptTurn). */
 export function interruptTurn(anchor) {
   if (anchor) {
-    const target = _sessionForAnchor(anchor);
+    // An action anchor: an ambiguous cwd/project resolves to the cwd's primary so a
+    // Stop without an instanceKey (Mobile) still halts the workspace's default session.
+    const target = _sessionForAnchor(anchor, { allowPrimaryFallback: true });
     if (target) {
-      if (target.key !== _activeKey) _activeKey = target.key;
+      if (target.instanceKey !== _activeKey) _activeKey = target.instanceKey;
       return target.interruptTurn();
     }
     // Unknown anchor: nothing to interrupt — same empty array the idle path returns.
@@ -3146,8 +3322,8 @@ export function interruptTurn(anchor) {
 /** Send-now on a queued bubble of the ACTIVE session (or an anchor's session —
  * an action, switches active). Returns the cancelled-approval list. */
 export function sendQueuedNow(id, anchor) {
-  const sess = anchor ? _sessionForAnchor(anchor) : _active();
-  if (anchor && sess && sess.key !== _activeKey) _activeKey = sess.key;
+  const sess = anchor ? _sessionForAnchor(anchor, { allowPrimaryFallback: true }) : _active();
+  if (anchor && sess && sess.instanceKey !== _activeKey) _activeKey = sess.instanceKey;
   return sess ? sess.sendQueuedNow(id) : [];
 }
 
@@ -3212,9 +3388,9 @@ export function stopSession() {
  * captured sessionId). Unknown cwd → false (no switch); already-active → true (no-op).
  */
 export function setActiveSdkSession(cwd) {
-  const key = _normalizeCwd(cwd);
-  if (!key || !_sessions.has(key)) return false;
-  _activeKey = key; // lazy switch: the target's state machine is intact by construction
+  const sess = _primaryForCwd(cwd);
+  if (!sess) return false;
+  _activeKey = sess.instanceKey; // lazy switch: the target's state machine is intact by construction
   return true;
 }
 
@@ -3232,9 +3408,8 @@ export function attachSdkSession(anchor) {
   }
   const sess = _sessionForAnchor(anchor);
   if (!sess) return { ok: false, reason: 'not-found' };
-  const switched = sess.key !== _activeKey;
-  _activeKey = sess.key;
-  // `key` aliases instanceKey for killPtyFor-shape parity (NOT the registry cwd key).
+  const switched = sess.instanceKey !== _activeKey;
+  _activeKey = sess.instanceKey;
   return { ok: true, key: sess.instanceKey, instanceKey: sess.instanceKey, cwd: sess.cwd, switched };
 }
 
@@ -3249,7 +3424,14 @@ export function closeSdkSession(anchor = {}) {
     sess = _sessionForAnchor({ instanceKey });
     if (!sess) return { ok: false, reason: 'not-found' };
   } else if (anchor.cwd) {
-    sess = _sessionForAnchor({ cwd: anchor.cwd });
+    // cwd anchor: refuse same-cwd ambiguity (a same-cwd sibling must be addressed by
+    // instanceKey — closing the wrong twin would kill a live conversation).
+    const n = _normalizeCwd(anchor.cwd);
+    const matches = [..._sessions.values()].filter((s) => _normalizeCwd(s.cwd) === n);
+    if (matches.length > 1) {
+      return { ok: false, reason: 'ambiguous', candidates: matches.map((s) => ({ key: s.instanceKey, instanceKey: s.instanceKey, cwd: s.cwd })) };
+    }
+    sess = matches[0] || null;
   } else if (anchor.project) {
     const matches = [..._sessions.values()].filter((s) => _matchesProject(s, anchor.project));
     if (matches.length > 1) {
@@ -3263,25 +3445,33 @@ export function closeSdkSession(anchor = {}) {
   }
   if (!sess) return { ok: false, reason: 'not-found' };
 
-  const killedActive = sess.key === _activeKey;
+  const killedActive = sess.instanceKey === _activeKey;
   const result = {
     ok: true,
-    // `key` aliases instanceKey here (killPtyFor-shape parity: resume.js matches
-    // `p.key === killResult.reattachedTo`). It is NOT the registry's cwd key —
-    // the registry key is `sess.key`, a different namespace. Do not conflate.
+    // `key` aliases instanceKey (killPtyFor-shape parity: resume.js matches
+    // `p.key === killResult.reattachedTo`).
     key: sess.instanceKey,
     instanceKey: sess.instanceKey,
     cwd: sess.cwd,
+    // Tells the route how to retire the closed instance's writer routing: a random
+    // per-generation key is safe to retire; the deterministic cwd key is RE-created on a
+    // normal relaunch, so it must be RELEASED (cleared), never retired (permanently frozen).
+    wasFreshKey: sess.isFreshKey === true,
     killedActive,
     reattachedTo: null,
   };
   // Remove the registry identity BEFORE user-callback-facing teardown frames. A
   // close/relaunch triggered by one of those frames must register a fresh session,
   // never be deleted by the tail of the older close operation.
-  _sessions.delete(sess.key);
+  _sessions.delete(sess.instanceKey);
   if (killedActive) {
-    const survivor = _sessions.values().next().value || null;
-    _activeKey = survivor ? survivor.key : null;
+    // Prefer a SAME-CWD sibling (the twin the user most likely wants next), else fall
+    // back to the next registered session (Map insertion order).
+    const n = _normalizeCwd(sess.cwd);
+    let survivor = null;
+    for (const s of _sessions.values()) { if (_normalizeCwd(s.cwd) === n) { survivor = s; break; } }
+    if (!survivor) survivor = _sessions.values().next().value || null;
+    _activeKey = survivor ? survivor.instanceKey : null;
     result.reattachedTo = survivor ? survivor.instanceKey : null;
   }
   try {
@@ -3306,9 +3496,9 @@ export function getActiveSdkCwd() {
  */
 export function switchToSession(sessionId, anchor) {
   if (!_query) return { ok: false, reason: 'unavailable' }; // route maps this to 409 — must fire BEFORE any session lookup
-  const sess = anchor ? _sessionForAnchor(anchor) : _active();
+  const sess = anchor ? _sessionForAnchor(anchor, { allowPrimaryFallback: true }) : _active();
   if (!sess) return { ok: false, reason: 'bad-id' };
-  if (anchor && sess.key !== _activeKey) _activeKey = sess.key;
+  if (anchor && sess.instanceKey !== _activeKey) _activeKey = sess.instanceKey;
   return sess.switchToSession(sessionId);
 }
 
@@ -3316,6 +3506,16 @@ export function switchToSession(sessionId, anchor) {
 export function getSessionId(anchor) {
   const sess = anchor ? _sessionForAnchor(anchor) : _active();
   return sess ? sess.getSessionId() : null;
+}
+
+/** The sessionId a SPECIFIC instance currently holds (SDK-side, generation-scoped: cleared
+ *  on teardown/reset), or null. Unlike the writer's per-instance routing pointer, this
+ *  cannot survive a stopSession/rebuild — so it is the safe "is this instance actively on
+ *  this conversation NOW" check for the resume twin-ownership guard. */
+export function getSessionIdForInstance(instanceKey) {
+  if (typeof instanceKey !== 'string' || !instanceKey) return null;
+  const s = _sessions.get(instanceKey);
+  return s ? s.getSessionId() : null;
 }
 
 /**
@@ -3330,7 +3530,7 @@ export async function retryInterruptedTurn(turnId, anchor) {
   const r = await sess.retryInterruptedTurn(turnId);
   // Only a SUCCESSFUL retry re-routes the process-wide active session — a rejected retry
   // (busy/stale/no-session) must not steal the active anchor from the foreground view.
-  if (r && r.ok && anchor && sess.key !== _activeKey) _activeKey = sess.key;
+  if (r && r.ok && anchor && sess.instanceKey !== _activeKey) _activeKey = sess.instanceKey;
   return r;
 }
 

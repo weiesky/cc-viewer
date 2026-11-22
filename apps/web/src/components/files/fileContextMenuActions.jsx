@@ -13,6 +13,8 @@ import { Modal, Input, message } from 'antd';
 import { t } from '../../i18n';
 import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { copyTextToClipboard } from '../../utils/terminalClipboard';
+import { launchWorkspace, isTransportError, isSameDirectory } from '../../utils/workspaceLaunch';
+import { reportSwallowed } from '../../utils/errorReport';
 
 // Same Modal.confirm input styling used by the sidebar's new-file/new-dir flows.
 const nameInputStyle = {
@@ -27,6 +29,11 @@ function confirmOnEnter() {
   document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')?.click();
 }
 
+// Re-entrancy guard for the newWorkspace launch chain (one launch at a time per
+// page; the server deliberately does not dedupe — every accepted request is one
+// new session, so a double click must not double-spawn).
+let _newWorkspaceInFlight = false;
+
 export function createFileMenuHandler({
   path,            // childPath (node scope) or currentPath (container scope; '' = root)
   name,            // item.name (node scope) or '' (container scope)
@@ -37,6 +44,9 @@ export function createFileMenuHandler({
   onAttachToChat,
   onInsertPathToChat,
   onDownload,      // optional; the modal passes its downloadFile helper
+  onLaunchWorkspace, // optional ({projectName, path, instanceKey}) — "New Workspace (Session)"
+                     // launch notification; the item renders only when this is
+                     // wired (allowNewWorkspace in fileContextMenu.js).
   project,
   instance,
   target,          // optional; when set, the modal is browsing a CLAUDE.md/skill
@@ -85,11 +95,6 @@ export function createFileMenuHandler({
                 .catch(() => {});
             }
           })
-          .catch(() => {});
-        break;
-      case 'copyRelPath':
-        copyTextToClipboard(path || '.')
-          .then(ok => { if (ok) message.success(t('ui.copied')); })
           .catch(() => {});
         break;
       case 'attachToChat':
@@ -211,6 +216,73 @@ export function createFileMenuHandler({
           },
         });
         break;
+      }
+      case 'newWorkspace': {
+        // Built only where the caller wires the callback (sidebar explorer + the
+        // project file-browser modal); never offered in target mode.
+        if (!onLaunchWorkspace || target) break;
+        // Re-entrancy guard: a double click must not spawn two launches (the server
+        // deliberately does not dedupe — every accepted request is one new session).
+        if (_newWorkspaceInFlight) break;
+        _newWorkspaceInFlight = true;
+        // A hung server must not wedge the guard forever (a permanently disabled
+        // menu item is worse than a duplicate launch).
+        const guardTimer = setTimeout(() => { _newWorkspaceInFlight = false; }, 30000);
+        const hide = message.loading(t('ui.contextMenu.newWorkspaceLaunching'), 0);
+        return Promise.all([
+          // Absolute host path, resolved against the VIEWED project root (same
+          // view-scoped call as copyPath).
+          fetch(apiUrl(viewUrl(endpoint('resolve-path'))), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+          }).then(r => r.json()),
+          // Prior-log probe for the -c heuristic (WorkspaceList logCount parity).
+          // Failure only loses auto-continue; it never blocks the launch.
+          fetch(apiUrl('/api/workspaces'))
+            .then(r => {
+              // A rejected probe is fine (fail-open to fresh session); a non-OK
+              // status is a degraded server — report it per the swallow rule.
+              if (!r.ok) {
+                reportSwallowed('fileMenu.newWorkspace.probe', new Error(`HTTP ${r.status}`));
+                return null;
+              }
+              return r.json();
+            })
+            .catch((err) => { reportSwallowed('fileMenu.newWorkspace.probe', err); return null; }),
+          // Bound project root of THIS server/tab (per-tab CCV_PROJECT_DIR in
+          // Electron). Best-effort: a failed probe keeps the legacy semantics.
+          fetch(apiUrl('/api/project-dir'))
+            .then(r => {
+              if (!r.ok) {
+                reportSwallowed('fileMenu.newWorkspace.projectDir', new Error(`HTTP ${r.status}`));
+                return null;
+              }
+              return r.json();
+            })
+            .catch((err) => { reportSwallowed('fileMenu.newWorkspace.projectDir', err); return null; }),
+        ])
+          .then(async ([resolved, list, projectDirRes]) => {
+            if (!resolved?.fullPath) throw new Error(resolved?.error || 'resolve failed');
+            const fullPath = resolved.fullPath;
+            // Right-click on the CURRENT project root → a fresh session instance
+            // (no -c), even when the folder has logs. Any other folder keeps the
+            // picker semantics (reuse-or-spawn, -c iff logs exist).
+            const forceNew = isSameDirectory(fullPath, projectDirRes?.dir);
+            const known = list?.workspaces?.find(w => w.path === fullPath);
+            const result = await launchWorkspace(fullPath, { logCount: forceNew ? 0 : (known?.logCount || 0), forceNew });
+            if (!result.openedElsewhere) {
+              onLaunchWorkspace({ projectName: result.projectName, path: fullPath, instanceKey: result.instanceKey || null });
+            }
+          })
+          .catch(err => {
+            // Transport-level failures (offline, non-JSON body) carry raw
+            // browser/technical text — substitute the stable localized fallback,
+            // same as WorkspaceList's launch error handling.
+            const detail = isTransportError(err) ? t('ui.workspaces.launchFailed') : err.message;
+            message.error(t('ui.contextMenu.newWorkspaceFailed', { error: detail }));
+          })
+          .finally(() => { clearTimeout(guardTimer); _newWorkspaceInFlight = false; hide(); });
       }
       case 'delete':
         Modal.confirm({

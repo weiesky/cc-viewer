@@ -101,6 +101,14 @@ function _getOrInit(key) {
       batchBuffer: '',
       batchScheduled: false,
       sessionId: null,           // claude session uuid once its first turn mints one (fed via setPtySessionId)
+      // forceNew "brand-new conversation" launch mark (2026-11): set only by
+      // ensurePtyForCwd({forceNew:true}) (file explorer "New Workspace (Session)"
+      // on the current root). routes/events.js reads it to suppress the same-cwd
+      // cold-load fallback while this instance has no main turn of its own.
+      // Cleared in setPtySessionIdForInstance (first main turn binds a session);
+      // NEVER reset in _spawnClaudeImpl/_respawnInto (a self-heal respawn is still
+      // the same fresh instance).
+      freshLaunch: false,
     };
     ptys.set(key, s);
   }
@@ -341,7 +349,12 @@ export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = n
   while (_spawnInflight.has(key)) { try { await _spawnInflight.get(key); } catch { } }
   const p = _spawnClaudeImpl(key, proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
   _spawnInflight.set(key, p);
-  try { return await p; } finally { if (_spawnInflight.get(key) === p) _spawnInflight.delete(key); }
+  try {
+    // Resolve with the record's OWN instanceKey (never activePtyKey — a concurrent spawn
+    // for another cwd can re-point the shared pointer before this spawn settles).
+    const ptyProcess = await p;
+    return { key, ptyProcess };
+  } finally { if (_spawnInflight.get(key) === p) _spawnInflight.delete(key); }
 }
 
 // Self-heal respawn: re-run claude in the SAME record (same instanceKey) after a boot crash
@@ -477,6 +490,11 @@ async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath 
     env.CCV_EDITOR_PORT = String(serverPort);
     env.CCVIEWER_PORT = String(serverPort); // For ask-hook bridge
     env.CCVIEWER_PROTOCOL = serverProtocol; // For ask/perm-bridge (http vs https)
+    // Per-spawn instance key for the SessionStart hook bridge (R1): lets the
+    // in-terminal /resume signal be routed to THIS exact same-cwd instance
+    // instead of any sibling twin sharing the project. `key` is the record's
+    // instanceKey, stable across self-heal respawns of the same record.
+    env.CCVIEWER_INSTANCE_KEY = key;
     if (internalToken) {
       // Anti-CSRF token for bridge → server calls (round-3 P1). Same shared
       // secret across ask / perm / turn-end bridges so server can route-check
@@ -971,6 +989,7 @@ async function _spawnShellImpl(key) {
   delete shellEnv.CCV_EDITOR_PORT;
   delete shellEnv.CCVIEWER_PROTOCOL;
   delete shellEnv.CCVIEWER_INTERNAL_TOKEN;
+  delete shellEnv.CCVIEWER_INSTANCE_KEY; // a hand-typed claude is not this record's instance
   // Also disable the mouse for claude typed by hand in the interactive shell; same reason
   // as spawnClaude.
   shellEnv.CLAUDE_CODE_DISABLE_MOUSE ??= '1';
@@ -1239,6 +1258,12 @@ export function setPtySessionIdForInstance(instanceKey, sessionId) {
   if (s.sessionId && s.sessionId !== sessionId) sidToKey.delete(s.sessionId);
   s.sessionId = sessionId;
   sidToKey.set(sessionId, instanceKey);
+  // forceNew lifecycle (2026-11): the mark's job ends once this instance owns a real
+  // session. Binding a session id means a main turn landed (v2-writer only calls this
+  // on a main-turn gate), so the instance now has its own conversation and the cold-load
+  // fallback suppression must lift — a later chip-click / reload serves that conversation,
+  // and a /resume adopted into this instance stops being hidden behind an empty view.
+  s.freshLaunch = false;
   return true;
 }
 
@@ -1447,11 +1472,11 @@ export function attachPtyFor({ cwd, project, instanceKey } = {}) {
 }
 
 /**
- * parallel-project chips. Returns [{ key, instanceKey, cwd, ptyKind, pid, isActive }] for
+ * parallel-project chips. Returns [{ key, instanceKey, cwd, ptyKind, pid, isActive, freshLaunch }] for
  * records whose process is still running (ptyProcess != null); exited-but-
  * unreaped records are excluded. `key`/`instanceKey` are the opaque per-spawn instanceKey
  * the Map is keyed on; `cwd` is the record's real working dir (never the key). `isActive`
- * marks the PTY the main view is attached to. Read-only.
+ * marks the PTY the main view is attached to. `freshLaunch` is the forceNew mark. Read-only.
  */
 export function listLivePtys() {
   const out = [];
@@ -1464,6 +1489,10 @@ export function listLivePtys() {
       ptyKind: s.ptyKind || null,
       pid: s.ptyProcess.pid,
       isActive: key === activePtyKey,
+      // forceNew mark (2026-11): routes/events.js reads this to suppress the same-cwd
+      // cold-load fallback for a deliberately brand-new instance. Additive; consumers
+      // that build their own rows (resume.js) are unaffected.
+      freshLaunch: s.freshLaunch === true,
     });
   }
   return out;
@@ -1644,7 +1673,7 @@ export function getPtyBootState() {
  *
  * @returns {Promise<{ spawned:boolean, attached:boolean, key:string|null, running:boolean }>}
  */
-export async function ensurePtyForCwd({ cwd, proxyPort, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null } = {}) {
+export async function ensurePtyForCwd({ cwd, proxyPort, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null, forceNew = false } = {}) {
   if (typeof cwd !== 'string' || !cwd) return { spawned: false, attached: false, key: null, running: false };
   // Serialize concurrent launches for the SAME cwd (review P1 / TOCTOU): the live-scan below
   // + `spawnClaude` are two separate steps, so two simultaneous launches of one cwd could both
@@ -1653,19 +1682,36 @@ export async function ensurePtyForCwd({ cwd, proxyPort, extraArgs = [], claudePa
   // in-flight promise here — the second caller waits for the first, then re-scans and finds
   // the now-live record (attaching instead of spawning).
   while (_cwdLaunchInflight.has(cwd)) { try { await _cwdLaunchInflight.get(cwd); } catch { } }
-  // Prefer an already-LIVE claude for this exact cwd (not a shell). Re-attaching rather than
-  // re-spawning preserves the running session and avoids a duplicate process.
-  for (const [k, s] of ptys) {
-    if (s && s.cwd === cwd && s.ptyProcess && s.ptyKind === 'claude') {
-      activePtyKey = k; // attach the main view to the live record
-      return { spawned: false, attached: true, key: k, running: true };
+  // forceNew (context menu "New Workspace (Session)" on the CURRENT root): a second
+  // concurrent claude in the same cwd is the whole point — skip the reuse scan. The per-cwd
+  // in-flight slot is still taken, so a concurrent normal launch cannot re-attach mid-spawn.
+  if (!forceNew) {
+    // Prefer an already-LIVE claude for this exact cwd (not a shell). Re-attaching rather than
+    // re-spawning preserves the running session and avoids a duplicate process.
+    for (const [k, s] of ptys) {
+      if (s && s.cwd === cwd && s.ptyProcess && s.ptyKind === 'claude') {
+        activePtyKey = k; // attach the main view to the live record
+        return { spawned: false, attached: true, key: k, running: true };
+      }
     }
   }
   const p = spawnClaude(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
   _cwdLaunchInflight.set(cwd, p);
   try {
-    await p;
-    return { spawned: true, attached: false, key: activePtyKey, running: true };
+    const { key } = await p; // the SPAWNED record's key — not activePtyKey (race-safe)
+    // forceNew: this record's conversation starts EMPTY by design. Mark it (the record
+    // exists: _spawnClaudeImpl set ptyProcess before resolving) so every later
+    // `?project&instance` cold-load — including a reload or another tab — suppresses the
+    // cross-instance fallback that would otherwise serve the live twin's OLD conversation.
+    // The client only learns this key from the launch HTTP response (sent after this
+    // resolves), so the mark is always in place before any reader. Gate on forceNew: the
+    // `await p` above is shared with the non-forceNew cold-launch path (the reuse scan
+    // found nothing), and marking that would wrongly blank a normal re-opened instance.
+    if (forceNew) {
+      const rec = ptys.get(key);
+      if (rec) rec.freshLaunch = true;
+    }
+    return { spawned: true, attached: false, key, running: true };
   } finally {
     if (_cwdLaunchInflight.get(cwd) === p) _cwdLaunchInflight.delete(cwd);
   }

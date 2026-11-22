@@ -74,7 +74,13 @@ try {
 debug(`payload source=${source} session_id=${sessionId} transcript=${transcriptPath}`);
 
 const internalToken = process.env.CCVIEWER_INTERNAL_TOKEN || '';
-const body = JSON.stringify({ source, sessionId, transcriptPath, cwd, agentId, ts: Date.now() });
+// Same-cwd twin routing (R1): the PTY that spawned this claude stamped its
+// instanceKey into the env. Forward it so an in-terminal /resume is routed to
+// THIS instance's pending switch, not a sibling twin sharing the same project.
+// Validate the shape — a stale/foreign value must never steer routing.
+const rawInstance = process.env.CCVIEWER_INSTANCE_KEY || '';
+const instanceKey = /^ccv-[0-9a-f]+$/.test(rawInstance) ? rawInstance : null;
+const body = JSON.stringify({ source, sessionId, transcriptPath, cwd, agentId, instanceKey, ts: Date.now() });
 const reqOpts = {
   hostname: '127.0.0.1',
   port: parseInt(port, 10),

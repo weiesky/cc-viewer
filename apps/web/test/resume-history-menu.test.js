@@ -91,7 +91,7 @@ describe('viewed-project scoping + true /resume confirm', () => {
   });
 
   it('_doResumeSwitch POSTs the true-resume and only then attaches the view (carrying scope)', () => {
-    const re = /_doResumeSwitch = async \(uuid\) => \{[\s\S]{0,1600}?await resumeSession\(uuid[\s\S]{0,800}?this\._applyViewAttach\(uuid, \{ project, instance: instanceKey \}\)/;
+    const re = /_doResumeSwitch = async \(uuid\) => \{[\s\S]{0,2200}?await resumeSession\(uuid[\s\S]{0,1200}?this\._applyViewAttach\(uuid, \{ project, instance: instanceKey \}\)/;
     assert.ok(re.test(APPBASE), '_doResumeSwitch must call resumeSession then _applyViewAttach with the target scope');
     // Parallel resume keeps the viewed project; bound resume clears it.
     assert.ok(/if \(scopeProject && scopeProject !== this\.state\.projectName\)/.test(APPBASE), '_applyViewAttach must branch on parallel vs bound scope');

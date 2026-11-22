@@ -112,7 +112,7 @@ function CrumbDropTarget({ label, path, link, onNavigate, onMove, title, readOnl
   );
 }
 
-function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, onOpenFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove, project, instance, target, readOnly }) {  const childPath = path ? `${path}/${item.name}` : item.name;
+function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, onOpenFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove, onLaunchWorkspace, project, instance, target, readOnly }) {  const childPath = path ? `${path}/${item.name}` : item.name;
   const isDir = item.type === 'directory';
   const expanded = expandedPaths.has(childPath);
   const isGitIgnored = item.gitIgnored || false;
@@ -164,22 +164,23 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
   // rename via Modal.confirm (the modal has no inline-edit infrastructure).
   // Enabled in target mode too (product decision); the server enforces the write
   // policy, so the client offers every action and lets the server reject what the
-  // location may not mutate.
+  // location may not mutate. "New Workspace (Session)" joins when the surface
+  // wires the launch callback (never in target mode — the builder omits it there).
   // Rendered inside the Modal, so antd's zIndexContext stacks the dropdown
   // above it automatically (1100 + 50 = 1150; do not hardcode overlayStyle).
   const contextMenuItems = useMemo(
-    () => buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target }),
-    [isDir, isRemote, target]);
+    () => buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target, allowNewWorkspace: !!onLaunchWorkspace }),
+    [isDir, isRemote, target, onLaunchWorkspace]);
   const handleMenuClick = useMemo(
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'modal',
-      onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance, target,
+      onFileRenamed, onAttachToChat, onInsertPathToChat, onLaunchWorkspace, project, instance, target,
       // Target entries carry absPath; download it so a navigation-root-relative
       // childPath is never misresolved against the project view root (matches the
       // grid cell's download wiring).
       onDownload: (p, n) => downloadFile(item.absPath || p, n, project, instance),
     }),
-    [childPath, item.name, item.absPath, isDir, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance, target]);
+    [childPath, item.name, item.absPath, isDir, onFileRenamed, onAttachToChat, onInsertPathToChat, onLaunchWorkspace, project, instance, target]);
 
   // Drop target: external OS files import into THIS directory (a file row
   // means its parent — sidebar parity); in-project entries
@@ -267,6 +268,7 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
           onInsertPathToChat={onInsertPathToChat}
           onImportFiles={onImportFiles}
           onMove={onMove}
+          onLaunchWorkspace={onLaunchWorkspace}
           project={project}
           instance={instance}
           target={target}
@@ -292,7 +294,7 @@ function isThumbnailFile(name) {
 // variant='grid' (default) renders the Finder-style icon cell; variant='list'
 // renders a single-row list entry (16px icon, name + size + mtime columns).
 // Both variants share selection, drag/drop, context-menu and keyboard wiring.
-function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project, instance, readOnly, target, variant = 'grid', highlightQuery = '' }) {
+function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, onLaunchWorkspace, project, instance, readOnly, target, variant = 'grid', highlightQuery = '' }) {
   const isDir = item.type === 'directory';
   const isList = variant === 'list';
   // Image cells render a real thumbnail (lazy-loaded; falls back to the file
@@ -319,18 +321,18 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
   // Per-cell menu: identical to the sidebar tree's entry menu (shared
   // builder/factory), rename via Modal.confirm. Enabled in target mode; the
   // server enforces the write policy.
-  const menuItems = useMemo(() => buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target }), [isDir, isRemote, target]);
+  const menuItems = useMemo(() => buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target, allowNewWorkspace: !!onLaunchWorkspace }), [isDir, isRemote, target, onLaunchWorkspace]);
   const handleCellMenuClick = useMemo(
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'modal',
       onFileRenamed: menuCtx.onFileRenamed, onAttachToChat: menuCtx.onAttachToChat,
-      onInsertPathToChat: menuCtx.onInsertPathToChat,
+      onInsertPathToChat: menuCtx.onInsertPathToChat, onLaunchWorkspace,
       // Target entries carry an absPath (the read route resolves it); download
       // that, falling back to the relative childPath for project entries.
       onDownload: (path, name) => downloadFile(item.absPath || path, name, project, instance),
       project, instance, target,
     }),
-    [childPath, item.name, item.absPath, isDir, menuCtx, project, instance, target]);
+    [childPath, item.name, item.absPath, isDir, menuCtx, onLaunchWorkspace, project, instance, target]);
 
   // Highlight segments of the name that match the current filter query. When
   // nothing matches, splitMatch returns the whole name as a single non-hit
@@ -418,7 +420,7 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
   );
 }
 
-export default function FileBrowserModal({ open = false, onClose, onAttachToChat, onInsertPathToChat, onFileRenamed, refreshTrigger = 0, project, instance, target = null, rootLabel = '', title, zIndex = 1100 }) {
+export default function FileBrowserModal({ open = false, onClose, onAttachToChat, onInsertPathToChat, onFileRenamed, onLaunchWorkspace, refreshTrigger = 0, project, instance, target = null, rootLabel = '', title, zIndex = 1100 }) {
   const isExternal = !!target;
   // readOnly still gates drag-and-drop / upload / move (those stay disabled in the
   // target browser). The right-click context menu and inline preview editing are
@@ -1135,18 +1137,27 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   }, [entries, deferredFilter]);
   const filterQuery = deferredFilter.trim();
 
+  // A successful in-place workspace launch switches the whole app to the new
+  // project — the browsing modal must close with it. Electron's new-tab branch
+  // never invokes the callback, so the modal correctly stays open there.
+  const launchAndClose = useMemo(
+    () => (onLaunchWorkspace && onClose)
+      ? (payload) => { onLaunchWorkspace(payload); onClose(); }
+      : onLaunchWorkspace,
+    [onLaunchWorkspace, onClose]);
   // Right-click menu for the grid blank area — the same 'container' definition
   // the sidebar header uses (one shared builder keeps both in sync). Enabled in
-  // target mode; the server enforces the write policy.
+  // target mode; the server enforces the write policy. "New Workspace (Session)"
+  // joins when the launch callback is wired (never in target mode).
   const containerMenuItems = useMemo(
-    () => buildFileContextMenuItems({ isDir: true, isRemote, scope: 'container', isTarget: !!target }),
-    [isRemote, target]);
+    () => buildFileContextMenuItems({ isDir: true, isRemote, scope: 'container', isTarget: !!target, allowNewWorkspace: !!onLaunchWorkspace }),
+    [isRemote, target, onLaunchWorkspace]);
   const handleContainerMenuClick = useMemo(
     () => createFileMenuHandler({
       path: currentPath, name: '', isDir: true, project, instance, target,
-      onFileRenamed: handleAfterMutation,
+      onFileRenamed: handleAfterMutation, onLaunchWorkspace: launchAndClose,
     }),
-    [currentPath, handleAfterMutation, project, instance, target]);
+    [currentPath, handleAfterMutation, launchAndClose, project, instance, target]);
 
   // Stable callback bundle for GridCell (one identity per render → memoized
   // cell menus don't rebuild unless these actually change).
@@ -1312,6 +1323,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
               onInsertPathToChat={onInsertPathToChat}
               onImportFiles={handleImportFiles}
               onMove={handleMove}
+              onLaunchWorkspace={launchAndClose}
               project={project}
               instance={instance}
               target={target}
@@ -1638,6 +1650,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                       menuCtx={cellMenuCtx}
                       onImportFiles={handleImportFiles}
                       onMove={handleMove}
+                      onLaunchWorkspace={launchAndClose}
                       project={project}
                       instance={instance}
                       readOnly={readOnly}

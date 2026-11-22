@@ -35,11 +35,14 @@ mkdirSync(wsDir, { recursive: true });
 // same-cwd launch.
 const wsDir2 = join(tmpDir, 'branch-proj-2');
 mkdirSync(wsDir2, { recursive: true });
+// forceNew cases get their own cwd (see the still-live-fake-PTY note above).
+const wsDir3 = join(tmpDir, 'branch-proj-3');
+mkdirSync(wsDir3, { recursive: true });
 // 一个“假 claude”脚本路径（实际不会被执行，spawn 被假 pty 拦截）
 const fakeClaudePath = join(tmpDir, 'fake-claude.js');
 writeFileSync(fakeClaudePath, '// noop\n');
 
-const { workspacesRoutes } = await import('../server/routes/workspaces.js');
+const { workspacesRoutes, stripContinuationArgs } = await import('../server/routes/workspaces.js');
 const ptyMgr = await import('../server/pty-manager.js');
 
 function routeFor(method, path) {
@@ -221,6 +224,74 @@ describe('workspacesLaunch — CCV_PROXY_PORT 已设 → spawnClaude PTY 分支 
     const flat = spawnArgs.args.join(' ');
     assert.match(flat, /--only-base/);
     assert.doesNotMatch(flat, /not-an-array/);
+  });
+
+  it('forceNew：剥离 -c、响应带 instanceKey、spawn 全新实例', async () => {
+    spawnArgs = null;
+    const deps = baseDeps({
+      workspaceClaudePath: fakeClaudePath,
+      workspaceClaudeArgs: ['--base'],
+    });
+    const { status, data } = await launch({ path: wsDir3, extraArgs: ['-c', '--extra'], forceNew: true }, deps);
+    assert.equal(status, 200);
+    assert.equal(data.ok, true);
+    assert.ok(typeof data.instanceKey === 'string' && data.instanceKey.startsWith('ccv-'), 'response carries the fresh instance key');
+    const flat = spawnArgs.args.join(' ');
+    assert.doesNotMatch(flat, /(^|\s)-c(\s|$)/, 'forceNew strips the continuation flag');
+    assert.match(flat, /--base/);
+    assert.match(flat, /--extra/);
+    // The launched instanceKey matches a live record for that cwd.
+    const live = ptyMgr.listLivePtys().find(p => p.cwd === wsDir3);
+    assert.ok(live, 'a live record exists for the forceNew cwd');
+    assert.equal(live.instanceKey, data.instanceKey);
+  });
+
+  it('forceNew 在已有存活同 cwd 实例时仍 spawn 第二个实例', async () => {
+    spawnArgs = null;
+    const deps = baseDeps({ workspaceClaudePath: fakeClaudePath, workspaceClaudeArgs: [] });
+    const before = ptyMgr.listLivePtys().filter(p => p.cwd === wsDir3).length;
+    const { status, data } = await launch({ path: wsDir3, extraArgs: [], forceNew: true }, deps);
+    assert.equal(status, 200);
+    assert.ok(data.instanceKey);
+    const after = ptyMgr.listLivePtys().filter(p => p.cwd === wsDir3).length;
+    assert.equal(after, before + 1, 'a second instance for the same cwd');
+  });
+
+  it('forceNew 剥离 resume 旗标及其值（ccv -r <uuid> 场景）', async () => {
+    spawnArgs = null;
+    const deps = baseDeps({
+      workspaceClaudePath: fakeClaudePath,
+      workspaceClaudeArgs: ['-r', 'some-uuid', '--base'],
+    });
+    const { status } = await launch({ path: wsDir3, extraArgs: [], forceNew: true }, deps);
+    assert.equal(status, 200);
+    const flat = spawnArgs.args.join(' ');
+    assert.doesNotMatch(flat, /some-uuid/, 'the resume VALUE must not survive as an orphan positional');
+    assert.doesNotMatch(flat, /(^|\s)-r(\s|$)/);
+    assert.match(flat, /--base/);
+  });
+
+  it('非 forceNew 时响应不带 instanceKey（普通启动不走 pin 路径）', async () => {
+    spawnArgs = null;
+    const deps = baseDeps({ workspaceClaudePath: fakeClaudePath, workspaceClaudeArgs: [] });
+    const { status, data } = await launch({ path: wsDir3, extraArgs: [] }, deps);
+    assert.equal(status, 200);
+    assert.equal(data.instanceKey, undefined);
+  });
+});
+
+describe('stripContinuationArgs (forceNew argv 清洗)', () => {
+  it('strips -c/--continue, -r/--resume + value, --fork-session, and --x=value forms', () => {
+    assert.deepEqual(stripContinuationArgs(['-c']), []);
+    assert.deepEqual(stripContinuationArgs(['--continue']), []);
+    assert.deepEqual(stripContinuationArgs(['-r', 'uuid-1']), []);
+    assert.deepEqual(stripContinuationArgs(['--resume', 'uuid-1']), []);
+    assert.deepEqual(stripContinuationArgs(['--resume=uuid-1']), []);
+    assert.deepEqual(stripContinuationArgs(['--continue=x']), []);
+    assert.deepEqual(stripContinuationArgs(['--fork-session']), []);
+    assert.deepEqual(stripContinuationArgs(['--model', 'opus', '-r', 'uuid-1', '--verbose']), ['--model', 'opus', '--verbose']);
+    assert.deepEqual(stripContinuationArgs('not-an-array'), []);
+    assert.deepEqual(stripContinuationArgs([]), []);
   });
 });
 

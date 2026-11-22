@@ -667,7 +667,15 @@ class AppBase extends React.Component {
     }
     if (this._unmounted) return;
     if (!r || !r.ok) {
-      try { message.error(t((r && r.reason === 'busy') ? 'ui.resume.busy' : 'ui.resume.failed')); } catch {}
+      try {
+        const reason = r && r.reason;
+        // R7a: a different live same-cwd instance owns this conversation.
+        message.error(t(
+          reason === 'busy' ? 'ui.resume.busy'
+            : reason === 'session-owned' ? 'ui.resume.sessionOwned'
+            : 'ui.resume.failed'
+        ));
+      } catch {}
       return;
     }
     // Carry the target scope into the view attach so a resume into a PARALLEL viewed
@@ -907,7 +915,7 @@ class AppBase extends React.Component {
   // server cold-loads that project's current session + routes its live feed to
   // this client (the server's per-project view layer; the bound project and every
   // project's process stay exactly as they were).
-  handleActivateChip = (chip) => {
+  handleActivateChip = (chip, opts = {}) => {
     if (!chip || !chip.project) return;
     const chipInstance = (typeof chip.instanceKey === 'string' && chip.instanceKey) || null;
     // Already viewing this exact instance (same project AND same instance).
@@ -918,6 +926,28 @@ class AppBase extends React.Component {
     // settled view — a cold load in flight (resumeSwitch) has no committed
     // baseline worth caching.
     if (!this.state.resumeSwitch) this._snapshotCurrentView();
+    // forceNew pin (file explorer "New Workspace (Session)" on the current root): the
+    // target instance is a BRAND-NEW conversation, so its view starts empty. The snapshot
+    // above already captured the departing view under its own key; blank ONLY the visible
+    // slice (plain setState — NOT _commitChannel, which would overwrite the departing
+    // channel's committed vm.react and corrupt a warm switch-back) so the old conversation
+    // cannot linger until the new instance's empty cold load lands (load_start{empty:true}
+    // repeats this idempotently). Placed after the snapshot (React 18 batches, so the
+    // snapshot read the pre-blank state) and before _activateScope. thinkingRequests is
+    // cleared here because the empty load_start branch does not (load_end's empty path
+    // does, later). contextWindow/serverCachedContent keep the header's context bar from
+    // resurrecting the departed conversation's usage on an empty instance.
+    if (opts && opts.blankView) {
+      this.setState({
+        requests: [], thinkingRequests: [], mainAgentSessions: [], v2Rows: [],
+        v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' }, selectedIndex: null,
+        pinnedSessionTs: null, contextWindow: null, serverCachedContent: null,
+        contextBarLocked: false, contextBarOptimistic: false,
+        // A departing mid-stream conversation must not leave its typewriter bubble / spinner
+        // on the new empty view until the cold load's load_end commits.
+        streamingLatest: null, isStreaming: false, turnActive: false,
+      });
+    }
     // Multi-PTY: re-anchor the shared terminal stream to the chip's project BEFORE
     // the cold load lands — without this the terminal keeps showing/feeding the
     // previously spawned project (the "new project terminal never starts" bug).
@@ -932,7 +962,8 @@ class AppBase extends React.Component {
     writeViewedWorkspace({
       project: chip.project,
       instanceKey: chipInstance,
-      cwd: resolveCwdForView(chip.project, chipInstance, this._lastProjectTabs || []),
+      cwd: resolveCwdForView(chip.project, chipInstance, this._lastProjectTabs || [])
+        || (typeof chip.cwd === 'string' && chip.cwd ? chip.cwd : null),
       ts: Date.now(),
     });
     // Warm switch: the chip's channel repaints instantly (no overlay, no new
@@ -3160,6 +3191,28 @@ class AppBase extends React.Component {
       // The dir-only rebind sends NO broadcast at all (name unchanged → every
       // client's stamp still matches), so this only ever runs for a full rebind.
       const isRebound = data.rebound === true;
+      // SDK same-cwd +1 (sibling launch): the server tags workspace_started with
+      // sibling:true when a fresh sibling was ADDED alongside the live one. A client that
+      // did NOT initiate this launch (no pending _recentLaunchPin) must NOT hard-reset — it
+      // is still viewing the live sibling's conversation, and a reset would blank it. The
+      // launcher's own pin is handled by the _recentLaunchPin branch below.
+      if (data.sibling === true && !isRebound && !(this._recentLaunchPin && this._recentLaunchPin.project === (data.projectName || ''))) {
+        return; // not the launcher — keep viewing the live sibling untouched
+      }
+      // Fresh-instance relaunch (forceNew from the file explorer): handleWorkspaceLaunch
+      // already pinned the view to the instance it spawned. If this same-name frame
+      // lands AFTER that pin (the route writes the broadcast before res.end, but the
+      // two connections are not ordered), the reset below would drop
+      // viewedProject/viewedInstance and abort the pinned channel. Consume the
+      // one-shot marker instead. Frame-first (the common order) needs nothing: the
+      // normal reset runs, then the response handler pins.
+      const pin = this._recentLaunchPin;
+      if (pin && !isRebound && pin.project === (data.projectName || '')
+          && (!pin.path || !data.path || data.path === pin.path)
+          && (Date.now() - (pin.at || 0)) < 15000) {
+        this._recentLaunchPin = null;
+        return;
+      }
       const reboundAffectsThisTab = reboundAffectsView({
         rebound: data.rebound,
         reboundFrom: data.reboundFrom,
@@ -4251,14 +4304,19 @@ class AppBase extends React.Component {
 
   // ─── 模式切换 ──────────────────────────────────────────
 
-  handleWorkspaceLaunch = ({ projectName }) => {
+  handleWorkspaceLaunch = ({ projectName, path, instanceKey } = {}) => {
     this._isLocalLog = false;
     this._localLogFile = null;
+    // forceNew launch (file explorer "New Workspace (Session)" on the current root):
+    // the response carries the fresh instance's key — pin the view to THAT process.
+    // A name-only attach 409s ("ambiguous") once a same-cwd twin exists, so the pin
+    // path skips it and attaches by instanceKey via handleActivateChip instead.
+    const pinInstance = typeof instanceKey === 'string' && instanceKey ? instanceKey : null;
     // Multi-PTY: the launch route's spawnClaude already makes the new project the
     // active PTY, but under concurrent spawns the LAST completed spawn wins — this
     // explicit attach re-anchors to the project the user just picked, whichever
     // order the spawns landed in. Idempotent.
-    if (projectName) attachMainPty(projectName);
+    if (projectName && !pinInstance) attachMainPty(projectName);
     const ch = this._channels.getRendered();
     const vm = (ch && ch.vm) || this._localVm;
     // 切 project：清掉旧 project 残留的 /clear optimistic 30s timer，避免延迟到新 project 触发。
@@ -4288,6 +4346,25 @@ class AppBase extends React.Component {
     });
     // New bound project — drop the persisted workspace so a refresh lands on it.
     clearViewedWorkspace();
+    if (pinInstance) {
+      // Land the view on the process this launch created: handleActivateChip re-scopes
+      // the SSE with ?project=&instance=, persists the viewed workspace, and owns the
+      // only cold activation — skip the launch-rebind branch below (no second activation).
+      // One-shot marker for _onWorkspaceStarted: the route broadcasts workspace_started
+      // before ending the HTTP response, but cross-connection ordering is not guaranteed;
+      // a late same-name frame must not unpin this view.
+      // One-shot marker for _onWorkspaceStarted: the route broadcasts workspace_started
+      // before ending the HTTP response, but cross-connection ordering is not guaranteed;
+      // a late same-name frame must not unpin this view. Self-expires with the TTL — in
+      // the common frame-first ordering nothing consumes it, and it must not linger to
+      // swallow an unrelated same-project launch from another client.
+      this._recentLaunchPin = { project: projectName || '', instanceKey: pinInstance, path: (typeof path === 'string' && path) || null, at: Date.now() };
+      setTimeout(() => {
+        if (this._recentLaunchPin && this._recentLaunchPin.instanceKey === pinInstance) this._recentLaunchPin = null;
+      }, 15000);
+      this.handleActivateChip({ project: projectName, instanceKey: pinInstance, cwd: path }, { blankView: true });
+      return;
+    }
     // Post-stop relaunch (review P1): after workspace_stopped's closeAll there
     // is NO channel left — the server-side workspace_started replay would have
     // no connection to arrive on and the panel would stay blank until refresh.

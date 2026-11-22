@@ -544,6 +544,50 @@ describe('V2Writer', () => {
     assert.equal(ctReq.conv, 'misc', 'countTokens keeps wire fidelity under misc');
   });
 
+  it('R3: a twin\'s metadata-less requests route to ITS OWN session, never the other twin\'s (heartbeat + cold-start held)', async () => {
+    const INST_A = 'ccv-aaaa0001';
+    const INST_B = 'ccv-bbbb0002';
+    const SID_A2 = 'aaaa1111-0000-4000-8000-000000000001';
+    const SID_B2 = 'bbbb2222-0000-4000-8000-000000000002';
+    const uidFor = (sid) => JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: sid });
+    const w = new V2Writer({ logDir: dir, project: 'proj', enabled: true });
+    const mainFor = (sid, inst, rid) => {
+      const e = mkEntry({ requestId: rid });
+      e.body.metadata = { user_id: uidFor(sid) };
+      e._ccvInstance = inst;
+      return e;
+    };
+    // Cold start: twin B's heartbeat arrives BEFORE B has any sid. It must be
+    // held in B's own bucket (returns null), NOT flushed into A's dir and NOT
+    // follow the process-global _currentSid.
+    const hbB = { timestamp: 't0', url: 'https://api/eval/sdk-x', method: 'POST', isHeartbeat: true, requestId: 'hbB', body: {}, _ccvInstance: INST_B };
+    assert.equal(w.ingestRequest(hbB, null), null, 'B cold-start heartbeat held in B bucket');
+    assert.ok(!existsSync(join(dir, 'proj')), 'nothing on disk before any sid');
+
+    // Twin A runs a main turn (establishes A's session + sets process _currentSid).
+    const hA = w.ingestRequest(mainFor(SID_A2, INST_A, 'a1'), null);
+    w.ingestCompletion(hA, { ...mainFor(SID_A2, INST_A, 'a1'), response: { status: 200, headers: {}, body: { content: [], usage: { input_tokens: 1, output_tokens: 1 } } }, duration: 1 });
+    await w.flush();
+    const dirA = sp('proj', SID_A2);
+    assert.ok(existsSync(dirA.dir), 'A dir created');
+    assert.deepEqual(readLines(dirA.journalPath).filter(l => l.ph === 'req').map(l => l.kind), ['main'], "A's dir has ONLY its main turn — B's heartbeat did NOT leak in");
+
+    // Twin B now runs its own main turn → flushes ONLY B's held bucket into B's dir.
+    const hB = w.ingestRequest(mainFor(SID_B2, INST_B, 'b1'), null);
+    w.ingestCompletion(hB, { ...mainFor(SID_B2, INST_B, 'b1'), response: { status: 200, headers: {}, body: { content: [], usage: { input_tokens: 1, output_tokens: 1 } } }, duration: 1 });
+    await w.flush();
+    const dirB = sp('proj', SID_B2);
+    assert.deepEqual(readLines(dirB.journalPath).filter(l => l.ph === 'req').map(l => l.kind), ['heartbeat', 'main'], "B's held heartbeat flushed into B's OWN dir");
+
+    // A subsequent metadata-less countTokens from B routes to B, not the last-spoke _currentSid.
+    const ctB = { timestamp: 't3', url: 'https://api/v1/messages/count_tokens', method: 'POST', isCountTokens: true, requestId: 'ctB', body: { messages: [textMsg('user', 'x')] }, _ccvInstance: INST_B };
+    const hctB = w.ingestRequest(ctB, ctB.body.messages);
+    assert.equal(hctB.sid, SID_B2, "B's countTokens routed to B's sid");
+    await w.flush();
+    assert.equal(readLines(dirA.journalPath).filter(l => l.ph === 'req' && l.kind === 'countTokens').length, 0, "A's dir untouched by B's countTokens");
+    await w.close();
+  });
+
   it('disabled writer is a total no-op', () => {
     const w = new V2Writer({ logDir: dir, project: 'proj', enabled: false });
     const e = mkEntry();
@@ -1040,6 +1084,33 @@ describe('V2Writer owner claim lifecycle', () => {
     assert.equal(existsSync(lockPath()), true);
     w.resetSessions();
     assert.equal(existsSync(lockPath()), false);
+    await w.close();
+  });
+
+  it('resetForLiveRelaunch keeps the live twin binding + claim; clears only launch-boundary state', async () => {
+    const w = new V2Writer({ logDir: dir, project: 'proj', enabled: true });
+    const e = mkMain();
+    w.ingestRequest(e, e.body.messages);
+    await w.flush();
+    assert.equal(existsSync(lockPath()), true, 'twin A claimed its dir');
+    assert.ok(w._sessions.has(SID), 'twin A session bound');
+    // Arm a resume switch and a pending pre-sid request — launch-boundary state.
+    w._pendingResumeSwitch.set('proj', new Map([['', { transcriptUuid: 'x', hookSid: null }]]));
+    w._pendingNoSid.push({ entry: e, originalMessages: e.body.messages, rid: 'r9' });
+
+    w.resetForLiveRelaunch('proj');
+
+    assert.equal(existsSync(lockPath()), true, 'twin A claim NOT released');
+    assert.ok(w._sessions.has(SID), 'twin A session binding kept');
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined, 'armed switch cleared');
+    assert.equal(w._pendingNoSid.length, 0, 'held pre-sid traffic cleared');
+    assert.equal(w._currentSid, null, 'process-global current cleared for the fresh twin');
+
+    // The still-live twin's next request must keep writing the SAME dir (not mint a new one).
+    const e2 = mkMain(); e2.requestId = 'r2';
+    w.ingestRequest(e2, e2.body.messages);
+    await w.flush();
+    assert.ok(w._sessions.get(SID), 'same session object reused after relaunch');
     await w.close();
   });
 

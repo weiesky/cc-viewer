@@ -58,6 +58,12 @@ contextBridge.exposeInMainWorld('tabBridge', {
   },
   // iPad/设备模式：右上角开关切换 → main 广播 device-mode-changed；React 据此切 viewMode(pad⇄pc)，不依赖窗口宽度。
   requestDeviceMode: () => ipcRenderer.send('request-device-mode'),
+  // File explorer "New Workspace (Session)": a launch triggered inside a tab must
+  // go through main → createTab (the same 'workspace-launch' channel the workspace
+  // view's window.electronAPI.launchWorkspace uses). The per-tab worker is NOT
+  // under CCV_ELECTRON_MULTITAB, so POSTing /api/workspaces/launch from here would
+  // re-root THIS tab in place — forbidden.
+  launchWorkspace: (path, extraArgs, forceNew) => ipcRenderer.send('workspace-launch', { path, extraArgs, forceNew: !!forceNew }),
   onDeviceModeChange: (cb) => {
     const handler = (_, on) => cb(on);
     ipcRenderer.on('device-mode-changed', handler);

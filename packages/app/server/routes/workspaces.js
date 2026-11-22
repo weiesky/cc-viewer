@@ -5,6 +5,17 @@ import { initForWorkspace, resetWorkspace, getLiveLogSource, markContinuedLaunch
 import { LOG_DIR } from '../../findcc.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
 import { reportSwallowed } from '../lib/error-report.js';
+import { stripContinuationArgs } from '../lib/continuation-args.js';
+import { isAdminReq } from '../lib/is-admin.js';
+import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
+import { unwatchAllWorkflows } from '../lib/workflow-watcher.js';
+import { readClaudeProjectModel } from '../lib/context-watcher.js';
+import { countLogEntries, streamRawEntriesAsync } from '../lib/log-stream.js';
+import { sseWrite } from '../lib/wire-compress.js';
+
+// Re-exported for the existing test import surface; the implementation lives in
+// lib/continuation-args.js (shared with the Electron main process).
+export { stripContinuationArgs };
 
 // P2: claude continuation flags — the workspace launcher injects `-c` itself
 // (WorkspaceList's logCount heuristic), so argv scanning in cli.js never sees
@@ -14,10 +25,6 @@ const CONTINUE_FLAGS = new Set(['-c', '--continue', '-r', '--resume']);
 // adoption must NOT fire (it targets the latest main session, not the user's
 // chosen one). Mirrors cli.js's CCV_CLAUDE_RESUME channel.
 const RESUME_FLAGS = new Set(['-r', '--resume']);
-import { unwatchAllWorkflows } from '../lib/workflow-watcher.js';
-import { readClaudeProjectModel } from '../lib/context-watcher.js';
-import { countLogEntries, streamRawEntriesAsync } from '../lib/log-stream.js';
-import { sseWrite } from '../lib/wire-compress.js';
 
 function workspacesList(req, res, parsedUrl, isLocal, deps) {
   import('../workspace-registry.js').then(async ({ getWorkspaces }) => {
@@ -37,11 +44,26 @@ function workspacesList(req, res, parsedUrl, isLocal, deps) {
 }
 
 function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
+  // Two gates, both required (same as live-processes/close, routes/resume.js):
+  // admin identity AND same-origin browser context. The server answers CORS
+  // preflight permissively (ACAO: *) and loopback is auth-exempt, so without
+  // this a cross-site page could spawn claude processes in arbitrary host
+  // directories through the user's browser — and forceNew makes every accepted
+  // request a NEW process (no dedupe throttle).
+  if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'forbidden' }));
+    return;
+  }
   let body = '';
   req.on('data', chunk => { body += chunk; if (body.length > deps.MAX_POST_BODY) req.destroy(); });
   req.on('end', async () => {
     try {
-      const { path: wsPath, extraArgs: launchExtraArgs } = JSON.parse(body);
+      const { path: wsPath, extraArgs: launchExtraArgs, forceNew: rawForceNew } = JSON.parse(body);
+      // forceNew (file explorer "New Workspace (Session)" on the CURRENT root): spawn a
+      // brand-new claude instance in the same cwd instead of re-attaching to the live
+      // one — and never continue its conversation.
+      const forceNew = rawForceNew === true;
       if (!wsPath || !existsSync(wsPath) || !statSync(wsPath).isDirectory()) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid directory path' }));
@@ -55,7 +77,12 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // 所有日志相关操作（initForWorkspace、watchLogFile、spawnClaude）由 tab-worker 子进程负责
       if (process.env.CCV_ELECTRON_MULTITAB === '1') {
         if (deps.launchCallback) {
-          deps.launchCallback(wsPath, Array.isArray(launchExtraArgs) ? launchExtraArgs : []);
+          // Forward forceNew so main's createTab skips its same-realpath dedupe
+          // (a second tab on the current directory is the intended outcome). Strip
+          // continuation flags here too — the IPC handler is not the only entry
+          // (a non-Electron browser can POST the mgmt server directly).
+          const forwardedArgs = Array.isArray(launchExtraArgs) ? launchExtraArgs : [];
+          deps.launchCallback(wsPath, forceNew ? stripContinuationArgs(forwardedArgs) : forwardedArgs, forceNew);
         }
         deps.setWorkspaceLaunched(true);
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -64,7 +91,21 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       }
 
       // 非 Electron 模式（web / CLI）：完整逻辑
-      const result = initForWorkspace(wsPath);
+      // forceNew is forwarded: when spawning a second same-cwd instance,
+      // initForWorkspace must keep the live twin's session bindings/owner.lock and
+      // clear only launch-boundary state (see interceptor).
+      // Hoisted: the SDK forceNew branch (below) and the PTY branch both assign this, and
+      // the response reads it — declaring it here keeps the SDK assignment out of TDZ.
+      let launchedInstanceKey = null;
+      // SDK +1 keeps the same-cwd sibling LIVE (and the new child always carries
+      // x-ccv-instance), so initForWorkspace must NOT run resetForLiveRelaunch's
+      // project-level clear — that would drain the surviving sibling's in-flight
+      // `_pendingNoSidByInstance`/`_lateHandles`. preserveLiveTwin skips the writer reset.
+      // Gate on the EXACT cwd (not the sanitized basename): a same-named DIFFERENT directory
+      // is a different project and must still reset.
+      const prevCwd = process.env.CCV_PROJECT_DIR || '';
+      const isSameCwdSdkForceNew = !!(deps.isSdkMode && forceNew) && prevCwd === wsPath;
+      const result = initForWorkspace(wsPath, { forceNew, preserveLiveTwin: isSameCwdSdkForceNew });
       process.env.CCV_PROJECT_DIR = wsPath;
 
       // 启动日志监听（S6b: v2 live feed when the v2 writer is active）
@@ -77,21 +118,40 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // P2 检测通道②：workspace 启动器注入的 -c/--continue/-r/--resume（无论
       // 是否走 PTY 分支都要打标——迁移提示的 continued 语义只取决于参数本身）。
       const mergedArgs = [...deps.workspaceClaudeArgs, ...(Array.isArray(launchExtraArgs) ? launchExtraArgs : [])];
-      if (mergedArgs.some((a) => CONTINUE_FLAGS.has(a))) markContinuedLaunch();
-      // `--fork-session`: a continuation that mints a NEW session id on purpose —
-      // `-c` folder adoption must NOT fire for it.
-      if (mergedArgs.includes('--fork-session')) markForkSession();
-      // `-r`/`--resume`: user-chosen target session — adoption must not redirect
-      // it to the latest main session.
-      if (mergedArgs.some((a) => RESUME_FLAGS.has(a))) markResumeSession();
+      // forceNew: a clean conversation in a folder that already has logs — never continue.
+      // Strip the continuation family from the merged args too (defense in depth:
+      // process-wide workspaceClaudeArgs could carry one, e.g. `ccv -r <uuid>`) and
+      // skip the continuation markers so the migrate prompt is not told this launch
+      // continued.
+      const effectiveArgs = forceNew ? stripContinuationArgs(mergedArgs) : mergedArgs;
+      if (!forceNew) {
+        if (mergedArgs.some((a) => CONTINUE_FLAGS.has(a))) markContinuedLaunch();
+        // `--fork-session`: a continuation that mints a NEW session id on purpose —
+        // `-c` folder adoption must NOT fire for it.
+        if (mergedArgs.includes('--fork-session')) markForkSession();
+        // `-r`/`--resume`: user-chosen target session — adoption must not redirect
+        // it to the latest main session.
+        if (mergedArgs.some((a) => RESUME_FLAGS.has(a))) markResumeSession();
+      }
 
       // SDK mode (2026-10-12, per-cwd multi-session): launch = register/activate this cwd's
       // resident SDK session — NOT a phantom claude PTY the SDK UI never consumes. PTY mode is
       // untouched (the proxyPort branch below stays PTY-only).
+      // forceNew (2026-11): APPEND a same-cwd sibling session with a fresh random instanceKey
+      // (createSdkSession) — the existing session(s) stay LIVE (no teardown, no retire). The
+      // returned instanceKey lets the client pin the new sibling's empty view.
       if (deps.isSdkMode) {
         try {
           const sdk = await import('../lib/sdk-manager.js');
-          if (!sdk.setActiveSdkSession(wsPath)) {
+          if (forceNew) {
+            // +1 SIBLING (2026-11): append a fresh same-cwd session, leaving the existing
+            // one(s) alive. The old sibling stays live, so it must NOT be retired —
+            // retirement would freeze a live session's writer routing (cold-load, the
+            // "current" pointer, fresh-launch clearing). retireInstance only ever runs on
+            // an EXPLICIT close (routes/resume.js), and only for a random fresh key.
+            const r = sdk.createSdkSession(wsPath, sdk.getSdkLaunchConfig() || undefined);
+            launchedInstanceKey = (r && r.instanceKey) || null;
+          } else if (!sdk.setActiveSdkSession(wsPath)) {
             // New cwd: register a session carrying the PROCESS-LEVEL launch config template
             // (registered by cli.js at boot) so its query gets the proxy env / model /
             // permission / executable — without it the child would bypass the ccv proxy
@@ -109,14 +169,25 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
         // no longer kills an existing same-cwd record, so re-launching an ALREADY-LIVE cwd
         // here would silently start a duplicate claude. ensurePtyForCwd restores the intended
         // "re-open = reuse" semantics: attach to the live record instead of re-spawning.
+        // forceNew skips the reuse scan on purpose (fresh session on the current root).
         const { ensurePtyForCwd } = await import('../pty-manager.js');
-        await ensurePtyForCwd({ cwd: wsPath, proxyPort: parseInt(proxyPort), extraArgs: mergedArgs, claudePath: deps.workspaceClaudePath, isNpmVersion: deps.workspaceIsNpmVersion, serverPort: deps.actualPort, serverProtocol: deps.protocol, internalToken: deps.INTERNAL_TOKEN });
+        const launched = await ensurePtyForCwd({ cwd: wsPath, proxyPort: parseInt(proxyPort), extraArgs: effectiveArgs, claudePath: deps.workspaceClaudePath, isNpmVersion: deps.workspaceIsNpmVersion, serverPort: deps.actualPort, serverProtocol: deps.protocol, internalToken: deps.INTERNAL_TOKEN, forceNew });
+        // Only a forceNew launch may pin the client to the spawned instance —
+        // ordinary launches keep the legacy bound-channel replay (attaching to a
+        // reused record returns its key too, but pinning there would bypass the
+        // workspace_started reset path for no benefit).
+        launchedInstanceKey = forceNew ? (launched.key || null) : null;
       }
 
       deps.setWorkspaceLaunched(true);
 
       // 通知所有 SSE 客户端
-      const startedPayload = `event: workspace_started\ndata: ${JSON.stringify({ projectName: result.projectName, path: wsPath, claudeProjectModel: readClaudeProjectModel(wsPath) })}\n\n`;
+      // SDK +1 (sibling launch): the workspace_started carries `sibling:true` + the new
+      // instanceKey so a NON-launching client does NOT hard-reset the live sibling it is
+      // currently viewing. Only a SAME-cwd forceNew is a sibling — a forceNew into a
+      // DIFFERENT directory changes the bound project and must keep the normal reset+reload.
+      const isSiblingLaunch = isSameCwdSdkForceNew && !!launchedInstanceKey;
+      const startedPayload = `event: workspace_started\ndata: ${JSON.stringify({ projectName: result.projectName, path: wsPath, claudeProjectModel: readClaudeProjectModel(wsPath), ...(isSiblingLaunch ? { sibling: true, instanceKey: launchedInstanceKey } : {}) })}\n\n`;
       deps.clients.forEach(client => {
         try {
           sseWrite(client, startedPayload);
@@ -128,19 +199,24 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // active (a fresh workspace has no session yet → empty stream, the live
       // feed picks up from the first request). Legacy-shaped reload frames —
       // serveInFlight follows the wire flag, same as /events.
-      const wsReloadSource = getLiveLogSource({ serveInFlight: !!deps.wireV3 });
-      const wsReloadTotal = await countLogEntries(wsReloadSource);
-      deps.clients.forEach(client => {
-        try { sseWrite(client, `event: load_start\ndata: ${JSON.stringify({ total: wsReloadTotal, incremental: false })}\n\n`); } catch {}
-      });
-      await streamRawEntriesAsync(wsReloadSource, (raw) => {
+      // SDK +1 (sibling): do NOT broadcast a reload at all — the other clients are still
+      // viewing the LIVE sibling's conversation, and a global empty reload would blank it.
+      // The launcher's own empty view is delivered by its ?instance= cold-load (freshLaunch).
+      const wsReloadSource = isSiblingLaunch ? '' : getLiveLogSource({ serveInFlight: !!deps.wireV3 });
+      const wsReloadTotal = isSiblingLaunch ? 0 : await countLogEntries(wsReloadSource);
+      if (!isSiblingLaunch) {
         deps.clients.forEach(client => {
-          try { sseWrite(client, 'event: load_chunk\ndata: ['); sseWrite(client, raw.replace(/\n/g, '')); sseWrite(client, ']\n\n'); } catch {}
+          try { sseWrite(client, `event: load_start\ndata: ${JSON.stringify({ total: wsReloadTotal, incremental: false })}\n\n`); } catch {}
         });
-      });
-      deps.clients.forEach(client => {
-        try { sseWrite(client, `event: load_end\ndata: {}\n\n`); } catch {}
-      });
+        await streamRawEntriesAsync(wsReloadSource, (raw) => {
+          deps.clients.forEach(client => {
+            try { sseWrite(client, 'event: load_chunk\ndata: ['); sseWrite(client, raw.replace(/\n/g, '')); sseWrite(client, ']\n\n'); } catch {}
+          });
+        });
+        deps.clients.forEach(client => {
+          try { sseWrite(client, `event: load_end\ndata: {}\n\n`); } catch {}
+        });
+      }
 
       // 1.7.0 迁移引导（P2）：切进的项目仍有未转换 v1 日志 → 对存量连接广播
       // migrate_prompt（新连接由 /events 的连接帧覆盖）。
@@ -153,7 +229,7 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       } catch (e) { reportSwallowed('sse.migrate_prompt', e); }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, projectName: result.projectName }));
+      res.end(JSON.stringify({ ok: true, projectName: result.projectName, ...(launchedInstanceKey ? { instanceKey: launchedInstanceKey } : {}) }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
@@ -162,6 +238,13 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
 }
 
 function workspacesAdd(req, res, parsedUrl, isLocal, deps) {
+  // Same gate as workspacesLaunch (it registers arbitrary host directories into the
+  // picker history): admin + same-origin browser, or a cross-site page could add them.
+  if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'forbidden' }));
+    return;
+  }
   let body = '';
   req.on('data', chunk => { body += chunk; if (body.length > deps.MAX_POST_BODY) req.destroy(); });
   req.on('end', async () => {

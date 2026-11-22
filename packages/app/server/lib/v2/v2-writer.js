@@ -90,7 +90,25 @@ export class V2Writer {
     // — a crash skips release harmlessly (claim validity is pid liveness).
     this._claimedDirs = new Set();
     this._currentSid = null;    // last successfully resolved session (fallback routing §8.3)
-    this._pendingNoSid = [];    // requests seen before any sid (cold-start heartbeats).
+    // Multi-instance (same-cwd twin): per-instance fallback pointer so a
+    // metadata-less request (heartbeat/countTokens) from twin B routes to B's
+    // own session, never to the process-global _currentSid (twin A). Keyed by
+    // `_ccvInstance` → {sid, project}. Only ever SET on a main-agent turn
+    // (teammate/subagent children inherit the parent's x-ccv-instance but run
+    // their own sid — letting them set this would hijack the parent's pointer).
+    this._currentSidByInstance = new Map(); // instKey → {sid, project}
+    this._pendingNoSid = [];    // legacy (no-instance) requests seen before any sid.
+    // Per-instance cold-start hold buckets: instKeyOr'' → {project, items:[]}.
+    // Kept separate from _pendingNoSid so a twin's held heartbeats flush only on
+    // that twin's first sid-bearing request, not on the other twin's.
+    this._pendingNoSidByInstance = new Map();
+    // forceNew (2026-11): instanceKeys of RETIRED generations (an SDK forceNew teardown).
+    // A retired instance's late traffic (a draining child's heartbeat/completion) may still
+    // write into its OWN old dir (history stays consistent) but must NEVER move the live
+    // pointers (`_currentSid` / `_currentSidByInstance` / `_onSessionResolved`) — else the
+    // fresh generation's bound cold-load flips back to the old conversation. Append-only;
+    // random keys never collide with a future generation. Cleared only by resetSessions().
+    this._retiredInstances = new Set();
     // Contract with the caller: originalMessages held here must be a reference
     // the caller never MUTATES (the interceptor's original array is only ever
     // REASSIGNED away from body.messages, never mutated in place — safe).
@@ -114,10 +132,12 @@ export class V2Writer {
     this._adopted = new Set();
     // In-terminal /resume switch (SessionStart hook, source:'resume'): the
     // next MAIN request must be re-routed to the resumed conversation's dir.
-    // Per-project (was a single value): keyed by sanitized project, so a scoped
-    // reset clears only the switched-away project's pending switch. Value:
-    // {transcriptUuid, hookSid}; consumed one-shot on the next main request.
-    this._pendingResumeSwitch = new Map();
+    // Two-level: project → instance. The instance level (R1) stops a same-cwd
+    // twin from consuming the OTHER twin's armed switch; '' is the legacy
+    // (no-instance) slot, preserving the old per-project behavior for producers
+    // that carry no x-ccv-instance. Value: {transcriptUuid, hookSid}; consumed
+    // one-shot on the matching instance's next main request.
+    this._pendingResumeSwitch = new Map(); // projSan → Map<instKeyOr'', {transcriptUuid, hookSid}>
   }
 
   /** P2: true once any session's FIRST main wire already carried assistant
@@ -190,6 +210,11 @@ export class V2Writer {
     // live window's dir — it just doesn't stamp ownership of its own.
     const prev = latestMainSession(projectDir, { skipForeignLive: true });
     if (!prev || !prev.sessionId) return null;
+    // Same-process twin guard: the pid-level skipForeignLive above is blind to a
+    // same-cwd twin of THIS process (shared pid). A `-c`/history-replay on one
+    // twin must never adopt the OTHER twin's live dir (two Journals, one file).
+    if (this._isBoundToOtherInstance(basename(prev.dir), project,
+      (entry && typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null)) return null;
     if (this._claimsEnabled()) {
       if (!acquireSessionClaim(prev.dir).ok) return null;
       // Record immediately (not only in _session): a throw between here and
@@ -199,6 +224,27 @@ export class V2Writer {
     return { dirName: basename(prev.dir), identityUUID: prev.sessionId };
   }
 
+  /** Per-instance fallback pointer for metadata-less routing (R3): the sid a
+   *  twin's heartbeat/countTokens should resolve to. Returns null when the
+   *  instance has not yet run a main turn — in that case the caller must NOT
+   *  fall back to the process-global `_currentSid` (that would write twin B's
+   *  cold-start traffic into twin A's dir). */
+  _currentSidFor(instKey) {
+    if (!instKey) return this._currentSid;
+    const cur = this._currentSidByInstance.get(instKey);
+    return cur ? cur.sid : null;
+  }
+
+  /** The sid an instance is CURRENTLY bound to (main-turn routing pointer), or null.
+   *  Read-only; used by the resume twin-ownership guard to tell "this instance owns the
+   *  conversation it is actively writing" apart from "this instance merely shares a
+   *  deterministic key with a dead prior author". */
+  currentSidForInstance(instKey) {
+    if (typeof instKey !== 'string' || !instKey) return null;
+    const cur = this._currentSidByInstance.get(instKey);
+    return cur ? cur.sid : null;
+  }
+
   /** In-terminal /resume signal (interceptor.markSessionStart → here): arm a
    *  one-shot routing switch. `transcriptUuid` is the resumed conversation's
    *  stable identity (transcript basename); `hookSid` is the fresh session
@@ -206,20 +252,52 @@ export class V2Writer {
    *  conversation was never recorded by ccv (it must not be the old wire sid:
    *  `<ts>_<oldSid>` would be re-resolved back to the OLD dir by
    *  resolveSessionDirName). Last-wins across repeated /resume picks. */
-  beginResumeSwitch({ transcriptUuid, hookSid, project } = {}) {
+  beginResumeSwitch({ transcriptUuid, hookSid, project, instanceKey = null } = {}) {
     try {
       if (!transcriptUuid || typeof transcriptUuid !== 'string') return;
       // Keyed by the project the resumed conversation belongs to (defaults to the
       // currently-bound project — markSessionStart's guard already ensures the
       // hook's cwd matches it). Per-project so a scoped reset clears only that one.
       const key = sanitizePathComponent(project || this._projectFn() || '');
-      this._pendingResumeSwitch.set(key, {
+      const inst = (typeof instanceKey === 'string' && /^ccv-[0-9a-f]+$/.test(instanceKey)) ? instanceKey : '';
+      let bucket = this._pendingResumeSwitch.get(key);
+      if (!bucket) { bucket = new Map(); this._pendingResumeSwitch.set(key, bucket); }
+      // Last-wins across repeated /resume picks, but ONLY within the same
+      // (project, instance) — a twin must not clobber its sibling's armed switch.
+      bucket.set(inst, {
         transcriptUuid,
         hookSid: (typeof hookSid === 'string' && hookSid) ? hookSid : null,
       });
     } catch (err) {
       reportSwallowed('v2-write.resume-switch', err);
     }
+  }
+
+  /** Same-process live-bind guard (R1/R7): is `dirName` currently bound in THIS
+   *  process's `_sessions` to a DIFFERENT instance? The pid-level `owner.lock`
+   *  guard (`isForeignLiveOwned`) is blind to same-cwd twins — both share this
+   *  process's pid, so a twin adopting the other's live dir would produce two
+   *  Journal objects writing the same file with independently-seeded seqs
+   *  (certain corruption). Used by the resume-switch and `-c` adoption paths to
+   *  fall back to fork semantics instead. */
+  _isBoundToOtherInstance(dirName, project, instKey) {
+    const projectDir = join(this._logDir, sanitizePathComponent(project));
+    const targetDir = join(projectDir, this._sessionsDirName, dirName);
+    for (const s of this._sessions.values()) {
+      if (s && s.paths && s.paths.dir === targetDir) {
+        const owner = s._instanceKey || null;
+        // Same identity → not a conflict (a twin re-joining its OWN dir).
+        if (owner === instKey && owner !== null) return false;
+        // Owner is a known twin but the caller is a DIFFERENT instance, OR the
+        // caller carries no instance identity while the dir is owned by one
+        // (a legacy producer must not re-bind a twin's dir — that is the very
+        // "two Journals, one file" this guard exists to prevent). Both conflict.
+        // An unattributed legacy binding (owner null) with an unattributed caller
+        // (instKey null) is allowed to preserve legacy self re-join semantics.
+        return !(owner === null && instKey === null);
+      }
+    }
+    return false;
   }
 
   /**
@@ -238,10 +316,13 @@ export class V2Writer {
    *   it, not by the incoming `sid`
    * @returns {{dirName:string, identityUUID:string}}
    */
-  _resolveResumeSwitch(sid, project, prevSid = null) {
+  _resolveResumeSwitch(sid, project, prevSid = null, instanceKey = null) {
     const key = this._projKey(project);
-    const sw = this._pendingResumeSwitch.get(key);
-    this._pendingResumeSwitch.delete(key); // one-shot
+    const bucket = this._pendingResumeSwitch.get(key);
+    const inst = (typeof instanceKey === 'string' && instanceKey) ? instanceKey : '';
+    const sw = bucket ? bucket.get(inst) : null;
+    if (bucket) { bucket.delete(inst); if (bucket.size === 0) this._pendingResumeSwitch.delete(key); } // one-shot
+    if (!sw) return null;
     const projectDir = join(this._logDir, sanitizePathComponent(project));
     let dirName = resolveSessionDirName(projectDir, sw.transcriptUuid, this._sessionsDirName);
     let identity = sw.transcriptUuid;
@@ -251,9 +332,13 @@ export class V2Writer {
       // unconditional skipForeignLive): even a non-claiming writer must never
       // re-bind into a dir another live window is writing. The acquire below
       // additionally arbitrates for claiming writers.
+      // Same-process twin guard: the pid-level check above is blind to two
+      // same-cwd instances of THIS process (shared pid) — also refuse a dir
+      // currently bound to a different instance here (manual /resume in a twin).
       if (isForeignLiveOwned(targetDir)
+        || this._isBoundToOtherInstance(dirName, project, inst)
         || (this._claimsEnabled() && !acquireSessionClaim(targetDir).ok)) {
-        dirName = null; // live foreign owner — never share its journal
+        dirName = null; // live foreign owner / live twin — never share its journal
       }
     }
     if (dirName) {
@@ -459,13 +544,24 @@ export class V2Writer {
       if (!this._diskOk()) return null;
 
       const parsed = parseUserId(entry.body && entry.body.metadata && entry.body.metadata.user_id);
+      // Instance this request belongs to (same-cwd twin routing). Extracted once
+      // at the top so the resume-switch/adoption/metadata-less paths all agree.
+      const instKey = (typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null;
+      // forceNew (2026-11): a RETIRED generation (SDK forceNew teardown) may still be
+      // draining — its trailing completion should land in its OWN old dir, but it must
+      // never move `_currentSid` / `_currentSidByInstance` / `_onSessionResolved`, and its
+      // metadata-less traffic must not be routed or held (it would misroute into the fresh
+      // generation's dir). Read once; gates below.
+      const retired = !!(instKey && this._retiredInstances.has(instKey));
       // Captured BEFORE the reassignment below: when a /resume switch arrives
       // on a FRESH wire sid, the departing conversation's binding is keyed by
       // this previous sid, not the incoming one (review P2 — the fresh-sid
       // variant would otherwise leak the old dir's claim + map entry until
       // process exit, blocking other windows from resuming that ended
-      // conversation).
-      const prevSid = this._currentSid;
+      // conversation). Per-instance (R3): a twin must depart from ITS OWN
+      // previous sid, not the process-global last-writer — otherwise twin A's
+      // /resume would resolve against twin B's binding and release B's claim.
+      const prevSid = this._currentSidFor(instKey);
       let sid;
       if (parsed) {
         sid = parsed.sessionId;
@@ -484,8 +580,19 @@ export class V2Writer {
         const entryProject = (typeof entry._resumeProject === 'string' && entry._resumeProject)
           ? entry._resumeProject
           : this._projectFn();
-        if (entryProject && entryProject === this._projectFn()) {
+        if (entryProject && entryProject === this._projectFn() && !retired) {
           this._currentSid = sid;
+        }
+        // Per-instance pointer (R3): pin the sid for THIS instance so its later
+        // metadata-less requests route back here. MAIN-AGENT GATE mirrors the
+        // `_onSessionResolved` gate below: only the main interactive claude's own
+        // turn sets it. A teammate/subagent child INHERITS the parent's
+        // `x-ccv-instance` but runs its OWN conversation/sid — without this gate
+        // it would overwrite the parent instance's pointer with the teammate's
+        // sid, misrouting the parent's heartbeats into the teammate's session.
+        const isMainAgentTurn = entry.mainAgent === true && !entry.teammate && !entry.isHeartbeat && !entry.isCountTokens;
+        if (instKey && isMainAgentTurn && !retired) {
+          this._currentSidByInstance.set(instKey, { sid, project: entryProject });
         }
         // Feed the PTY sid index: this request's owning project just resolved a
         // concrete sessionId, so the PTY serving that project can be addressed by
@@ -499,10 +606,33 @@ export class V2Writer {
         // its OWN conversation/sid — without this gate it would overwrite the parent record's
         // sessionId with the teammate's sid, mis-pinning the instance. Teammate / heartbeat /
         // count_tokens requests are skipped.
-        const isMainAgentTurn = entry.mainAgent === true && !entry.teammate && !entry.isHeartbeat && !entry.isCountTokens;
-        if (this._onSessionResolved && entryProject && isMainAgentTurn) {
-          const instKey = (typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null;
+        if (this._onSessionResolved && entryProject && isMainAgentTurn && !retired) {
           try { this._onSessionResolved(sid, entryProject, instKey); } catch (err) { reportSwallowed('v2-write.session-resolved', err); }
+        }
+      } else if (instKey) {
+        // forceNew (2026-11): a retired generation's metadata-less traffic is dropped, not
+        // routed (its pointer is gone) nor held (a held heartbeat would later flush into the
+        // NEW generation's dir). Returning null writes nothing — clean for a dead generation.
+        if (retired) return null;
+        // Metadata-less request from a known instance: route to that instance's
+        // own session. If it has not run a main turn yet, there is NO pointer —
+        // deliberately do NOT fall back to the process-global `_currentSid`,
+        // which would write twin B's cold-start heartbeat into twin A's dir.
+        const own = this._currentSidByInstance.get(instKey);
+        if (own) {
+          sid = own.sid;
+        } else {
+          let bucket = this._pendingNoSidByInstance.get(instKey);
+          if (!bucket) { bucket = { project, items: [] }; this._pendingNoSidByInstance.set(instKey, bucket); }
+          if (bucket.items.length < 64) {
+            bucket.items.push({ entry, originalMessages, rid: entry.requestId || null });
+            return null;
+          }
+          // Bucket overflow safety valve: mint a throwaway noid sid for THIS
+          // request only. Deliberately NOT written into _currentSidByInstance —
+          // this branch may be a heartbeat/teammate (not a gated main turn), and
+          // a noid must never become the instance's durable pointer.
+          sid = `noid-${process.pid}-${Date.now()}`;
         }
       } else if (this._currentSid) {
         sid = this._currentSid; // §8.3 fallback: route metadata-less requests to the active session
@@ -532,7 +662,9 @@ export class V2Writer {
         // probes and heartbeats wear main-agent body shapes but are not the
         // user's resumed turn — consuming on them would re-bind too early
         // with the same result, but keep the gate strict for clarity).
-        if (this._pendingResumeSwitch.has(this._projKey(project)) && entry.mainAgent
+        // Instance-keyed (R1): a twin consumes only ITS OWN armed switch.
+        const rsBucket = this._pendingResumeSwitch.get(this._projKey(project));
+        if (rsBucket && rsBucket.has(instKey || '') && entry.mainAgent
           && !entry.isCountTokens && !entry.isHeartbeat) {
           // Locally guarded (review P2): the switch resolution does dir-scan
           // fs work (resolveSessionDirName → readdirSync) whose residual
@@ -540,7 +672,7 @@ export class V2Writer {
           // outer catch and drop THIS request entirely — the resumed
           // conversation's first main turn. A failure must degrade to normal
           // routing (recorded in the current dir), never to a lost entry.
-          try { adoptTarget = this._resolveResumeSwitch(sid, project, prevSid); }
+          try { adoptTarget = this._resolveResumeSwitch(sid, project, prevSid, instKey); }
           catch (err) { reportSwallowed('v2-write.resume-switch-apply', err); }
         }
         if (!adoptTarget) {
@@ -608,9 +740,16 @@ export class V2Writer {
 
       // Flush requests that arrived before the first sid (they belong here).
       // Their handles are parked in _lateHandles so a completion that arrives
-      // after the flush still gets its done line (folded by rid).
-      if (this._pendingNoSid.length > 0) {
+      // after the flush still gets its done line (folded by rid). R3: flush the
+      // legacy no-instance bucket AND only THIS request's instance bucket — a
+      // twin's held heartbeats must never be flushed into the other twin's dir.
+      const instBucket = instKey ? this._pendingNoSidByInstance.get(instKey) : null;
+      if (this._pendingNoSid.length > 0 || (instBucket && instBucket.items.length > 0)) {
         const pending = this._pendingNoSid.splice(0);
+        if (instBucket) {
+          pending.push(...instBucket.items);
+          this._pendingNoSidByInstance.delete(instKey);
+        }
         for (const p of pending) {
           const pseq = this._ingestInto(s, sid, p.entry, p.originalMessages);
           const prid = p.rid; // captured at hold time — the seam may have deleted entry.requestId by now
@@ -1041,6 +1180,8 @@ export class V2Writer {
         s.resolver.reset();
       }
       this._currentSid = null;
+      this._currentSidByInstance.clear();
+      this._pendingNoSidByInstance.clear();
     } catch (err) {
       reportSwallowed('v2-write.reset', err);
     }
@@ -1085,14 +1226,21 @@ export class V2Writer {
         }
       }
       this._pendingNoSid.length = 0;
+      this._pendingNoSidByInstance.clear();
       this._lateHandles.clear();
       // _currentSid only clears when it pointed at the dropped project — the
       // background project's live "current" pointer survives a scoped reset.
       if (matchAll) {
         this._currentSid = null;
+        this._currentSidByInstance.clear();
       } else {
         const cur = this._currentSid ? this._sessions.get(this._currentSid) : null;
         if (this._currentSid && !cur) this._currentSid = null;
+        // Drop only the switched-away project's per-instance pointers (mirrors
+        // the _currentSid rule): a background project's twin keeps its pointer.
+        for (const [k, v] of [...this._currentSidByInstance]) {
+          if (sanitizePathComponent(v.project || '') === targetSan) this._currentSidByInstance.delete(k);
+        }
       }
       // `-c` adoption latch + pending /resume switch, both per-project now: a
       // scoped reset clears only the switched-away project's latch (a background
@@ -1100,6 +1248,7 @@ export class V2Writer {
       if (matchAll) {
         this._adopted.clear();
         this._pendingResumeSwitch.clear();
+        this._retiredInstances.clear(); // full reset: no retired generation survives a workspace wipe
       } else {
         this._adopted.delete(targetSan);
         this._pendingResumeSwitch.delete(targetSan);
@@ -1107,6 +1256,85 @@ export class V2Writer {
     } catch (err) {
       reportSwallowed('v2-write.reset-sessions', err);
     }
+  }
+
+  /** Same-project forceNew relaunch (R2): a NEW claude instance is being spawned
+   *  in the SAME cwd as a live twin. The twin keeps its session bindings
+   *  (`_sessions`) and owner.lock claims (`_claimedDirs`) — releasing them would
+   *  expose its live dirs to the sibling's cold-load/adoption. Only
+   *  launch-boundary state that could hijack or misroute the FRESH twin is
+   *  cleared: held pre-sid traffic, late handles, and any armed /resume switch
+   *  (which belongs to the outgoing launch context, not the new twin). The
+   *  `-c` adoption latch is intentionally LEFT SET — forceNew never adopts an
+   *  old folder, and clearing it would wrongly re-enable adoption for the
+   *  still-live twin. Same-process mis-adoption is prevented by the
+   *  `_isBoundToOtherInstance` guard in _resolveAdoption/_resolveResumeSwitch,
+   *  not by poisoning the project latch. */
+  resetForLiveRelaunch(targetProject) {
+    try {
+      const key = this._projKey(targetProject);
+      this._pendingNoSid.length = 0;
+      this._pendingNoSidByInstance.clear();
+      // Late handles are _openHandle-counted when parked; a bare clear() would
+      // leak their in-flight count and wedge shard rotation for the surviving
+      // twin's session (resetSessions gets away with it only because it also
+      // drops the sessions). Close each without re-arming rotation first.
+      for (const h of this._lateHandles.values()) this._closeHandle(h, { rotate: false });
+      this._lateHandles.clear();
+      this._pendingResumeSwitch.delete(key);
+      // Clear the process-global current pointer only when it pointed at this
+      // project (mirrors the scoped-reset terminal state), so the fresh twin's
+      // pre-sid traffic cannot follow it into the OLD twin's dir. The
+      // per-instance pointers are kept — they are how the still-live twin's own
+      // metadata-less traffic keeps routing to its own dir.
+      if (this._currentSid) {
+        const cur = this._sessions.get(this._currentSid);
+        if (!cur || this._projKey(cur.project || '') === key) this._currentSid = null;
+      }
+      // DELIBERATELY NOT touched: _sessions, _claimedDirs, _adopted,
+      // _currentSidByInstance.
+    } catch (err) {
+      reportSwallowed('v2-write.reset-relaunch', err);
+    }
+  }
+
+  /**
+   * Retire a CLOSED random-key SDK session (2026-11). Marks the instanceKey retired so
+   * its late traffic stops moving the live pointers, and clears the per-instance routing
+   * state the closed session held.
+   *
+   * Call ONLY from the explicit SDK close path (routes/resume.js, wasFreshKey===true) —
+   * a random per-generation key is never re-created, so retirement is permanent and safe.
+   * Never from a launch or initForWorkspace/resetForLiveRelaunch: a same-cwd sibling stays
+   * LIVE and depends on its per-instance pointers surviving a relaunch.
+   */
+  retireInstance(instKey) {
+    if (typeof instKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instKey)) return;
+    this._retiredInstances.add(instKey);
+    // Cap the append-only set (random keys never collide with a future generation).
+    if (this._retiredInstances.size > 64) this._retiredInstances.delete(this._retiredInstances.values().next().value);
+    // The retired instance's own routing state: its metadata-less traffic must not route
+    // to its old sid, and any held cold-start bucket must never flush into the new dir.
+    const prior = this._currentSidByInstance.get(instKey);
+    this._currentSidByInstance.delete(instKey);
+    this._pendingNoSidByInstance.delete(instKey);
+    if (prior && this._currentSid === prior.sid) this._currentSid = null;
+  }
+
+  /**
+   * Release a CLOSED instance's per-instance routing state WITHOUT retiring the key
+   * (2026-11, same-cwd sibling close). Unlike retireInstance this does NOT add the key to
+   * `_retiredInstances`: a DETERMINISTIC cwd-derived key is re-created by a later normal
+   * relaunch, so retiring it would permanently gate the legitimate rebuilt session. Only
+   * clears the closed instance's per-instance pointer + cold-start bucket so its draining
+   * traffic stops moving the live pointers. Used by the SDK close path for wasFreshKey=false.
+   */
+  releaseInstance(instKey) {
+    if (typeof instKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instKey)) return;
+    const prior = this._currentSidByInstance.get(instKey);
+    this._currentSidByInstance.delete(instKey);
+    this._pendingNoSidByInstance.delete(instKey);
+    if (prior && this._currentSid === prior.sid) this._currentSid = null;
   }
 
   /** Flush pending queue writes (tests / graceful shutdown). */

@@ -219,6 +219,43 @@ describe('pty-manager multi-instance (instanceKey-keyed Map)', () => {
     assert.equal(listLivePtys()[0].cwd, '/proj/fresh');
   });
 
+  it('spawnClaude resolves with the spawned record key (not activePtyKey)', async () => {
+    const a = await spawnClaude(9999, '/proj/a', [], '/bin/echo');
+    assert.ok(a && typeof a.key === 'string' && a.key.startsWith('ccv-'), 'returns the instanceKey');
+    assert.equal(a.ptyProcess, spawned[0], 'returns the spawned process too');
+    assert.equal(listLivePtys()[0].instanceKey, a.key, 'key matches the record');
+  });
+
+  it('ensurePtyForCwd returns the SPAWNED key even under a concurrent foreign spawn (race fix)', async () => {
+    const [r] = await Promise.all([
+      ensurePtyForCwd({ cwd: '/proj/a', proxyPort: 9999, claudePath: '/bin/echo' }),
+      // A concurrent spawn for ANOTHER cwd re-points activePtyKey mid-flight; the
+      // returned key must still belong to /proj/a's record.
+      spawnClaude(9999, '/proj/b', [], '/bin/echo'),
+    ]);
+    assert.equal(r.spawned, true);
+    const recA = listLivePtys().find(p => p.cwd === '/proj/a');
+    assert.equal(r.key, recA.instanceKey, 'key belongs to the spawned record, not the foreign one');
+  });
+
+  it('ensurePtyForCwd forceNew spawns a second instance for a live same-cwd claude', async () => {
+    await spawnClaude(9999, '/proj/solo', [], '/bin/echo'); // live claude
+    const r = await ensurePtyForCwd({ cwd: '/proj/solo', proxyPort: 9999, claudePath: '/bin/echo', forceNew: true });
+    assert.equal(r.spawned, true, 'forceNew spawns instead of attaching');
+    assert.equal(r.attached, false);
+    assert.equal(spawned.length, 2, 'a second process exists for the same cwd');
+    assert.equal(listLivePtys().filter(p => p.cwd === '/proj/solo').length, 2);
+    assert.equal(r.key, listLivePtys().filter(p => p.cwd === '/proj/solo')[1].instanceKey, 'returns the NEW record key');
+  });
+
+  it('forceNew launch then normal launch on the same cwd attaches to the newest live record', async () => {
+    const r1 = await ensurePtyForCwd({ cwd: '/proj/solo', proxyPort: 9999, claudePath: '/bin/echo', forceNew: true });
+    const r2 = await ensurePtyForCwd({ cwd: '/proj/solo', proxyPort: 9999, claudePath: '/bin/echo' });
+    assert.equal(r1.spawned, true);
+    assert.equal(r2.attached, true, 'a normal launch still reuses a live record');
+    assert.equal(spawned.length, 1);
+  });
+
   it('ensurePtyForCwd ignores a same-cwd SHELL record (shell is not a claude to reuse)', async () => {
     // A same-cwd shell record must not satisfy the "already-live claude" check.
     await spawnClaude(9999, '/proj/solo', [], '/bin/echo');
@@ -227,6 +264,36 @@ describe('pty-manager multi-instance (instanceKey-keyed Map)', () => {
     const r = await ensurePtyForCwd({ cwd: '/proj/solo', proxyPort: 9999, claudePath: '/bin/echo' });
     // No LIVE claude → spawns fresh (the exited record does not count).
     assert.equal(r.spawned, true);
+  });
+
+  it('forceNew marks the spawned record freshLaunch:true; a normal launch/spawn does not', async () => {
+    // forceNew (file explorer "New Workspace (Session)"): the spawned record carries the
+    // freshLaunch mark so /events suppresses the same-cwd cold-load fallback for it.
+    const r = await ensurePtyForCwd({ cwd: '/proj/fresh-mark', proxyPort: 9999, claudePath: '/bin/echo', forceNew: true });
+    const marked = listLivePtys().find(p => p.instanceKey === r.key);
+    assert.equal(marked.freshLaunch, true, 'forceNew record is marked');
+    // A plain spawnClaude / a non-forceNew ensurePtyForCwd must NOT be marked.
+    const plain = await spawnClaude(9999, '/proj/plain', [], '/bin/echo');
+    assert.equal(listLivePtys().find(p => p.instanceKey === plain.key).freshLaunch, false, 'plain spawn unmarked');
+    const cold = await ensurePtyForCwd({ cwd: '/proj/cold', proxyPort: 9999, claudePath: '/bin/echo' });
+    assert.equal(listLivePtys().find(p => p.instanceKey === cold.key).freshLaunch, false, 'non-forceNew launch unmarked');
+  });
+
+  it('setPtySessionIdForInstance clears freshLaunch once the instance owns a session (first main turn)', async () => {
+    const r = await ensurePtyForCwd({ cwd: '/proj/lifecycle', proxyPort: 9999, claudePath: '/bin/echo', forceNew: true });
+    assert.equal(listLivePtys().find(p => p.instanceKey === r.key).freshLaunch, true);
+    // The writer binds the sid on the instance's first main turn → the freshLaunch mark's
+    // job is done; a later chip-click / reload must serve that conversation normally.
+    setPtySessionIdForInstance(r.key, 'sid-fresh-1');
+    assert.equal(listLivePtys().find(p => p.instanceKey === r.key).freshLaunch, false, 'mark cleared on first session bind');
+  });
+
+  it('forceNew mark survives on the record until a session binds (not cleared by re-attach)', async () => {
+    const r1 = await ensurePtyForCwd({ cwd: '/proj/persist', proxyPort: 9999, claudePath: '/bin/echo', forceNew: true });
+    // A subsequent NORMAL launch attaches to the live record (no respawn) and must not clear it.
+    const r2 = await ensurePtyForCwd({ cwd: '/proj/persist', proxyPort: 9999, claudePath: '/bin/echo' });
+    assert.equal(r2.attached, true);
+    assert.equal(listLivePtys().find(p => p.instanceKey === r1.key).freshLaunch, true, 'attach does not clear the mark');
   });
 
   it('concurrent ensurePtyForCwd calls on the same cwd do NOT double-spawn (launch TOCTOU guard)', async () => {
