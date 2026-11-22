@@ -32,9 +32,23 @@ describe('UpdateModal', () => {
     assert.ok(source.includes("ui.update.restart"));
     assert.ok(!source.includes('!important'));
   });
+  it('shows a warning (not an error) and a danger "continue anyway" button when another instance is live', () => {
+    // The otherInstance flow used to hide the start button entirely, which locked the
+    // user out of updating from the very instance they were using. Lock in the new
+    // contract: warning alert + danger button + Modal.confirm + force:true payload.
+    assert.ok(source.includes("t('ui.update.otherInstanceWarning')"));
+    assert.ok(source.includes("t('ui.update.otherInstanceContinue')"));
+    assert.ok(source.includes("t('ui.update.otherInstanceConfirmTitle')"));
+    assert.ok(source.includes("t('ui.update.otherInstanceConfirmContent')"));
+    assert.ok(source.includes("t('ui.update.otherInstanceConfirmOk')"));
+    assert.ok(source.includes("onStart({ force: true })"));
+    assert.ok(!source.includes("t('ui.update.otherInstance')"), 'old key retired');
+    assert.ok(!source.includes('!anotherInstance && <Button'), 'the start button must not be hidden');
+    assert.ok(appSource.includes("body: JSON.stringify({ force })"));
+  });
   it('provides all supported locales for every new control', () => {
     const locales = ['zh', 'en', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da', 'pl', 'ru', 'ar', 'no', 'pt-BR', 'th', 'tr', 'uk'];
-    for (const key of ['check', 'checkHint', 'pnpm', 'start', 'retry', 'downloading', 'installing', 'ready', 'restartWarning', 'restart', 'restarting', 'restartTimeout', 'restartFailed', 'manual', 'otherInstance', 'remoteRestart', 'manualRestart', 'upToDate', 'later', 'newBadge', 'failed']) {
+    for (const key of ['check', 'checkHint', 'pnpm', 'start', 'retry', 'downloading', 'installing', 'ready', 'restartWarning', 'restart', 'restarting', 'restartTimeout', 'restartFailed', 'manual', 'otherInstanceWarning', 'otherInstanceContinue', 'otherInstanceConfirmTitle', 'otherInstanceConfirmContent', 'otherInstanceConfirmOk', 'remoteRestart', 'manualRestart', 'upToDate', 'later', 'newBadge', 'failed']) {
       const match = i18n.match(new RegExp(`"ui\\.update\\.${key}": \\{([\\s\\S]*?)\\n  \\}`));
       assert.ok(match, `missing ui.update.${key}`);
       for (const locale of locales) assert.ok(match[1].includes(`"${locale}":`), `${key} missing ${locale}`);

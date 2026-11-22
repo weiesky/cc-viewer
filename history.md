@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(server+web): **检测到其它 cc-viewer 实例时更新流程不再卡死** — 「版本信息」弹窗的 `another_instance` 错误改为警告提示，新增「仍要继续更新」按钮（danger + 二次确认），确认后经 `POST /api/update/start { force: true }` 绕过多实例端口扫描继续下载/重启；文案明确说明服务重启将中断当前会话与其它实例的连接。Coverage: `update-job.test.js`, `update-routes.test.js`, `update-modal.test.js`。
+
 - fix(server): **同 cwd SDK 兄弟会话 [对话] 面板冷挂载窗口不再串话** — bound 视图连接在 header 首轮轮询解析出 `boundInstance` 之前，服务端在 attach/connect 时直接把该客户端的视图实例戳补齐为 bound cwd 的主实例，不再等客户端水合，两个同 cwd 会话的 frame(modal/queue/spinner/系统行)不再互相送达。Coverage: `ws-instance-isolation.test.js`。
 
 - feat(server): **SDK 模式同 cwd「新建工作区(会话)」改为并列 +1,不再替换旧会话** — 同一目录可并存多个 SDK 会话,header 出现两个可切换 tab(项目 [1] [2]),各自收发互不串;普通启动仍复用该目录的稳定会话。配套隔离:resume 属主守卫纳入 SDK 存活性并按当前持有者判定、并发 resume 去重、关闭会话不误伤存活兄弟。Coverage: `sdk-multi-session-route.test.js`, `sdk-force-new.test.js`, `v2-retire-instance.test.js`, `resume-route.test.js`, `live-processes-close.test.js`, `sdk-session-registry.test.js`。

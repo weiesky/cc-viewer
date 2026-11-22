@@ -221,7 +221,7 @@ export class UpdateJob {
     try { await handler(this.state.version); }
     catch (err) { this.setState({ status: 'restart_required', error: err.message }); throw err; }
   }
-  async start() {
+  async start({ force = false } = {}) {
     if (['checking', 'downloading', 'installing', 'restarting', 'restart_required'].includes(this.state.status)) return this.getState();
     if (!this.state.version || !this.state.release) {
       const state = await this.check();
@@ -237,11 +237,11 @@ export class UpdateJob {
           return this.getState();
         }
       }
-      this.setState({ status: 'downloading', error: null, downloaded: 0, total: null });
+      this.setState({ status: 'downloading', error: null, errorCode: null, downloaded: 0, total: null });
       const directory = dirname(UPDATE_STATE_FILE);
       let file;
       try {
-        if (await (this.options.hasOtherInstanceImpl || hasOtherNormalInstance)({ currentPort: this.options.currentPort })) throw updateError('Exit other cc-viewer instances before updating', 'another_instance');
+        if (!force && await (this.options.hasOtherInstanceImpl || hasOtherNormalInstance)({ currentPort: this.options.currentPort })) throw updateError('Exit other cc-viewer instances before updating', 'another_instance');
         const root = await (this.options.resolveRootImpl || resolveNpmInstallRoot)();
         const actualRoot = await realpath(root);
         await withFileLockAsync(join(dirname(UPDATE_STATE_FILE), 'update-install.lock'), async () => {

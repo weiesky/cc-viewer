@@ -35,8 +35,21 @@ async function start(req, res, parsedUrl, isLocal, deps) {
     json(res, 200, deps.updateJob.getState());
     return;
   }
-  deps.updateJob.start().catch((err) => reportSwallowed('update.start', err));
-  json(res, 202, deps.updateJob.getState());
+  // Read an optional { force: true } body so the UI can let the user bypass the
+  // "another instance is running" guard after an explicit confirmation. Body
+  // parse failure / empty body / non-stream req (tests) all fall back to
+  // force=false (legacy behavior).
+  const finish = (body) => {
+    let force = false;
+    try { force = body ? JSON.parse(body)?.force === true : false; }
+    catch { /* tolerate non-JSON / empty body as force=false */ }
+    deps.updateJob.start({ force }).catch((err) => reportSwallowed('update.start', err));
+    json(res, 202, deps.updateJob.getState());
+  };
+  if (typeof req?.on !== 'function') { finish(''); return; }
+  let body = '';
+  req.on('data', (chunk) => { body += chunk; if (body.length > 64 * 1024) req.destroy(); });
+  req.on('end', () => finish(body));
 }
 
 async function restart(req, res, parsedUrl, isLocal, deps) {

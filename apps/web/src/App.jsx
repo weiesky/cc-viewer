@@ -131,10 +131,14 @@ class App extends AppBase {
     } catch (err) { this.setState({ updateJob: { status: 'error', error: err.message } }); }
   };
 
-  startUpdate = async () => {
+  startUpdate = async ({ force = false } = {}) => {
     this.setState({ updateJob: { ...this.state.updateJob, status: this.state.updateJob.version ? 'downloading' : 'checking', error: null } });
     try {
-      const res = await fetch(apiUrl('/api/update/start'), { method: 'POST' });
+      const res = await fetch(apiUrl('/api/update/start'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
       const data = await res.json();
       this._applyUpdateJob(res.ok ? data : { status: 'error', error: data.error || `HTTP ${res.status}`, errorCode: data.errorCode || data.code });
     } catch (err) { this.setState({ updateJob: { status: 'error', error: err.message } }); }

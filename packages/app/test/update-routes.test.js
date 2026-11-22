@@ -63,6 +63,38 @@ describe('update routes', () => {
     await route('/api/update/restart').handler({ headers: {} }, second, {}, true, { updateJob, canRestartProcess: true, restartProcess: async () => { throw new Error('duplicate'); } });
     assert.equal(second.body.status, 'restarting', 'duplicate requests observe the one-shot restart');
   });
+  it('forwards a force:true body to updateJob.start (and defaults to false)', async () => {
+    const calls = [];
+    const deps = { canRestartProcess: true, updateJob: { ...job(), start: async (opts) => { calls.push(opts); return { status: 'downloading' }; } } };
+    // Legacy call without a stream-shaped req (no `on`) → force defaults to false.
+    await route('/api/update/start').handler({ headers: {} }, response(), {}, true, deps);
+    // Simulate a real POST body carrying { force: true }.
+    const listeners = {};
+    const fakeReq = { headers: {}, on(event, cb) { listeners[event] = cb; } };
+    const res2 = response();
+    const pending = route('/api/update/start').handler(fakeReq, res2, {}, true, deps);
+    listeners.data?.(Buffer.from(JSON.stringify({ force: true })));
+    listeners.end?.();
+    await pending;
+    assert.deepEqual(calls, [{ force: false }, { force: true }]);
+  });
+  it('treats non-JSON bodies and wrong-typed force as force:false', async () => {
+    const calls = [];
+    const deps = { canRestartProcess: true, updateJob: { ...job(), start: async (opts) => { calls.push(opts); return { status: 'downloading' }; } } };
+    const post = async (text) => {
+      const listeners = {};
+      const fakeReq = { headers: {}, on(event, cb) { listeners[event] = cb; } };
+      const pending = route('/api/update/start').handler(fakeReq, response(), {}, true, deps);
+      if (text !== null) listeners.data?.(Buffer.from(text));
+      listeners.end?.();
+      await pending;
+    };
+    await post('not json {{{');                 // malformed JSON → catch fallback
+    await post('{"force":"true"}');             // string, not boolean → strict === true rejects
+    await post('{"force":1}');                  // number, not boolean → strict === true rejects
+    await post('');                             // empty body
+    assert.deepEqual(calls, [{ force: false }, { force: false }, { force: false }, { force: false }]);
+  });
   it('does not launch updates while stopping', async () => {
     const res = response();
     await route('/api/update/start').handler({ headers: {} }, res, {}, true, { updateJob: job(), isRuntimeStopping: true });

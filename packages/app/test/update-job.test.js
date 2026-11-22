@@ -214,4 +214,25 @@ describe('UpdateJob state machine', () => {
     assert.equal((await job.start()).status, 'restart_required');
     assert.equal(attempts, 1);
   });
+  it('rejects start when another instance is live, unless force: true', async (t) => {
+    const root = await fakeRoot(t);
+    const mkJob = () => new UpdateJob({ disableRestore: true,
+      checkImpl: async () => ({ status: 'available', currentVersion: getCurrentVersion(), remoteVersion: VERSION, release: release(Buffer.from('x')) }),
+      hasOtherInstanceImpl: async () => true,
+      resolveRootImpl: async () => root,
+      downloadImpl: async ({ directory }) => { await mkdir(directory, { recursive: true }); const file = join(directory, 'pkg.tgz'); await writeFile(file, 'package'); return file; },
+    });
+    // Default (force=false): blocked by another_instance
+    const blocked = mkJob();
+    await blocked.check();
+    const blockedState = await blocked.start();
+    assert.equal(blockedState.status, 'error');
+    assert.equal(blockedState.errorCode, 'another_instance');
+    // force=true: bypasses the probe and proceeds to download
+    const forced = mkJob();
+    await forced.check();
+    const forcedState = await forced.start({ force: true });
+    assert.equal(forcedState.status, 'restart_required');
+    assert.equal(forcedState.errorCode, null);
+  });
 });

@@ -31,7 +31,9 @@ export default function UpdateModal({ open, onCancel, currentVersion, method, st
       {state?.status === 'installing' && <><p>{t('ui.update.installing')}</p><Progress percent={0} status="active" showInfo={false} /></>}
       {state?.status === 'restart_required' && <Alert type="success" showIcon message={t('ui.update.ready', { version })} description={t('ui.update.restartWarning')} />}
       {state?.status === 'restart_required' && state.error && <Alert type="error" showIcon message={state.error} />}
-      {state?.status === 'error' && <Alert type="error" showIcon message={t('ui.update.failed')} description={anotherInstance ? t('ui.update.otherInstance') : state.error} />}
+      {state?.status === 'error' && (anotherInstance
+        ? <Alert type="warning" showIcon message={t('ui.update.failed')} description={t('ui.update.otherInstanceWarning')} />
+        : <Alert type="error" showIcon message={t('ui.update.failed')} description={state.error} />)}
       {manual && <><p className={styles.muted}>{t('ui.update.manual')}</p><code style={codeStyle}>npm install -g cc-viewer@latest --registry=https://registry.npmjs.org</code></>}
       {restartError && <Alert type="error" showIcon message={restartError} />}
     </>;
@@ -43,7 +45,9 @@ export default function UpdateModal({ open, onCancel, currentVersion, method, st
       {content}
       <div className={styles.actions}>
         {method === 'npm' && !restarting && state?.status !== 'restart_required' && !manual && <Button onClick={onCheck} loading={state?.status === 'checking'} disabled={busy}>{t('ui.update.check')}</Button>}
-        {method === 'npm' && !restarting && version && state?.status !== 'restart_required' && !manual && !anotherInstance && <Button type="primary" onClick={onStart} disabled={busy} loading={state?.status === 'downloading' || state?.status === 'installing'}>{state?.status === 'error' ? t('ui.update.retry') : t('ui.update.start')}</Button>}
+        {method === 'npm' && !restarting && version && state?.status !== 'restart_required' && !manual && (anotherInstance
+          ? <Button type="primary" danger disabled={busy} loading={state?.status === 'downloading' || state?.status === 'installing'} onClick={() => Modal.confirm({ title: t('ui.update.otherInstanceConfirmTitle'), content: t('ui.update.otherInstanceConfirmContent'), okText: t('ui.update.otherInstanceConfirmOk'), okButtonProps: { danger: true }, cancelText: t('ui.cancel'), onOk: () => onStart({ force: true }) })}>{t('ui.update.otherInstanceContinue')}</Button>
+          : <Button type="primary" onClick={() => onStart()} disabled={busy} loading={state?.status === 'downloading' || state?.status === 'installing'}>{state?.status === 'error' ? t('ui.update.retry') : t('ui.update.start')}</Button>)}
         {method === 'npm' && state?.status === 'restart_required' && !restarting && canRestart !== false && <Button type="primary" danger onClick={() => Modal.confirm({ title: t('ui.update.restart'), content: t('ui.update.restartWarning'), okText: t('ui.update.restart'), okButtonProps: { danger: true }, cancelText: t('ui.update.later'), onOk: onRestart })}>{t('ui.update.restart')}</Button>}
         {restartingState && <span className={styles.muted}>{t('ui.update.restarting')}</span>}
         <Button href="https://github.com/weiesky/cc-viewer/releases" target="_blank" rel="noopener noreferrer">{t('ui.update.goReleases')}</Button>
