@@ -1,0 +1,61 @@
+packages/app/server/server.js
+  s_a1028d821541e2::t_0780a896cccfce 4252,4255-4271,4273-4275,4277-4281,4284
+  s_a1028d821541e2::t_2ea423ccb1a280 2828
+  s_a1028d821541e2::t_869d5ae92eaa54 4282-4283
+  s_a1028d821541e2::t_5ce13e608c4329 4253-4254,4272,4276
+  s_a1028d821541e2::t_3d44c5b7ebdd5b 2645
+  s_a1028d821541e2::t_e3d0599f9cdb11 2040-2043
+  s_a1028d821541e2::t_3222147c2dab69 2817
+packages/app/cli.js
+  s_a1028d821541e2::t_5ce13e608c4329 961
+  s_a1028d821541e2::t_82128d838408db 959-960
+packages/app/server/routes/resume.js
+  s_a1028d821541e2::t_be931e1adfe397 300-303,305
+packages/app/test/ws-instance-isolation.test.js
+  s_a1028d821541e2::t_ec65c7d19266c7 29-42
+  s_a1028d821541e2::t_b982be727171e9 8,10-13,15
+  s_a1028d821541e2::t_04c8446c1886c2 296-301
+  s_a1028d821541e2::t_d8e9e7edecce95 252,254-262,264-265,267-273,275-278,293-295,307-316,320-323,329-330,332-350,369,371,373-375
+  s_a1028d821541e2::t_e0fd3f9e9c5731 253
+  s_a1028d821541e2::t_5ce13e608c4329 318,331,365,372
+  s_a1028d821541e2::t_077af5efe7b993 20-23
+  s_a1028d821541e2::t_b96a953c44aceb 317,324-328
+  s_a1028d821541e2::t_3301b03f5da1b3 319,356-364,366-368,370
+  s_a1028d821541e2::t_5b6976470e9900 351-355
+  s_a1028d821541e2::t_8b4c13961f2cd8 279-292
+  s_a1028d821541e2::t_1b9e8f65f7590a 54-75
+  s_a1028d821541e2::t_42ac4134e8f580 302-306
+  s_a1028d821541e2::t_448b87fd4c32b7 263,266,274
+  s_a1028d821541e2::t_dd69634aec21c1 28
+history.md
+  s_a1028d821541e2::t_e653acc78ddf77 6
+  s_a1028d821541e2::t_8178394d36c6b7 5
+packages/app/server/lib/sdk-manager.js
+  s_a1028d821541e2::t_30384eb8ed7baf 104-108,118-122
+  s_a1028d821541e2::t_e235628ff55152 227-228
+  s_a1028d821541e2::t_f6ef4adffeed10 218-224
+  s_a1028d821541e2::t_55a2f5c2fece53 229
+  s_a1028d821541e2::t_edf7525b567e7e 123
+  s_a1028d821541e2::t_dd9b4ebc5e97ae 124,216-217,225-226,230-232
+  s_a1028d821541e2::t_c1e561b8996cd6 125
+.changeset/sdk-twin-attach-instance-cohere.md
+  s_a1028d821541e2::t_9035002df57ed9 1-7
+packages/app/test/sdk-multi-session-route.test.js
+  s_a1028d821541e2::t_90beee0b612d0b 161-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0980726597e37f3b35eddf2db4a159f8a2543e24",
+  "prompts": {},
+  "sessions": {
+    "s_a1028d821541e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1a85f851-b82e-4ac1-bd07-2b6b41e97085",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
