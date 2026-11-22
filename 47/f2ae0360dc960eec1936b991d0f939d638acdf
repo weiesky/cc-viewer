@@ -1,0 +1,43 @@
+packages/app/server/lib/update-job.js
+  s_dbb4ac8fa61558::t_27401f8467af1c 224
+  s_dbb4ac8fa61558::t_32737dd099d1f4 240
+  s_dbb4ac8fa61558::t_b23f6c1acf7abe 244
+apps/web/test/update-modal.test.js
+  s_dbb4ac8fa61558::t_d46645a5c2c314 35-48,51
+packages/app/test/update-job.test.js
+  s_dbb4ac8fa61558::t_8382746bfe51e3 217-237
+apps/web/src/components/update/UpdateModal.jsx
+  s_dbb4ac8fa61558::t_093a2144c49d4f 48,50
+  s_dbb4ac8fa61558::t_a90078bc7063b6 34-36
+  s_dbb4ac8fa61558::t_63a6d8efe485cc 49
+apps/web/src/App.jsx
+  s_dbb4ac8fa61558::t_867ffa712937d9 134,137-141
+packages/app/server/routes/update.js
+  s_dbb4ac8fa61558::t_f474bb8f894ea9 40-42,48-52
+  s_dbb4ac8fa61558::t_3daebd990ed6f9 38-39,43-47
+packages/app/test/update-routes.test.js
+  s_dbb4ac8fa61558::t_19756d3c4778b8 66-80
+  s_dbb4ac8fa61558::t_1c5c3fe197f23f 81-97
+.changeset/eager-napping-wind.md
+  s_dbb4ac8fa61558::t_5e803f4d15f3c6 1-5
+history.md
+  s_dbb4ac8fa61558::t_0efba2214aeea2 5-6
+apps/web/src/i18n.js
+  s_dbb4ac8fa61558::t_e2806b5943688e 10226-10239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "47f2ae0360dc960eec1936b991d0f939d638acdf",
+  "prompts": {},
+  "sessions": {
+    "s_dbb4ac8fa61558": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f204197e-03ad-4f43-a442-b76a22085094",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
