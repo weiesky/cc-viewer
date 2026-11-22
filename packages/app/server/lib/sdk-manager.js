@@ -101,11 +101,11 @@ function _normalizeCwd(cwd) {
 // deterministic boot session (its key is re-created on relaunch — the stable identity a
 // plain launch/bound view should land on), else the most-recently-registered. A plain
 // launch (non-forceNew) reuses this session rather than spawning a sibling.
-function _primaryForCwd(cwd) {
-  const n = _normalizeCwd(cwd);
-  if (!n) return null;
-  const active = _active();
-  if (active && _normalizeCwd(active.cwd) === n) return active;
+// The deterministic-boot-first / newest-fallback scan shared by _primaryForCwd and
+// resolveBoundPrimaryInstanceKey — the two MUST agree on the "which session is the cwd's
+// stable primary" tie-break, so the loop body lives here once (a future weighting change
+// then can't drift them apart). `_primaryForCwd` prepends an active-first head on top.
+function _deterministicOrLatestForCwd(n) {
   let det = null; let latest = null;
   for (const s of _sessions.values()) {
     if (_normalizeCwd(s.cwd) !== n) continue;
@@ -113,6 +113,14 @@ function _primaryForCwd(cwd) {
     if (!s.isFreshKey) det = s;
   }
   return det || latest;
+}
+
+function _primaryForCwd(cwd) {
+  const n = _normalizeCwd(cwd);
+  if (!n) return null;
+  const active = _active();
+  if (active && _normalizeCwd(active.cwd) === n) return active;
+  return _deterministicOrLatestForCwd(n);
 }
 
 // Get-or-create the cwd's PRIMARY Session (deterministic key). Only creates when the
@@ -204,6 +212,23 @@ export function listSdkSessions() {
 }
 
 registerSdkSessionLister(listSdkSessions);
+
+/**
+ * The BOUND cwd's primary session instanceKey (2026-11, WS attach-stamp coherence).
+ * The single source of truth for the bound identity: resume.js's `/api/live-processes`
+ * `currentInstanceKey` delegates here, and server.js's WS `_ccvViewInstance` coherence
+ * (`_cohereAttachInstance`) resolves through it, so the header's `boundInstance` and the WS
+ * stamp always agree on the same instance for the same cwd. Returns the deterministic boot
+ * session (non-fresh key) — NOT the ACTIVE sibling (`_primaryForCwd` is active-first for
+ * input-side routing; the bound identity must stay stable while a fresh sibling is active).
+ * Falls back to the newest same-cwd row; null when the cwd has no live session. Read-only.
+ */
+export function resolveBoundPrimaryInstanceKey(boundCwd) {
+  const n = _normalizeCwd(boundCwd);
+  if (!n) return null;
+  const primary = _deterministicOrLatestForCwd(n);
+  return primary ? primary.instanceKey : null;
+}
 
 // The turn can legally wait on approval ceilings: perm/plan = 5min, AskUserQuestion =
 // 24h ("GUI effectively has no timeout" is a product contract). A pending approval

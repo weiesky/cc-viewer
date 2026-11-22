@@ -297,12 +297,12 @@ async function getLiveProcessesHandler(req, res, parsedUrl) {
       }
       // Bound identity = the cwd's STABLE primary (deterministic boot key), NOT the shared
       // `active` pointer: active flips on every send/attach/switch, so keying the bound tab
-      // to it would yank every bound-view client to whatever instance spoke last. The
-      // deterministic boot key is the identity a close+relaunch re-creates — stable.
+      // to it would yank every bound-view client to whatever instance spoke last. Delegate to
+      // the sdk-manager resolver so this HTTP identity and the WS `_ccvViewInstance` coherence
+      // (server.js `_cohereAttachInstance`) resolve the SAME instance for the same cwd —
+      // a duplicated inline derivation here would drift from it (normalization + pick order).
       if (!currentInstanceKey) {
-        const rows = sdkRows.filter((e) => e && e.cwd === boundCwd);
-        const primary = rows.find((e) => e && e.isFreshKey === false) || rows[0] || null;
-        if (primary && primary.instanceKey) currentInstanceKey = primary.instanceKey;
+        currentInstanceKey = sdk.resolveBoundPrimaryInstanceKey(boundCwd) || null;
       }
     } catch (err) { reportSwallowed('resume-route.live-sdk', err); }
   }

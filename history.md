@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(server): **同 cwd SDK 兄弟会话 [对话] 面板冷挂载窗口不再串话** — bound 视图连接在 header 首轮轮询解析出 `boundInstance` 之前，服务端在 attach/connect 时直接把该客户端的视图实例戳补齐为 bound cwd 的主实例，不再等客户端水合，两个同 cwd 会话的 frame(modal/queue/spinner/系统行)不再互相送达。Coverage: `ws-instance-isolation.test.js`。
+
 - feat(server): **SDK 模式同 cwd「新建工作区(会话)」改为并列 +1,不再替换旧会话** — 同一目录可并存多个 SDK 会话,header 出现两个可切换 tab(项目 [1] [2]),各自收发互不串;普通启动仍复用该目录的稳定会话。配套隔离:resume 属主守卫纳入 SDK 存活性并按当前持有者判定、并发 resume 去重、关闭会话不误伤存活兄弟。Coverage: `sdk-multi-session-route.test.js`, `sdk-force-new.test.js`, `v2-retire-instance.test.js`, `resume-route.test.js`, `live-processes-close.test.js`, `sdk-session-registry.test.js`。
 
 - fix(server+web): **forceNew「新建工作区(会话)」对话区切到新实例的空会话(PTY + SDK)** — 文件浏览器对当前项目根 forceNew 启动新实例后，聊天视图立即切到该实例的空白会话，不再停留在旧对话。PTY 与 SDK 均支持；普通启动/重启重建实例的行为不变。Coverage: `v2-session-select.test.js`, `events-instance-live-empty.test.js`, `pty-manager-instance.test.js`, `sdk-force-new.test.js`, `v2-retire-instance.test.js`, `force-new-view-blank.test.js`, `view-cache-restore.test.js`。

@@ -158,6 +158,21 @@ describe('SDK same-cwd sibling sessions — launch + live-processes routes', () 
     assert.equal(data.currentInstanceKey, bootKey, 'bound identity = stable primary, not the active sibling');
   });
 
+  it('currentInstanceKey falls to the NEWEST fresh sibling once the boot session is closed (delegates to the resolver)', async () => {
+    sdk.initSdkSession(wsDir, basename(wsDir), { permissionMode: 'default', env: { ...process.env } });
+    const older = sdk.createSdkSession(wsDir, { permissionMode: 'default', env: { ...process.env } });
+    const newer = sdk.createSdkSession(wsDir, { permissionMode: 'default', env: { ...process.env } });
+    // Close the deterministic boot session, leaving only the two fresh siblings.
+    sdk.closeSdkSession({ instanceKey: bootKey });
+    process.env.CCV_PROJECT_DIR = wsDir;
+    const { status, data } = await callRoute(route(resumeRoutes, 'GET', '/api/live-processes'), {}, baseDeps());
+    assert.equal(status, 200);
+    // Pin the delegation end-to-end: the route must NOT fall back to the OLDEST fresh row
+    // (the pre-refactor inline `rows[0]`), but to the resolver's NEWEST same-cwd sibling.
+    assert.equal(data.currentInstanceKey, newer.instanceKey, 'route delegates to the resolver (newest), not the old inline rows[0]');
+    assert.notEqual(newer.instanceKey, older.instanceKey, 'the two fresh siblings are distinct');
+  });
+
   it('closing a fresh sibling routes a retire (wasFreshKey:true); closing the boot routes a release (wasFreshKey:false)', async () => {
     const { _v2Writer } = await import('../server/interceptor.js');
     sdk.initSdkSession(wsDir, basename(wsDir), { permissionMode: 'default', env: { ...process.env } });
