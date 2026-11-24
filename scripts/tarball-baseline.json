@@ -1397,6 +1397,7 @@
   "server/lib/adapters/feishu-adapter.js",
   "server/lib/adapters/wecom-adapter.js",
   "server/lib/ansi-safe-slice.js",
+  "server/lib/anthropic-auth-placeholder.js",
   "server/lib/approval-policy.js",
   "server/lib/ask-auto-answer.js",
   "server/lib/ask/ask-bridge.js",

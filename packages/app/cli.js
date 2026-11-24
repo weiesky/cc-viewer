@@ -872,6 +872,15 @@ async function runImSdkMode(platformId) {
   delete childEnv.CCV_IM_PLATFORM;
   delete childEnv.CCV_IM_DENY;
 
+  // 占位 ANTHROPIC_API_KEY：cc-viewer 场景真实鉴权由 proxy 层注入（激活 profile 的 apiKey 从
+  // credential vault 解密后写入出站头），子进程本身无凭据；不注入占位 key 时 claude 启动的
+  // 未认证检查会报 "Not logged in / Please run /login"。注入后真实鉴权仍由 proxy 覆盖。
+  // ensureApiKeyApproved 让交互 TUI 静默采纳该 key（写入 .claude.json approved）。
+  const { ensurePlaceholderApiKey, resolveEffectiveApiKey, ensureApiKeyApproved } = await import('./server/lib/anthropic-auth-placeholder.js');
+  if (ensurePlaceholderApiKey(childEnv)) {
+    ensureApiKeyApproved({ configDir: process.env.CLAUDE_CONFIG_DIR, key: resolveEffectiveApiKey(childEnv) });
+  }
+
   // 10) settings：代理 URL + IM permissions.deny（与 PTY worker 的 --settings 注入同一份 helper）。
   const { buildImDenySettings } = await import('./server/lib/im/im-permissions.js');
   const settingsObj = { env: { ANTHROPIC_BASE_URL: proxyBaseUrl }, ...buildImDenySettings() };
