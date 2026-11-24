@@ -1,0 +1,31 @@
+packages/app/test/anthropic-auth-placeholder.test.js
+  s_2acd65179b08b6::t_69a5ceafcd93a8 1-11,13-96
+  s_2acd65179b08b6::t_9e2c8f53d32c77 12
+scripts/tarball-baseline.json
+  s_2acd65179b08b6::t_fb2cc3d26a716a 1400
+history.md
+  s_2acd65179b08b6::t_471c99184c987d 5-6
+packages/app/cli.js
+  s_2acd65179b08b6::t_14c2e2b84a3c77 875-883
+.changeset/im-sdk-auth-placeholder.md
+  s_2acd65179b08b6::t_c57795ac5a9bb3 1-5
+packages/app/server/lib/anthropic-auth-placeholder.js
+  s_2acd65179b08b6::t_e7e3ac9929de3b 38
+  s_2acd65179b08b6::t_4a39fce334c7e2 1-37,39-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "293d3f1b359dc0d841330336c3715509bba34075",
+  "prompts": {},
+  "sessions": {
+    "s_2acd65179b08b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c6f5cf2-396d-4c40-9d1e-88b90b909f39",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
