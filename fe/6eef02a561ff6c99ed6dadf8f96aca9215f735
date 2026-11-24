@@ -1,0 +1,51 @@
+apps/web/src/components/update/RestartOverlay.jsx
+  s_57690f064638c5::t_364406ad8728d2 1-16,20,22-26
+  s_57690f064638c5::t_9007858f2f534d 17-19,21
+apps/web/test/restart-overlay.test.js
+  s_57690f064638c5::t_e837dc5457e5bb 38-46,60-64,66-70,72,76-78,82,90,100-102,108-116
+  s_57690f064638c5::t_d62de4103afe35 1-37,47-59,65,71,73-75,79-81,83-89,91-99,103-107,117-118
+.changeset/tidy-moons-shout.md
+  s_57690f064638c5::t_54b501ab094159 5
+  s_57690f064638c5::t_8c7792397174b8 1-4
+apps/web/src/components/update/UpdateModal.jsx
+  s_57690f064638c5::t_8a97c92fb20123 54
+  s_57690f064638c5::t_0e6cd233b36ef0 10-13
+  s_57690f064638c5::t_b5e06781c1e9a7 44
+apps/web/src/App.jsx
+  s_57690f064638c5::t_980cb84674fa25 79
+  s_57690f064638c5::t_b02f3c46fadd60 850-854
+  s_57690f064638c5::t_362ef43b2f8aca 838
+  s_57690f064638c5::t_971294bf95cfd7 155
+  s_57690f064638c5::t_f59a7a3bcfac29 31
+  s_57690f064638c5::t_a8bbef0aa3129c 150,159,161,172,178
+apps/web/src/components/update/RestartOverlay.module.css
+  s_57690f064638c5::t_964c1fdf8b11a4 7-9,11,13,15-29,31-35
+  s_57690f064638c5::t_21ac25623fc3b1 1-6,10,12,14
+  s_57690f064638c5::t_ba2b0163763209 30
+history.md
+  s_57690f064638c5::t_74c6b8f6370002 6
+  s_57690f064638c5::t_be4137970cee6d 5
+apps/web/test/update-modal.test.js
+  s_57690f064638c5::t_289b12de57baa6 51
+apps/web/src/i18n.js
+  s_57690f064638c5::t_7c53ee7b23c48b 10218
+  s_57690f064638c5::t_1c3177a4517e2e 10214,10216-10217,10219-10220,10222
+  s_57690f064638c5::t_ddd5681a2991c7 10215
+  s_57690f064638c5::t_8269ddd04e46c1 10221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fe6eef02a561ff6c99ed6dadf8f96aca9215f735",
+  "prompts": {},
+  "sessions": {
+    "s_57690f064638c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b8586b0-9522-4b33-a07d-2ad661685f1a",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
