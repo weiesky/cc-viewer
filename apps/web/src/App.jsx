@@ -28,6 +28,7 @@ import { classifyRequest } from '@ccv/core/requestType';
 import { apiUrl } from './utils/apiUrl';
 import { BLUR_MASK_STYLE } from './utils/modalMask';
 import UpdateModal from './components/update/UpdateModal';
+import RestartOverlay from './components/update/RestartOverlay';
 import { restartPollDecision } from './utils/updateProgress';
 import { isProxyMode } from './utils/isProxyMode';
 
@@ -75,6 +76,7 @@ class App extends AppBase {
       updateJob: { status: 'idle', error: null },
       restarting: false,
       restartError: null,
+      restartOverlaySlow: false, // flips once the restart outlives the ~2min expectation, switching the overlay copy
     });
     this.appHeaderRef = React.createRef();
     this._getTokenStatsContent = (closeParent) => this.appHeaderRef.current?.renderTokenStats?.(closeParent) ?? null;
@@ -145,16 +147,18 @@ class App extends AppBase {
   };
 
   restartForUpdate = async () => {
-    this.setState({ restarting: true, restartError: null });
+    this.setState({ restarting: true, restartError: null, restartOverlaySlow: false });
     try {
       const res = await fetch(apiUrl('/api/update/restart'), { method: 'POST' });
       if (!res.ok) {
         const data = await res.json();
-        this.setState({ restarting: false, restartError: data.error || t('ui.update.restartFailed') });
+        this.setState({ restarting: false, restartOverlaySlow: false, restartError: data.error || t('ui.update.restartFailed') });
         return;
       }
       const deadline = Date.now() + 16 * 60 * 1000;
+      const slowDeadline = Date.now() + 2 * 60 * 1000;
       while (Date.now() < deadline) {
+        if (!this.state.restartOverlaySlow && Date.now() > slowDeadline) this.setState({ restartOverlaySlow: true });
         await new Promise(resolve => setTimeout(resolve, 500));
         try {
           const info = await fetch(apiUrl('/api/version-info'), { cache: 'no-store', signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null);
@@ -165,13 +169,13 @@ class App extends AppBase {
               const stateRes = await fetch(apiUrl('/api/update/status'), { signal: AbortSignal.timeout(3000) });
               if (stateRes.ok) this._applyUpdateJob(await stateRes.json());
             } catch { /* The fallback process may still be starting. */ }
-            this.setState({ restarting: false, restartError: t('ui.update.restartFailed') });
+            this.setState({ restarting: false, restartOverlaySlow: false, restartError: t('ui.update.restartFailed') });
             return;
           }
         } catch { /* Expected while the old process is shutting down. */ }
       }
       throw new Error(t('ui.update.restartTimeout'));
-    } catch (err) { this.setState({ restarting: false, restartError: err.message }); }
+    } catch (err) { this.setState({ restarting: false, restartOverlaySlow: false, restartError: err.message }); }
   };
 
   // 套餐用量:额度搭车在常规 Claude 响应头(anthropic-ratelimit-unified-*)上，SSE 已把最新响应
@@ -831,7 +835,7 @@ class App extends AppBase {
 
         <UpdateModal
           open={this.state.updateModalVisible}
-          onCancel={() => this.setState({ updateModalVisible: false })}
+          onCancel={() => { if (!this.state.restarting) this.setState({ updateModalVisible: false }); }}
           currentVersion={typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
           method={isElectron ? 'electron' : (this.state.installMethod || 'npm')}
           state={this.state.updateJob}
@@ -842,6 +846,11 @@ class App extends AppBase {
           restarting={this.state.restarting}
           canRestart={this.state.canRestart}
           restartError={this.state.restartError}
+        />
+        <RestartOverlay
+          open={this.state.restarting}
+          version={this.state.updateJob?.version}
+          slow={this.state.restartOverlaySlow}
         />
         <Modal
           title={null}

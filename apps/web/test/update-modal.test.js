@@ -48,7 +48,7 @@ describe('UpdateModal', () => {
   });
   it('provides all supported locales for every new control', () => {
     const locales = ['zh', 'en', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da', 'pl', 'ru', 'ar', 'no', 'pt-BR', 'th', 'tr', 'uk'];
-    for (const key of ['check', 'checkHint', 'pnpm', 'start', 'retry', 'downloading', 'installing', 'ready', 'restartWarning', 'restart', 'restarting', 'restartTimeout', 'restartFailed', 'manual', 'otherInstanceWarning', 'otherInstanceContinue', 'otherInstanceConfirmTitle', 'otherInstanceConfirmContent', 'otherInstanceConfirmOk', 'remoteRestart', 'manualRestart', 'upToDate', 'later', 'newBadge', 'failed']) {
+    for (const key of ['check', 'checkHint', 'pnpm', 'start', 'retry', 'downloading', 'installing', 'ready', 'restartWarning', 'restart', 'restarting', 'restartTimeout', 'restartFailed', 'manual', 'otherInstanceWarning', 'otherInstanceContinue', 'otherInstanceConfirmTitle', 'otherInstanceConfirmContent', 'otherInstanceConfirmOk', 'remoteRestart', 'manualRestart', 'upToDate', 'later', 'newBadge', 'failed', 'restartOverlayTitle', 'restartOverlayHint', 'restartOverlaySlow']) {
       const match = i18n.match(new RegExp(`"ui\\.update\\.${key}": \\{([\\s\\S]*?)\\n  \\}`));
       assert.ok(match, `missing ui.update.${key}`);
       for (const locale of locales) assert.ok(match[1].includes(`"${locale}":`), `${key} missing ${locale}`);

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **重启更新期间提供全屏等待感知** — 点击「立即重启并更新」后服务需经历旧进程退出、helper 安装新版本、重新监听的不可达窗口，此前页面看似正常却会整体挂起。新增固定全屏遮罩：先告知「重启约需 2 分钟、完成后页面自动刷新」，超过该窗口仍未就绪则切换为「仍在等待服务恢复（最长约 15 分钟）」；重启期间「版本信息」弹窗不可再被关闭（遮罩点击、Esc、关闭按钮均已禁用）。就绪检测沿用现有 `/api/version-info` 的 processId 轮询，无需新增服务端端点。Coverage: `restart-overlay.test.js`, `update-modal.test.js`。
+
 - fix(server+web): **检测到其它 cc-viewer 实例时更新流程不再卡死** — 「版本信息」弹窗的 `another_instance` 错误改为警告提示，新增「仍要继续更新」按钮（danger + 二次确认），确认后经 `POST /api/update/start { force: true }` 绕过多实例端口扫描继续下载/重启；文案明确说明服务重启将中断当前会话与其它实例的连接。Coverage: `update-job.test.js`, `update-routes.test.js`, `update-modal.test.js`。
 
 - fix(server): **同 cwd SDK 兄弟会话 [对话] 面板冷挂载窗口不再串话** — bound 视图连接在 header 首轮轮询解析出 `boundInstance` 之前，服务端在 attach/connect 时直接把该客户端的视图实例戳补齐为 bound cwd 的主实例，不再等客户端水合，两个同 cwd 会话的 frame(modal/queue/spinner/系统行)不再互相送达。Coverage: `ws-instance-isolation.test.js`。

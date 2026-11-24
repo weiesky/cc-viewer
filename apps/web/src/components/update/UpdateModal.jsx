@@ -7,7 +7,10 @@ import styles from './UpdateModal.module.css';
 import { downloadPercent } from '../../utils/updateProgress';
 
 export default function UpdateModal({ open, onCancel, currentVersion, method, state, updateInfo, onCheck, onStart, onRestart, restarting, restartError, canRestart }) {
-  const busy = ['checking', 'downloading', 'installing', 'restarting'].includes(state?.status);
+  // Include the local `restarting` flag: the SSE `restarting` frame may never arrive
+  // once the server starts shutting down, and the user must not dismiss the modal
+  // (and its restart feedback) mid-flight.
+  const busy = ['checking', 'downloading', 'installing', 'restarting'].includes(state?.status) || restarting;
   const version = state?.status === 'latest' ? null : (state?.version || updateInfo?.version);
   const manual = canRestart === false || ['unsupported_channel', 'unsupported_layout', 'npm_unavailable'].includes(state?.errorCode);
   const anotherInstance = state?.errorCode === 'another_instance';
@@ -38,7 +41,7 @@ export default function UpdateModal({ open, onCancel, currentVersion, method, st
       {restartError && <Alert type="error" showIcon message={restartError} />}
     </>;
   }
-  return <Modal title={t('ui.update.title')} open={open} onCancel={onCancel} footer={null} width={560} maskClosable={!busy}>
+  return <Modal title={t('ui.update.title')} open={open} onCancel={busy ? undefined : onCancel} footer={null} width={560} maskClosable={!busy} closable={!busy} keyboard={!busy}>
     <div className={styles.content}>
       <p><strong>{t('ui.update.current')}:</strong> v{currentVersion}</p>
       {version && <p><strong>{t('ui.update.latest')}:</strong> v{version}</p>}
@@ -48,7 +51,7 @@ export default function UpdateModal({ open, onCancel, currentVersion, method, st
         {method === 'npm' && !restarting && version && state?.status !== 'restart_required' && !manual && (anotherInstance
           ? <Button type="primary" danger disabled={busy} loading={state?.status === 'downloading' || state?.status === 'installing'} onClick={() => Modal.confirm({ title: t('ui.update.otherInstanceConfirmTitle'), content: t('ui.update.otherInstanceConfirmContent'), okText: t('ui.update.otherInstanceConfirmOk'), okButtonProps: { danger: true }, cancelText: t('ui.cancel'), onOk: () => onStart({ force: true }) })}>{t('ui.update.otherInstanceContinue')}</Button>
           : <Button type="primary" onClick={() => onStart()} disabled={busy} loading={state?.status === 'downloading' || state?.status === 'installing'}>{state?.status === 'error' ? t('ui.update.retry') : t('ui.update.start')}</Button>)}
-        {method === 'npm' && state?.status === 'restart_required' && !restarting && canRestart !== false && <Button type="primary" danger onClick={() => Modal.confirm({ title: t('ui.update.restart'), content: t('ui.update.restartWarning'), okText: t('ui.update.restart'), okButtonProps: { danger: true }, cancelText: t('ui.update.later'), onOk: onRestart })}>{t('ui.update.restart')}</Button>}
+        {method === 'npm' && state?.status === 'restart_required' && !restarting && canRestart !== false && <Button type="primary" danger onClick={() => Modal.confirm({ title: t('ui.update.restart'), content: t('ui.update.restartWarning'), okText: t('ui.update.restart'), okButtonProps: { danger: true }, cancelText: t('ui.update.later'), onOk: () => { onRestart(); } })}>{t('ui.update.restart')}</Button>}
         {restartingState && <span className={styles.muted}>{t('ui.update.restarting')}</span>}
         <Button href="https://github.com/weiesky/cc-viewer/releases" target="_blank" rel="noopener noreferrer">{t('ui.update.goReleases')}</Button>
       </div>
