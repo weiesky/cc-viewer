@@ -1451,6 +1451,7 @@
   "server/lib/im/im-lang.js",
   "server/lib/im/im-lock.js",
   "server/lib/im/im-log-watcher.js",
+  "server/lib/im/im-permissions.js",
   "server/lib/im/im-process-manager.js",
   "server/lib/im/im-senders.js",
   "server/lib/im/im-skills.js",

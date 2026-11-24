@@ -1,12 +1,20 @@
-// Generic IM bridge orchestrator — platform-agnostic glue between one bound Claude Code PTY
-// session and N IM platform adapters (DingTalk, Feishu, …).
+// Generic IM bridge orchestrator — platform-agnostic glue between one bound Claude Code session
+// and N IM platform adapters (DingTalk, Feishu, …).
+//
+// Two worker shapes share this core. PTY workers bind a node-pty `claude` CLI and inject PTY-shaped
+// deps; headless SDK workers (runImSdkMode) bind an Agent SDK session and inject the optional
+// headless deps instead. Each site feature-detects (typeof === 'function') and falls back to PTY:
+//   sendPrompt(text, onComplete)  — inject the origin-marked prompt (no bracketed-paste framing)
+//   interrupt()                   — interrupt the current turn (replaces writeToPty('\x1b'))
+//   isSessionAvailable()          — replaces getPtyState().running && getPtyKind()==='claude'
+//   getReplyText()                — final reply text when there is no transcript_path
 //
 // Inbound  (IM → session): adapter normalizes its platform event → onInbound(normalized, ackCtx)
 //   → ack immediately → msgId dedup → access control → /stop interrupt OR inject the text as a
-//   prompt (bracketed paste, ⟦im:<id>⟧ origin marker).
+//   prompt (bracketed paste for PTY, plain marked text for SDK, ⟦im:<id>⟧ origin marker).
 // Outbound (session → IM): on the debounced turn_end, read the Claude session transcript JSONL
-//   (path forwarded from the Stop hook), assemble the last main-agent text turn, chunk it, and
-//   push via the owning adapter's sendOne.
+//   (PTY: path forwarded from the Stop hook) or getReplyText() (SDK), assemble the last
+//   main-agent text turn, chunk it, and push via the owning adapter's sendOne.
 //
 // SINGLE SHARED PTY ⇒ SINGLE-FLIGHT INJECTION. Only one adapter may have an injected turn in
 // flight at a time (`activeInjection`, a core-global). It replaces the per-adapter pendingReply:
@@ -23,6 +31,7 @@ import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOG_DIR } from '../../../findcc.js';
 import { t } from '../../i18n.js';
+import { reportSwallowed } from '../error-report.js';
 import { upsertSender } from './im-senders.js';
 
 // ─── tunables (shared across platforms; per-platform rate caps come from adapter.rateLimit) ───
@@ -264,6 +273,12 @@ async function streamTick(inst, since) {
   }
 }
 function armActiveInjection(inst, target, since) {
+  // Reset the turn-scoped live text unconditionally at the start of every injection.
+  // Previously this only happened on the streaming-card path, so an SDK worker (whose
+  // getReplyText falls back to the live text) could leak the PREVIOUS turn's text when
+  // the user had no AI-card template configured. PTY workers are unaffected (they read
+  // the transcript instead).
+  try { inst.bridgeDeps?.resetLiveText?.(); } catch { /* best-effort */ }
   activeInjection = { platformId: inst.adapter.id, since, target, transcriptPath: null };
   if (activeInjectionTimer) clearTimeout(activeInjectionTimer);
   activeInjectionTimer = setTimeout(async () => {
@@ -311,7 +326,7 @@ function armActiveInjection(inst, target, since) {
       // 同时要求 updateAckCard：能逐字推却无法 finalize 会让卡片永远停在流式中途、停在「生成中」。
       && typeof inst.adapter.updateAckCard === 'function';
     if (canStream) {
-      inst.bridgeDeps.resetLiveText?.();
+      // liveText 已在 armActiveInjection 入口无条件 reset（每轮恰好一次），此处不再重复。
       if (inst.store) inst.store.lastAiCardError = null; // 清上一轮的诊断残留
       inst._streamPushedLen = 0;
       inst._streamFrames = 0;
@@ -565,7 +580,13 @@ function handleInboundInner(inst, normalized) {
   if (!text) return; // non-text messages (image/voice/file) are ignored in v1
 
   if (isStopCommand(text)) {
-    inst.bridgeDeps.writeToPty('\x1b'); // ESC interrupts the current turn (NOT killPty)
+    // Headless (SDK) workers interrupt via the SDK; PTY workers send ESC. Both interrupt the
+    // current turn (NOT kill the session).
+    if (typeof inst.bridgeDeps.interrupt === 'function') {
+      try { inst.bridgeDeps.interrupt(); } catch { /* best-effort */ }
+    } else {
+      inst.bridgeDeps.writeToPty('\x1b'); // ESC interrupts the current turn (NOT killPty)
+    }
     audit(inst, 'stop', { conversationId });
     const stoppedInst = activeInjection ? instances.get(activeInjection.platformId) : null;
     const stoppedTarget = activeInjection?.target;
@@ -600,8 +621,12 @@ function drainQueue(inst) {
   while (inst.queue.length) {
     if (activeInjection || d.isStreaming()) return; // a turn is in flight (any platform)
     const item = inst.queue[0];
-    const st = d.getPtyState();
-    if (!st.running || d.getPtyKind() !== 'claude') {
+    // Availability gate. Headless (SDK) workers report via isSessionAvailable(); PTY workers
+    // via getPtyState().running + getPtyKind()==='claude'.
+    const available = typeof d.isSessionAvailable === 'function'
+      ? d.isSessionAvailable()
+      : (() => { const st = d.getPtyState(); return !!(st && st.running) && d.getPtyKind() === 'claude'; })();
+    if (!available) {
       inst.queue.shift();
       void sendReply(inst, item, tr(inst, 'noSession'));
       continue;
@@ -624,7 +649,7 @@ function drainQueue(inst) {
     }
     inst.queue.shift();
     const cfg = d.getConfig();
-    const skipPerm = d.getPtySkipPermissions();
+    const skipPerm = typeof d.getPtySkipPermissions === 'function' ? d.getPtySkipPermissions() : false;
     // 独立 IM worker 模型下，worker 本就以 --dangerously-skip-permissions 自主运行（安全由
     // 强制 allowlist + PreToolUse 硬拦截 + 注入的 permissions.deny 保证）。因此对 IM worker：
     //   - 不应用 blockOnSkipPermissions（否则 skipPerm 恒真 → 拦下每条消息让机器人彻底失能，
@@ -658,7 +683,7 @@ function drainQueue(inst) {
     // React to a failed injection (PTY gone/died mid-write → onComplete(false)). Without this the
     // prompt never submits, no turn_end ever comes, and the slot wedges until the timeout. Only
     // act if THIS injection still owns the slot (a /stop or timeout may have released it).
-    d.writeToPtySequential(bracketPasteSubmit(markOrigin(inst.adapter.id, item.senderId, item.content)), (ok) => {
+    const onInjected = (ok) => {
       if (ok) return;
       if (!activeInjection || activeInjection.platformId !== inst.adapter.id || activeInjection.since !== since) return;
       audit(inst, 'inject-failed', { conversationId: item.conversationId });
@@ -669,7 +694,12 @@ function drainQueue(inst) {
         if (!cardUpdated) void sendReply(inst, item, tr(inst, 'injectFailed'));
         drainAll();
       })().catch(() => {});
-    }, { settleMs: 250 });
+    };
+    // Headless (SDK) workers get the already origin-marked prompt as plain text (no
+    // bracketed-paste framing); PTY workers get the framed sequence for the terminal.
+    const marked = markOrigin(inst.adapter.id, item.senderId, item.content);
+    if (typeof d.sendPrompt === 'function') d.sendPrompt(marked, onInjected);
+    else d.writeToPtySequential(bracketPasteSubmit(marked), onInjected, { settleMs: 250 });
     return; // one at a time; resume on the next turn_end
   }
 }
@@ -700,12 +730,22 @@ export async function notifyTurnEnd(sessionId, ts, transcriptPath) {
   // Keyed on ts, NOT reply text.
   if (ts && ts === inst.lastRepliedTurnTs) { drainAll(); return; }
   inst.lastRepliedTurnTs = ts || null;
+  // Capture the reply text BEFORE drainAll(): draining re-arms the next queued injection, whose
+  // armActiveInjection() unconditionally resets the live text — so reading getReplyText() after
+  // drainAll() would lose THIS turn's interceptor live text (and fall back to lastResultText,
+  // which an error turn leaves empty). Read first, then resume the queues.
+  let text = extractLastAssistantText(transcriptPath);
+  // Headless (SDK) workers have no transcript_path — fall back to the dep-provided reply text
+  // (interceptor live text preferred, SDK result text as the authoritative fallback).
+  if (!text && typeof inst.bridgeDeps?.getReplyText === 'function') {
+    try { text = inst.bridgeDeps.getReplyText() || ''; }
+    catch (e) { reportSwallowed('im-bridge.getReplyText', e); text = ''; }
+  }
+  if (!text) text = tr(inst, 'noTextReply');
   // Resume every platform's queue NOW (the slot is already released). The reply send below is
   // independent of the single-flight slot, so a slow/rate-limited sendOne must not starve the
   // other platform's queued prompt behind this await.
   drainAll();
-  let text = extractLastAssistantText(transcriptPath);
-  if (!text) text = tr(inst, 'noTextReply');
 
   // Try to update the ack card in-place with the reply. Fall back to sendReply on failure.
   const handle = await ackP?.catch(() => null);
@@ -839,6 +879,11 @@ export async function reloadBridge(id, deps) {
 export function isBridgeRunning(id) {
   const inst = instances.get(id);
   return !!(inst && inst.running);
+}
+
+/** Test seam: read the deps currently registered on a bridge instance (null if none). */
+export function __getBridgeDepsForTests(id) {
+  return instances.get(id)?.bridgeDeps ?? null;
 }
 
 export function getBridgeStatus(id) {

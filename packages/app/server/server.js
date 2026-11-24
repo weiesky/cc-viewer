@@ -1705,11 +1705,13 @@ async function _doStart() {
             interactions,
           });
           // IM adapters no longer run in the main ccv. Each enabled IM runs as an independent,
-          // detached worker process (im-process-manager). Two CLI-mode cases:
-          //   - WORKER (CCV_IM_PLATFORM set): connect ONLY this one platform to the singleton PTY.
-          //   - MAIN ccv: connect NOTHING in-process; reconcile spawns/adopts the enabled IM workers.
-          // (Non-CLI workspace/SDK modes do neither — IM only makes sense with the singleton PTY.)
-          if (isCliMode && process.env.CCV_IM_PLATFORM) {
+          // detached worker process (im-process-manager). Three CLI-mode cases:
+          //   - PTY WORKER (CCV_IM_PLATFORM set, !CCV_SDK_MODE): connect ONLY this one platform to the singleton PTY.
+          //   - SDK WORKER (CCV_IM_PLATFORM set, CCV_SDK_MODE): cli.js starts the bridge itself AFTER
+          //     initSdkSession (see runImSdkMode) — starting it here would race inbound messages
+          //     against an unregistered SDK session.
+          //   - MAIN ccv (no CCV_IM_PLATFORM): connect NOTHING in-process; reconcile spawns/adopts the enabled IM workers.
+          if (isCliMode && !isSdkMode && process.env.CCV_IM_PLATFORM) {
             const id = process.env.CCV_IM_PLATFORM;
             const pmb = await import('./pty-manager.js');
             try {
@@ -1730,9 +1732,10 @@ async function _doStart() {
             } catch (e) {
               console.error(`[CC Viewer] IM worker startBridge(${id}) failed:`, e?.message || e);
             }
-          } else if (isCliMode) {
+          } else if (isCliMode && !process.env.CCV_IM_PLATFORM) {
             // 主 ccv：先 stopAll（无在进程实例时为 no-op，防御升级残留）再 reconcile，
             // 杜绝"旧在进程连接 + 新 detached worker"同时连同一机器人导致丢/重消息。
+            // （SDK worker 已被第一分支的 !isSdkMode 排除，不会走到这里误 reconcile 自己。）
             try { await imCore.stopAll(); } catch { /* no in-process instances */ }
             imProcMgr.reconcileImProcesses().catch((e) => console.error('[CC Viewer] IM reconcile failed:', e?.message || e));
           }

@@ -56,7 +56,7 @@ describe('im-process-manager: buildChildEnv (prefix-strip + whitelist refill)', 
 });
 
 describe('im-process-manager: spawnImProcess', () => {
-  it('spawns `node cli.js --im <id> --no-open` detached with cwd=IM_<id>/ and worker env', () => {
+  it('spawns `node cli.js --im-sdk <id> --no-open` detached with cwd=IM_<id>/ and worker env', () => {
     const id = freshId(); wipe(id);
     const records = [];
     const res = spawnImProcess(id, { spawnImpl: fakeSpawn(records) });
@@ -65,7 +65,7 @@ describe('im-process-manager: spawnImProcess', () => {
     const { cmd, args, options } = records[0];
     assert.ok(typeof cmd === 'string' && cmd.length > 0);
     assert.ok(args.some((a) => a.endsWith('cli.js')));
-    assert.deepEqual(args.slice(-3), ['--im', id, '--no-open']);
+    assert.deepEqual(args.slice(-3), ['--im-sdk', id, '--no-open']);
     assert.equal(options.cwd, imDir(id));
     assert.equal(options.detached, true);
     assert.equal(options.env.CCV_IM_PLATFORM, id);
@@ -185,7 +185,7 @@ describe('im-process-manager: reconcileImProcesses', () => {
     const spawned = await reconcileImProcesses({ spawnImpl: fakeSpawn(records) });
     assert.deepEqual(spawned, ['dingtalk']);
     assert.equal(records.length, 1);
-    assert.deepEqual(records[0].args.slice(-3), ['--im', 'dingtalk', '--no-open']);
+    assert.deepEqual(records[0].args.slice(-3), ['--im-sdk', 'dingtalk', '--no-open']);
   });
 
   it('does NOT spawn when an enabled platform already has a live (ready) worker', async () => {

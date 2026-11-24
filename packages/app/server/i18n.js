@@ -3099,6 +3099,10 @@ const i18nData = {
     "tr": "IM botu '{id}' zaten çalışıyor (pid {pid}); ikinci bir örnek başlatılması reddedildi.",
     "uk": "IM-бот '{id}' вже запущено (pid {pid}); запуск другого екземпляра відхилено."
   },
+  "cli.imSdkUnavailable": {
+    "zh": "Agent SDK 不可用（缺少 @anthropic-ai/claude-agent-sdk），IM worker '{id}' 回退到 PTY 模式；首次运行可能卡在信任/旁路确认。",
+    "en": "Agent SDK unavailable (missing @anthropic-ai/claude-agent-sdk) — IM worker '{id}' falls back to PTY mode and may block on the first-run trust/bypass prompt."
+  },
 };
 
 // 将 { key: { lang: text } } 转换为 { lang: { key: text } }

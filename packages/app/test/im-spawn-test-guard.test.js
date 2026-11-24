@@ -37,7 +37,7 @@ describe('spawnImProcess L4 测试隔离铁闸', () => {
     assert.equal(r.pid, 4242);
     assert.equal(r.blockedByTestGuard, undefined);
     assert.equal(calls.length, 1);
-    assert.ok(calls[0].args.includes('--im'), '假 spawn 收到 --im 参数');
+    assert.ok(calls[0].args.includes('--im-sdk'), '假 spawn 收到 --im-sdk 参数');
   });
 
   it('显式 CCV_TEST_ALLOW_IM_SPAWN=1 放行(集成测试逃生门,仍用假 spawn 验证只验放行逻辑)', () => {

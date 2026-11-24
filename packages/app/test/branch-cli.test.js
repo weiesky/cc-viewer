@@ -329,10 +329,10 @@ function parseLocalPort(out) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-describeCli('branch-cli: --im 全程启动 → updateImLockPort 回填端口（351/371/457）', { concurrency: false }, () => {
-  it('--im dingtalk：建 IM_dingtalk/ + 取锁 + server 启动 + 回填 im.lock 端口，SIGINT exit 0', async () => {
+describeCli('branch-cli: --im-pty 全程启动 → updateImLockPort 回填端口（351/371/457）', { concurrency: false }, () => {
+  it('--im-pty dingtalk：建 IM_dingtalk/ + 取锁 + server 启动 + 回填 im.lock 端口，SIGINT exit 0', async () => {
     const fx = imFixture({ startPort: 18868, endPort: 18871 });
-    const r = await bootAndSignal({ args: ['--im', 'dingtalk'], env: fx.env, signal: 'SIGINT', markerRe: /CC Viewer:/ });
+    const r = await bootAndSignal({ args: ['--im-pty', 'dingtalk'], env: fx.env, signal: 'SIGINT', markerRe: /CC Viewer:/ });
 
     assert.equal(r.exitCode, 0, `IM SIGINT cleanup 应 exit 0；实得 code=${r.exitCode} sig=${r.signal}`);
     assert.ok(existsSync(join(fx.logDir, 'IM_dingtalk')), 'runImMode 应建 IM_dingtalk/');
@@ -345,14 +345,14 @@ describeCli('branch-cli: --im 全程启动 → updateImLockPort 回填端口（3
   });
 });
 
-// ── IM 全局唯一锁竞争：锁被活进程持有时第二个 --im 拒绝启动 → exit 3（451 真臂 + 452-453）──
-describeCli('branch-cli: --im 锁竞争 → 第二实例 exit 3（451-453）', { concurrency: false }, () => {
-  it('同 LOG_DIR 下并发两个 --im dingtalk：先到者持锁，后到者 acquireImLock 失败 → exit 3', async () => {
+// ── IM 全局唯一锁竞争：锁被活进程持有时第二个 --im-pty 拒绝启动 → exit 3（451 真臂 + 452-453）──
+describeCli('branch-cli: --im-pty 锁竞争 → 第二实例 exit 3（451-453）', { concurrency: false }, () => {
+  it('同 LOG_DIR 下并发两个 --im-pty dingtalk：先到者持锁，后到者 acquireImLock 失败 → exit 3', async () => {
     // 复用同一 fixture（同 home/logDir → 同 im.lock 路径）让两实例竞争同一把锁。
     const fx = imFixture({ startPort: 18872, endPort: 18875 });
 
     // 第一实例：起到 server marker（持锁）。沿用 bootAndSignal 内部机制但不立即发信号 —— 这里手动管理。
-    const first = spawn(process.execPath, [CLI_PATH, '--im', 'dingtalk'], {
+    const first = spawn(process.execPath, [CLI_PATH, '--im-pty', 'dingtalk'], {
       env: { CCV_LOG_DIR: GUARD_FALLBACK_LOG_DIR, ...fx.env }, cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
     });
     LIVE.add(first);
@@ -369,8 +369,8 @@ describeCli('branch-cli: --im 锁竞争 → 第二实例 exit 3（451-453）', {
       assert.ok(!firstExited, `第一实例应持锁存活；提前退出 out=\n${firstOut.slice(-500)}`);
 
       // 第二实例：同 env → acquireImLock 失败 → exit 3。
-      const r2 = runCli(['--im', 'dingtalk'], { env: { ...fx.env, CCV_LOG_DIR: fx.logDir }, timeout: 30000 });
-      assert.equal(r2.exitCode, 3, `锁被持有时第二个 --im 应 exit 3；实得 ${r2.exitCode} out=${r2.stdout}${r2.stderr}`);
+      const r2 = runCli(['--im-pty', 'dingtalk'], { env: { ...fx.env, CCV_LOG_DIR: fx.logDir }, timeout: 30000 });
+      assert.equal(r2.exitCode, 3, `锁被持有时第二个 --im-pty 应 exit 3；实得 ${r2.exitCode} out=${r2.stdout}${r2.stderr}`);
     } finally {
       // 收掉第一实例。
       try { first.kill('SIGINT'); } catch {}

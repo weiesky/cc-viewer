@@ -187,6 +187,12 @@ describeCli('cli: --im 参数提取与未知平台', () => {
     assert.ok((r.stderr + r.stdout).includes('--im') || (r.stderr + r.stdout).includes('platform'));
   });
 
+  it('缺失平台 id（--im-sdk）报错退出非 0', () => {
+    const r = runCli(['--im-sdk']);
+    assert.notEqual(r.exitCode, 0);
+    assert.ok((r.stderr + r.stdout).includes('--im') || (r.stderr + r.stdout).includes('platform'));
+  });
+
   it('未知平台 id → runImMode 进入但 getDescriptor 为空 → 退出 1', () => {
     const r = runCli(['--im', 'totally-bogus-platform-xyz']);
     assert.equal(r.exitCode, 1);

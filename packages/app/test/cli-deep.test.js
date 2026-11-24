@@ -211,12 +211,12 @@ describeCli('cli-deep: -SDK runSdkMode（SDK 可用）主体抛错 → 顶层 .c
 // （acquireImLock 来源）处被 loader 阻断 → 抛错 → runImMode reject → 顶层 `.catch`（916-919）
 // 打印 "IM mode error:" + exit 1。既有测试只覆盖了 runImMode 内部 process.exit 早退路径。
 
-describeCli('cli-deep: --im runImMode 主体抛错 → 顶层 .catch（IM mode error:）', { concurrency: false }, () => {
+describeCli('cli-deep: --im-pty runImMode 主体抛错 → 顶层 .catch（IM mode error:）', { concurrency: false }, () => {
   it('合法平台 + im-lock import 阻断 → "IM mode error:" 退出 1', () => {
     const home = mkTmp('ccv-deep-im-');
     const logDir = mkTmp('ccv-deep-imlog-');
     const NODE_OPTIONS = importBlockerNodeOptions('/server/lib/im/im-lock.js', 'blocked-imlock-for-test');
-    const r = runCli(['--im', 'dingtalk'], {
+    const r = runCli(['--im-pty', 'dingtalk'], {
       env: {
         PATH: '/usr/bin:/bin',
         HOME: home,
@@ -232,6 +232,36 @@ describeCli('cli-deep: --im runImMode 主体抛错 → 顶层 .catch（IM mode e
     assert.ok(all.includes('IM mode error:'),
       `runImMode reject 应被顶层 .catch 捕获并打印 "IM mode error:"，实得: ${all.slice(-300)}`);
     assert.ok(all.includes('blocked-imlock-for-test'), '应携带被阻断 import 的原始错误');
+  });
+});
+
+// ════════════════════ B3b. --im-sdk + sdk-manager 不可导入 → 回退 runImMode（不二次取锁）════
+// `--im-sdk dingtalk`（合法平台）→ runImSdkMode 在 `import('./server/lib/sdk-manager.js')` 处被
+// loader 阻断 → SDK 不可用 → 取锁前回退 runImMode（PTY）→ 隔离 PATH 下 claude 缺失 → exit 1。
+// 钉住两件事：(1) 回退确实发生（输出走 runImMode 的 claude-not-found 而非 SDK 崩溃）；(2) 回退
+// 在取锁之前，进程不会因二次 acquireImLock 报 "already running"（exit 3）。
+
+describeCli('cli-deep: --im-sdk SDK 缺失回退 PTY（不二次取锁）', { concurrency: false }, () => {
+  it('sdk-manager import 阻断 → 回退 runImMode → claude 缺失 exit 1（非 exit 3）', () => {
+    const home = mkTmp('ccv-deep-imsdk-');
+    const logDir = mkTmp('ccv-deep-imsdklog-');
+    const NODE_OPTIONS = importBlockerNodeOptions('/server/lib/sdk-manager.js', 'blocked-sdk-for-test');
+    const r = runCli(['--im-sdk', 'dingtalk'], {
+      env: {
+        PATH: '/usr/bin:/bin',
+        HOME: home,
+        SHELL: '/bin/zsh',
+        NPM_CONFIG_PREFIX: join(home, 'noprefix'),
+        CLAUDE_CONFIG_DIR: join(home, '.claude'),
+        CCV_LOG_DIR: logDir,
+        NODE_OPTIONS,
+      },
+    });
+    const all = r.stderr + r.stdout;
+    assert.equal(r.exitCode, 1, `回退 runImMode 后应因 claude 缺失 exit 1；实得 ${r.exitCode} out=${all.slice(-400)}`);
+    assert.ok(!all.includes('already running'), '不得在回退路径二次取锁（exit 3 / already running）');
+    assert.ok(all.includes('not found') || all.includes('could not find native') || all.includes('claude'),
+      '应走到 runImMode 的 claude-not-found 分支');
   });
 });
 

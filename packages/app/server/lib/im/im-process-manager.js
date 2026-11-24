@@ -1,9 +1,9 @@
 // IM 进程管理（父进程侧）—— 由主交互式 ccv 调用，负责把每个启用的 IM 作为 detached 常驻
-// 子进程拉起 / 停止 / 查询状态 / 启动时 reconcile。worker 自身（cli.js runImMode）持有 im.lock；
-// 本模块只读锁 + 探活 + spawn/kill。
+// 子进程拉起 / 停止 / 查询状态 / 启动时 reconcile。worker 自身（cli.js runImSdkMode / `--im-sdk`，
+// `--im-pty` 为 legacy PTY 排障口）持有 im.lock；本模块只读锁 + 探活 + spawn/kill。
 //
 // 设计：detached + unref（主 ccv 关闭后 worker 仍在线）；停止时杀**进程组**清理 worker 的
-// Claude PTY + proxy 等孙进程；env 用「前缀剥离 + 白名单回填」杜绝 CCV_*/CCVIEWER_* 泄漏。
+// Claude 会话 + proxy 等孙进程；env 用「前缀剥离 + 白名单回填」杜绝 CCV_*/CCVIEWER_* 泄漏。
 // v1 不做常驻 supervisor（reconcile-on-startup + 配置保存即驱动 已覆盖主路径，且避免多主进程互斗）。
 import { spawn as nodeSpawn, execSync } from 'node:child_process';
 import { openSync, closeSync, mkdirSync } from 'node:fs';
@@ -54,7 +54,8 @@ export function buildChildEnv(id, base = process.env) {
 }
 
 /**
- * 以 detached 子进程拉起一个 IM worker：`node cli.js --im <id> --no-open`，cwd=IM_<id>/。
+ * 以 detached 子进程拉起一个 IM worker：`node cli.js --im-sdk <id> --no-open`，cwd=IM_<id>/。
+ * （SDK worker 是默认形态；cli.js 把裸 `--im` 也映射为 SDK，`--im-pty` 为隐藏排障口。）
  * @param {string} id
  * @param {{ spawnImpl?: Function }} [opts] 测试可注入 spawnImpl
  * @returns {{ pid:number|undefined, dir:string, outLog:string }}
@@ -86,7 +87,7 @@ export function spawnImProcess(id, opts = {}) {
     stdio = ['ignore', fd, fd];
   } catch { /* 无法开日志文件时退化为 ignore */ }
 
-  const child = spawnImpl(resolveNodeBinary(), [CLI_JS, '--im', id, '--no-open'], {
+  const child = spawnImpl(resolveNodeBinary(), [CLI_JS, '--im-sdk', id, '--no-open'], {
     cwd: dir,
     env: buildChildEnv(id),
     stdio,

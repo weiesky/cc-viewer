@@ -214,6 +214,14 @@ export function listSdkSessions() {
 
 registerSdkSessionLister(listSdkSessions);
 
+/** Whether a session is registered for the given anchor (cwd/project/instanceKey).
+ *  Used by the IM worker's isSessionAvailable so a dropped/closed session fails fast
+ *  (noSession) instead of queuing into a 2-minute timeout (review-concurrency P1-2). */
+export function hasSession(anchor) {
+  if (!anchor) return _active() != null;
+  return _sessionForAnchor(anchor, { allowPrimaryFallback: true }) != null;
+}
+
 /**
  * The BOUND cwd's primary session instanceKey (2026-11, WS attach-stamp coherence).
  * The single source of truth for the bound identity: resume.js's `/api/live-processes`
@@ -520,6 +528,8 @@ function _createSession(cwd, { freshKey = false } = {}) {
   let _launchResume = null;  // startup continuation intent { continue, resumeId, forkSession } — first query only
   let _userArgs = [];        // remaining user args → options.extraArgs passthrough
   let _claudeExecutable = null; // pathToClaudeCodeExecutable — resolved with the same priority as PTY mode (configured → codefuse → native → PATH → npm) so SDK sessions don't fall back to a PATH claude that host security policy may kill on headless spawn
+  let _unattended = false;   // runImSdkMode (IM worker): no human can answer any approval modal
+  let _insideLogDir = false; // caller asserts the cwd is the IM worker dir under LOG_DIR (cli.js passes true) → skip model-prompt matching so the IM persona wins
   // Resident-query state. `_activeQuery` (the Query handle) and `_queryBusy` (a turn in
   // flight) are deliberately decoupled: an idle resident query is alive but not busy.
   let _activeQuery = null;
@@ -659,7 +669,7 @@ function _createSession(cwd, { freshKey = false } = {}) {
   }
 
     /** Adopt launch config (initSdkSession writes it here). */
-  function _init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable }) {
+  function _init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable, unattended, insideLogDir }) {
     _permissionMode = permissionMode || 'default';
     _childEnv = env || null;
     _settings = settings || null;
@@ -667,6 +677,8 @@ function _createSession(cwd, { freshKey = false } = {}) {
     _launchResume = launchResume || null;
     _userArgs = Array.isArray(userArgs) ? userArgs : [];
     _claudeExecutable = claudeExecutable || null;
+    _unattended = unattended === true;
+    _insideLogDir = insideLogDir === true;
     // Re-init (tests / hot reload) must not leave a zombie resident generation alive.
     _teardownResident();
     _resetFullState();
@@ -1026,6 +1038,41 @@ function _createSession(cwd, { freshKey = false } = {}) {
       canUseTool: _handleCanUseTool,
       ..._permissionMode === 'bypassPermissions' && { allowDangerouslySkipPermissions: true },
     };
+    // IM worker (CCV_IM_DENY=1): the child deliberately drops CCV_IM_DENY/CCVIEWER_PORT, so the
+    // settings-file PreToolUse bridge stays dormant in the SDK child. And under bypassPermissions the
+    // CLI shadows canUseTool entirely (CLAUDE_SDK_CAN_USE_TOOL_SHADOWED) — so this in-process
+    // PreToolUse hook is the IM worker's AUTHORITATIVE enforcement layer, running inside the CLI
+    // engine regardless of permission mode (a hook deny is authoritative even under bypass). For an
+    // unattended IM worker it ALSO denies the interactive tools (AskUserQuestion/ExitPlanMode) and
+    // publish, which would otherwise hang with nobody to answer them.
+    if (process.env.CCV_IM_DENY === '1') {
+      options.hooks = {
+        PreToolUse: [{
+          hooks: [async (input) => {
+            try {
+              const toolName = input?.tool_name;
+              // Unattended IM worker: interactive prompts and publish can never be answered —
+              // deny them at the engine layer (bypass shadows canUseTool, so this hook is the
+              // only place they can be stopped without hanging).
+              if (_unattended && (toolName === 'AskUserQuestion' || toolName === 'ExitPlanMode')) {
+                return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Unattended IM session: interactive prompts are unavailable. Ask the user in plain chat text instead.' } };
+              }
+              const verdict = evaluateImDeny(toolName, input?.tool_input ?? {});
+              if (verdict.deny) {
+                return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `cc-viewer IM guard: ${verdict.reason}` } };
+              }
+            } catch (err) {
+              // Fail-closed: this hook is the IM worker's authoritative enforcement layer
+              // (bypass shadows canUseTool). An evaluation error must not silently allow the
+              // tool — deny and surface it, rather than fail open (review-security P2-1).
+              reportSwallowed('sdk-manager.im-hook', err);
+              return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'cc-viewer IM guard: evaluation error' } };
+            }
+            return {};
+          }],
+        }],
+      };
+    }
     // env carries the loopback-proxy base URL — the SDK passes it through to the
     // spawned CLI verbatim (verified against sdk.mjs: env defaults to process.env
     // and is only ever added to, never filtered).
@@ -1099,6 +1146,9 @@ function _createSession(cwd, { freshKey = false } = {}) {
         launchSettings: _settings,
         resume: resumeIntent,
         persistPending: !resumeIntent,
+        // IM worker (runImSdkMode): skip the model-prompt pin/match machinery so the
+        // IM_<id>/CC_APPEND_SYSTEM.md persona is not replaced by a LOG_DIR/system_prompt entry.
+        insideLogDir: _insideLogDir === true,
       });
       options.extraArgs = launchArgsToExtraArgs([...launchArgs, ...lc.sysPrompt.args]);
     } catch (err) {
@@ -1878,7 +1928,12 @@ function _createSession(cwd, { freshKey = false } = {}) {
           // Per-workspace (2026-10): carry the session's own cwd so the server
           // can route turn_end to THIS workspace's SSE scope (SDK mode has no
           // Stop-hook POST, so this callback is the only turn-end producer).
-          try { _onTurnEnd({ sessionId: _sessionId, ts: Date.now(), cwd: _cwd }); }
+          try { _onTurnEnd({ sessionId: _sessionId, ts: Date.now(), cwd: _cwd,
+            // resultText: the authoritative final assistant text from the SDK result message.
+            // IM workers (runImSdkMode) have no transcript_path, so the bridge falls back to
+            // this when the interceptor live text is empty. Purely additive — existing
+            // consumers ignore it.
+            resultText: typeof msg.result === 'string' ? msg.result : null }); }
           catch (err) { console.warn('[sdk-manager] onTurnEnd threw:', err?.message); }
         }
         if (rec) _settleTurn(rec);
@@ -2138,6 +2193,9 @@ function _createSession(cwd, { freshKey = false } = {}) {
    *      publish force-approval below (an IM worker gets a hard deny, not a modal);
    *   2. npm-publish hard gate — forced through the perm approval branch even in
    *      bypassPermissions mode (perm-bridge.js's bypass exemption equivalent);
+   *   2b. unattended IM worker (runImSdkMode) — no human can answer a modal, so the
+   *      interactive tools (ExitPlanMode/AskUserQuestion) and publish are denied
+   *      immediately and everything else auto-allows, instead of parking 5min/24h;
    *   3. bypass early-allow — bypass auto-approves everything else, but NEVER
    *      short-circuits the ExitPlanMode/AskUserQuestion interactive branches;
    *   4. the three regular branches (plan / ask / perm).
@@ -2168,6 +2226,26 @@ function _createSession(cwd, { freshKey = false } = {}) {
     // the only exception is the explicit full auto-approve tier (-2) resolved in the
     // perm branch below.
     const isPublish = isPublishCommand(toolName, input);
+
+    // 2b. Unattended IM worker (runImSdkMode): no human can answer any approval modal,
+    // so never park. The IM hard deny above already ran; here we deny the interactive
+    // tools and the publish floor immediately with an actionable message and auto-allow
+    // everything else. Without this, an unattended bypass session would still hang 5min
+    // (publish/ExitPlanMode) or 24h (AskUserQuestion) on those paths.
+    // NOTE: runImSdkMode runs permissionMode 'bypassPermissions', under which the CLI does
+    // NOT invoke canUseTool at all (CLAUDE_SDK_CAN_USE_TOOL_SHADOWED) — so for the IM worker
+    // this branch is dormant defense-in-depth, and the authoritative IM enforcement layer is
+    // the in-process PreToolUse hook mounted in _ensureResidentQuery (see options.hooks).
+    // It stays live for any future non-bypass unattended caller.
+    if (_unattended && process.env.CCV_IM_DENY === '1') {
+      if (toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion') {
+        return { behavior: 'deny', message: 'Unattended IM session: interactive prompts are unavailable. Ask the user in plain chat text instead.' };
+      }
+      if (isPublish) {
+        return { behavior: 'deny', message: 'Unattended IM session: publishing commands are blocked.' };
+      }
+      return { behavior: 'allow', updatedInput: input };
+    }
 
     // 3. Bypass mode auto-approves everything except publish and the two
     // interactive tools — those keep their UI channels so a forwarded
@@ -3121,7 +3199,7 @@ export function __isEphemeralHostForTests(cwd) {
  *   must come from the same selection as PTY mode, else the SDK spawns a PATH claude that
  *   host security tooling (e.g. agent-security headless guards) may SIGKILL on spawn
  */
-export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broadcastWs, permissionMode, runWaterfallHook, onAgentLoopStart, onAgentLoopEnd, env, settings, model, launchResume, userArgs, claudeExecutable } = {}) {
+export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broadcastWs, permissionMode, runWaterfallHook, onAgentLoopStart, onAgentLoopEnd, env, settings, model, launchResume, userArgs, claudeExecutable, unattended, insideLogDir } = {}) {
   void projectName; // reserved (display name comes from the wire path)
   // Process-global callbacks (cli.js registers one wiring; every session reuses it). Only
   // OVERWRITE when a callback is actually passed — a later per-workspace init (the launch
@@ -3142,7 +3220,7 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
   // and tears down ONLY this session's prior generation (tests / hot reload) — other
   // workspaces' sessions (and same-cwd siblings) are untouched.
   const sess = _getOrCreateSession(cwd);
-  sess.init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable });
+  sess.init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable, unattended, insideLogDir });
   _activeKey = sess.instanceKey;
   // Seed the per-session proxy binding from the global default (no-op when the
   // session is already bound, so a re-init never clobbers a user's choice).

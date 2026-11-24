@@ -74,6 +74,19 @@ describe('im-deny: file tools', () => {
     }
   });
 
+  it('denies read-class tools Grep/Glob/NotebookRead against credential paths (P1-3)', () => {
+    // Grep/Glob 的入参是 {pattern, path}，NotebookRead 是 {notebook_path}；它们的 path 指向被读目录。
+    const sshDir = join(HOME, '.ssh');
+    const credFile = join(HOME, '.aws/credentials');
+    const vault = join(HOME, '.claude/cc-viewer/credentials.json');
+    assert.equal(evaluateImDeny('Grep', { pattern: '.', path: sshDir }, opts).deny, true, 'Grep into ~/.ssh must deny');
+    assert.equal(evaluateImDeny('Grep', { pattern: '.', path: credFile }, opts).deny, true, 'Grep on a credential file must deny');
+    assert.equal(evaluateImDeny('Glob', { pattern: '**/*', path: sshDir }, opts).deny, true, 'Glob into ~/.ssh must deny');
+    assert.equal(evaluateImDeny('NotebookRead', { notebook_path: vault }, opts).deny, true, 'NotebookRead of the vault must deny');
+    // 正常路径不受影响
+    assert.equal(evaluateImDeny('Grep', { pattern: 'foo', path: join(HOME, 'proj/src') }, opts).deny, false, 'Grep on a normal dir stays allowed');
+  });
+
   it('denies scheduled-task data files under a moved LOG_DIR (bare-name match)', () => {
     for (const fp of [
       '/opt/ccv/data/preferences.json',

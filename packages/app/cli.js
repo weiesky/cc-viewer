@@ -6,13 +6,13 @@ if (process.platform === 'win32' && !process.env.UV_THREADPOOL_SIZE) {
 }
 
 import { readFileSync, writeFileSync, existsSync, realpathSync, unlinkSync, mkdirSync, statSync } from 'node:fs';
-import { resolve, isAbsolute } from 'node:path';
+import { resolve, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { t } from './server/i18n.js';
 import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolvePreferredClaudeSelection, resolveNativePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES, getClaudeConfigDir, isBrowserOpenSuppressed, applyAgentTeamsDefault } from './findcc.js';
-import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js';
+import { ensureHooks, removeAllManagedHooks, ensureOnboardingAndTrust } from './server/lib/ensure-hooks.js';
 import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
 import { inspectShellHook } from './server/lib/shell-hook-inspect.js';
 import { resolveBaseConfig, externalUrlFromConfig } from './server/lib/base-url.js';
@@ -520,24 +520,9 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   // 3. 启动 HTTP 服务器
   const serverMod = await import('./server/server.js');
 
-  // 等待服务器启动完成。IM worker 加 30s 死线：端口段(7050-7099)耗尽时 getPort() 恒为 0，
-  // 否则 worker 会永久空转并占着 im.lock(port:null)。超时则退出(exit 钩子释放锁)，让用户快速看到失败、
-  // manager 也能据此判死。普通 ccv 保持原有无限轮询行为不变。
-  const _imPortDeadline = process.env.CCV_IM_PLATFORM ? Date.now() + 30000 : null;
-  await new Promise((resolve, reject) => {
-    const check = () => {
-      const port = serverMod.getPort();
-      if (port) return resolve(port);
-      if (_imPortDeadline && Date.now() > _imPortDeadline) {
-        return reject(new Error('no free port in 7050-7099 within 30s'));
-      }
-      setTimeout(check, 100);
-    };
-    setTimeout(check, 200);
-  }).catch((e) => {
-    console.error('[CC Viewer] IM worker could not bind a port:', e.message);
-    process.exit(1); // process.on('exit') 会按身份释放 im.lock
-  });
+  // 等待服务器启动完成。IM worker 加 30s 死线（端口段耗尽时快速失败，见 waitForImServerPort）；
+  // 普通 ccv 保持原有无限轮询行为不变。
+  await waitForImServerPort(serverMod);
 
   const port = serverMod.getPort();
   const serverProtocol = serverMod.getProtocol();
@@ -676,9 +661,52 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   installWinKeypressFallback({ onInterrupt: cleanup });
 }
 
-// 启动一个独立常驻 IM worker。本质是「在 IM_<id>/ 工作目录、绑 127.0.0.1、skip-permissions」的 runCliMode，
-// 外加：全局唯一锁、CC_APPEND_SYSTEM.md 人格预置/迁移、IM 专属 env。由 im-process-manager 以 detached 子进程拉起，
-// 也可手动 `ccv --im <id>` 启动。
+// CodeFuse config-dir fallback: when the worker is launched directly (not via
+// the CodeFuse engine), CLAUDE_CONFIG_DIR is unset and Claude would fall back
+// to ~/.claude/ — which may lack .claude.json and trigger the first-run
+// onboarding/trust dialogs. Probe the known CodeFuse config dirs and pin the
+// one that already has a .claude.json so the worker inherits the engine's
+// pre-seeded trust state. Shared by runImMode (PTY) and runImSdkMode (SDK).
+function resolveImClaudeConfigDir() {
+  if (process.env.CLAUDE_CONFIG_DIR) return;
+  const home = homedir();
+  const candidates = [
+    process.env.CCV_CODEFUSE_ENGINE_CC,
+    join(home, '.codefuse', 'engine', 'cc'),
+    join(home, '.codefuse', 'fuse', 'engine', 'cc'),
+  ];
+  const cfEngineCc = candidates.find((p) => p && existsSync(join(p, '.claude.json')));
+  if (cfEngineCc) {
+    process.env.CLAUDE_CONFIG_DIR = cfEngineCc;
+  }
+}
+
+// Wait for the worker's HTTP server to bind, with a 30s deadline: when the IM port
+// range (7050-7099) is exhausted getPort() stays 0 and the worker would otherwise idle
+// forever holding im.lock (port:null). On timeout we exit (the exit hook releases the
+// lock) so the user sees the failure fast and the manager can reap it. Shared by
+// runCliMode and runImSdkMode.
+async function waitForImServerPort(serverMod) {
+  const _imPortDeadline = process.env.CCV_IM_PLATFORM ? Date.now() + 30000 : null;
+  await new Promise((resolve, reject) => {
+    const check = () => {
+      const port = serverMod.getPort();
+      if (port) return resolve(port);
+      if (_imPortDeadline && Date.now() > _imPortDeadline) {
+        return reject(new Error('no free port in 7050-7099 within 30s'));
+      }
+      setTimeout(check, 100);
+    };
+    setTimeout(check, 200);
+  }).catch((e) => {
+    console.error('[CC Viewer] IM worker could not bind a port:', e.message);
+    process.exit(1); // process.on('exit') 会按身份释放 im.lock
+  });
+}
+
+// legacy PTY 形态的 IM worker（隐藏排障口 `--im-pty`）。本质是「在 IM_<id>/ 工作目录、绑 127.0.0.1、
+// skip-permissions」的 runCliMode，外加：全局唯一锁、CC_APPEND_SYSTEM.md 人格预置/迁移、IM 专属 env。
+// 注意：裸 `--im` 与 `--im-sdk` 现在都走 runImSdkMode（SDK），本函数仅由 --im-pty 触发。
 async function runImMode(platformId) {
   const { getDescriptor } = await import('./server/lib/im/im-config.js');
   if (!getDescriptor(platformId)) {
@@ -721,35 +749,282 @@ async function runImMode(platformId) {
   process.env.CCV_MAX_PORT = process.env.CCV_MAX_PORT || '7099';
   process.env.CCV_HOST = '127.0.0.1';  // 仅 loopback：不把 skip-perms 端点暴露到局域网
   process.env.CCV_IM_DENY = '1';       // 启用 perm-bridge 的 IM 硬拦截层
-  // IM 人格(CC_APPEND_SYSTEM.md)必须始终注入：清掉全局 opt-out，使手动 `ccv --im` 也不被它关掉
+  // IM 人格(CC_APPEND_SYSTEM.md)必须始终注入：清掉全局 opt-out，使手动启动 worker 也不被它关掉
   // （manager 拉起的 worker 由 buildChildEnv 已剥离全部 CCV_*，此处对其为 no-op，仅覆盖手动启动路径）。
   delete process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT;
 
-  // CodeFuse config-dir fallback: when the worker is launched directly (not via
-  // the CodeFuse engine), CLAUDE_CONFIG_DIR is unset and Claude would fall back
-  // to ~/.claude/ — which may lack .claude.json and trigger the first-run
-  // onboarding/trust dialogs. Probe the known CodeFuse config dirs and pin the
-  // one that already has a .claude.json so the worker inherits the engine's
-  // pre-seeded trust state. This MUST happen before runCliMode so that
-  // ensureHooks() writes to the same directory the child will read.
-  if (!process.env.CLAUDE_CONFIG_DIR) {
-    const { homedir } = await import('node:os');
-    const { join } = await import('node:path');
-    const { existsSync } = await import('node:fs');
-    const home = homedir();
-    const candidates = [
-      process.env.CCV_CODEFUSE_ENGINE_CC,
-      join(home, '.codefuse', 'engine', 'cc'),
-      join(home, '.codefuse', 'fuse', 'engine', 'cc'),
-    ];
-    const cfEngineCc = candidates.find((p) => p && existsSync(join(p, '.claude.json')));
-    if (cfEngineCc) {
-      process.env.CLAUDE_CONFIG_DIR = cfEngineCc;
-    }
-  }
+  // CodeFuse config-dir fallback（见 resolveImClaudeConfigDir 注释）。必须在 runCliMode 之前
+  // 解析，确保 ensureHooks() 与子进程读取同一目录。
+  await resolveImClaudeConfigDir();
 
   // worker 全自动：skip-permissions + 不开浏览器，工作目录设为 IM_<id>/
   return runCliMode(['--dangerously-skip-permissions'], dir, true);
+}
+
+// SDK 版常驻 IM worker：无 PTY、无 TUI 确认框（彻底规避 "Yes, I accept" 卡死），Claude 走 Agent SDK query()。
+// 与 runImMode 共享：全局唯一锁、IM_<id>/ 工作目录、CC_APPEND_SYSTEM.md 人格、内置技能、
+// 7050-7099 loopback 端口段、CCV_IM_DENY=1 硬拦截。由 im-process-manager 以 `--im-sdk`（或裸 `--im`）拉起。
+async function runImSdkMode(platformId) {
+  const { getDescriptor } = await import('./server/lib/im/im-config.js');
+  if (!getDescriptor(platformId)) {
+    console.error(t('cli.imUnknownPlatform', { id: platformId }));
+    process.exit(1);
+  }
+
+  // 0) SDK 可用性：硬依赖缺失时在取锁前回退 legacy PTY worker（最差退回今天的形态，不二次取锁）。
+  let sdkManager;
+  try {
+    sdkManager = await import('./server/lib/sdk-manager.js');
+    if (!sdkManager.isSdkAvailable()) throw new Error('query not available');
+  } catch {
+    console.warn(t('cli.imSdkUnavailable', { id: platformId }));
+    return runImMode(platformId);
+  }
+
+  const { acquireImLock, releaseImLock, imDir, updateImLockPort } = await import('./server/lib/im/im-lock.js');
+  const { ensureImAppendSystem, migrateImClaudeMd } = await import('./server/lib/im/im-append-system.js');
+  const { ensureImBuiltinSkills } = await import('./server/lib/im/im-skills.js');
+
+  const dir = imDir(platformId);
+  mkdirSync(dir, { recursive: true });
+
+  // 1) 全局唯一锁（与 runImMode 一致；exit 钩子按身份释放）
+  const lockRes = acquireImLock(platformId);
+  if (!lockRes.ok) {
+    console.error(t('cli.imAlreadyRunning', { id: platformId, pid: lockRes.holder?.pid ?? '?' }));
+    process.exit(3);
+  }
+  process.on('exit', () => { try { releaseImLock(platformId, process.pid); } catch { /* noop */ } });
+
+  // 2) 人格/技能（失败非致命，worker 照常启动）
+  try { migrateImClaudeMd(platformId, dir); }
+  catch (e) { console.warn('[CC Viewer] migrateImClaudeMd failed (non-fatal):', e.message); }
+  try { ensureImAppendSystem(platformId, dir); }
+  catch (e) { console.warn('[CC Viewer] ensureImAppendSystem failed (non-fatal):', e.message); }
+  try { ensureImBuiltinSkills(platformId, dir); }
+  catch (e) { console.warn('[CC Viewer] ensureImBuiltinSkills failed (non-fatal):', e.message); }
+
+  // 3) IM env —— 必须早于任何 server/proxy/interceptor import（它们的 isCliMode/isSdkMode/
+  //    _imCaptureEnabled 在模块顶层只求值一次）。
+  process.env.CCV_IM_PLATFORM = platformId;
+  process.env.CCV_START_PORT = process.env.CCV_START_PORT || '7050';
+  process.env.CCV_MAX_PORT = process.env.CCV_MAX_PORT || '7099';
+  process.env.CCV_HOST = '127.0.0.1';
+  process.env.CCV_IM_DENY = '1';
+  delete process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT; // IM 人格始终注入
+
+  // CodeFuse config-dir 探测（与 runImMode 共用 helper），之后固化信任语义。
+  await resolveImClaudeConfigDir();
+
+  // 4) 信任语义：幂等 pre-seed。SDK 不渲染 TUI 确认框（不卡），但未信任目录会让项目级
+  //    permissions.allow 被忽略、权限判定落入不确定路径 —— 显式预置让 worker 行为确定可复现。
+  try { ensureOnboardingAndTrust({ configDir: process.env.CLAUDE_CONFIG_DIR, workspacePath: dir }); }
+  catch (e) { console.warn('[CC Viewer] ensureOnboardingAndTrust failed (non-fatal):', e.message); }
+
+  // 5) claude 二进制解析（与 runSdkMode 一致：headless 下被安全软件 SIGKILL 的 PATH claude 风险同款）。
+  //    IM worker 无人值守：解析不到必须 fail-fast（与 PTY runCliMode 一致），否则 worker 以
+  //    ready 状态挂到 manager 面板、直到首条消息才在 SDK 内失败并拖成 2 分钟超时。
+  let sdkClaudeSelection = null;
+  try { sdkClaudeSelection = assertUsableClaudeSelection(resolvePreferredClaudeSelection()); }
+  catch (err) { console.error(`[CC Viewer] ${err.message}`); process.exit(1); }
+  const sdkClaudePath = sdkClaudeSelection?.path || null;
+  if (!sdkClaudePath) { reportClaudeNotFound(null); process.exit(1); }
+  process.env.CCV_CLAUDE_EXECUTABLE = sdkClaudePath;
+
+  // 6) SDK/CLI 标记 + 回环代理（同 runSdkMode；务必在 import server.js 之前）。
+  process.env.CCV_CLI_MODE = '1';
+  process.env.CCV_SDK_MODE = '1';
+  process.env.CCV_PROJECT_DIR = dir;
+  process.env.CCV_PROXY_MODE = '1';
+  const { startProxy } = await import('./server/proxy.js');
+  const proxyPort = await startProxy();
+  process.env.CCV_PROXY_PORT = String(proxyPort);
+
+  // 7) server（import 即异步自启动）。SDK worker 的 IM bridge 由下方步骤 13 启动，
+  //    server.js 的 PTY bridge 已被 !isSdkMode 门控跳过。
+  const serverMod = await import('./server/server.js');
+  await waitForImServerPort(serverMod);
+  const port = serverMod.getPort();
+  const { basename } = await import('node:path');
+
+  // 8) 回填 im.lock 端口（manager 的身份探测依赖它）。
+  try { updateImLockPort(platformId, port); }
+  catch (e) { console.error('[CC Viewer] updateImLockPort failed:', e.message); }
+
+  // 9) 子进程 env（对齐 runSdkMode；绝不注入 CCVIEWER_PORT —— settings bridges 在 SDK 模式休眠）。
+  //    卫生：IM 专属开关只留父进程（硬 deny 由父进程 sdk-manager 的 in-process PreToolUse hook 执行），不进 claude 子进程。
+  const proxyBaseUrl = `http://127.0.0.1:${proxyPort}`;
+  const editorScript = resolve(__dirname, 'server', 'lib', 'ccv-editor.js');
+  const childEnv = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: proxyBaseUrl,
+    CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1',
+    CCV_PROXY_MODE: '1',
+    CCV_LOG_DIR: process.env.CCV_LOG_DIR || LOG_DIR,
+    DISABLE_AUTOUPDATER: '1',
+    EDITOR: `${process.execPath} ${editorScript}`,
+    VISUAL: `${process.execPath} ${editorScript}`,
+    CCV_EDITOR_PORT: String(port),
+  };
+  delete childEnv.CCV_SKIP_THINKING_DISPLAY;
+  delete childEnv.CCV_WORKSPACE_MODE;
+  delete childEnv.CCV_ELECTRON_MULTITAB;
+  delete childEnv.CCV_IM_PLATFORM;
+  delete childEnv.CCV_IM_DENY;
+
+  // 10) settings：代理 URL + IM permissions.deny（与 PTY worker 的 --settings 注入同一份 helper）。
+  const { buildImDenySettings } = await import('./server/lib/im/im-permissions.js');
+  const settingsObj = { env: { ANTHROPIC_BASE_URL: proxyBaseUrl }, ...buildImDenySettings() };
+
+  // 11) 初始化 SDK 会话。bypassPermissions 对等现有 --dangerously-skip-permissions（bypass 下 CLI
+  //     不调 canUseTool，IM 拦截由 sdk-manager 的 in-process PreToolUse hook 执行）；unattended 让
+  //     交互工具经该 hook 立即裁决（无人值守不挂起）；insideLogDir 跳过模型 prompt 匹配以保护人格。
+  const { runWaterfallHook } = await import('./server/lib/plugin-loader.js');
+  const { getImLiveText, resetImLiveText } = await import('./server/interceptor.js');
+  let lastResultText = '';
+  const handleTurnEnd = ({ sessionId, ts, cwd, resultText }) => {
+    // 归属过滤：worker Web UI 可能另开 cwd 的 SDK 会话（worker 注册了全套 setSdk* 回调）。
+    // 它们的 turn_end 不属于本 IM 机器人 —— 不重置兜底文本、不广播，避免吃掉 IM 在飞槽位 /
+    // 覆盖 IM 的回复文本（review-correctness P2-3 / concurrency 回合归属）。
+    if (cwd && resolve(cwd) !== resolve(dir)) return;
+    // 每个回合结束都重置：出错/中断的回合 resultText 为 null，必须清空而非保留上一轮的
+    // 文本 —— 否则 getReplyText() 在实时文本为空时会把上一轮的旧答复再发一遍（P2-1）。
+    lastResultText = typeof resultText === 'string' ? resultText : '';
+    if (typeof serverMod.broadcastTurnEnd !== 'function') {
+      console.warn('[sdk] serverMod.broadcastTurnEnd is not a function (export missing?); turn-end signal dropped');
+      return;
+    }
+    // SDK 无 Stop hook：result 是唯一权威 turn_end。transcriptPath 传 null —— 出站文本由
+    // bridge 的 getReplyText()（interceptor 实时文本优先、resultText 兜底）提供。
+    try { serverMod.broadcastTurnEnd(sessionId, ts, null, cwd); }
+    catch (err) { console.warn('[sdk] broadcastTurnEnd threw:', err?.message); }
+  };
+  // 会话死亡/迭代器异常不触发 onTurnEnd（sdk-manager 只走 _notifyQueryError）。同步清空
+  // lastResultText，避免 bridge 空闲合成 turn_end 时回退到上一轮的旧答复重发（P2-3）。
+  const handleQueryError = (message, meta) => { lastResultText = ''; serverMod.broadcastWsMessage({ type: 'sdk-error', message, ...(meta || {}) }); };
+  const loopStart = (p) => { try { serverMod.broadcastAgentLoopStart?.(p); } catch { /* best-effort */ } };
+  const loopEnd = (p) => { try { serverMod.broadcastAgentLoopEnd?.(p); } catch { /* best-effort */ } };
+
+  sdkManager.initSdkSession(dir, basename(dir), {
+    broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
+    permissionMode: 'bypassPermissions',
+    unattended: true,
+    insideLogDir: true,
+    env: childEnv,
+    settings: settingsObj,
+    model: null,
+    claudeExecutable: sdkClaudePath,
+    launchResume: null, // IM worker 每次全新会话（与 PTY 一致）
+    userArgs: [],
+    runWaterfallHook,
+    onTurnEnd: handleTurnEnd,
+    onQueryError: handleQueryError,
+    onAgentLoopStart: loopStart,
+    onAgentLoopEnd: loopEnd,
+  });
+  sdkManager.setSdkProcessWiring({
+    onTurnEnd: handleTurnEnd,
+    onQueryError: handleQueryError,
+    onAgentLoopStart: loopStart,
+    onAgentLoopEnd: loopEnd,
+    broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
+    runWaterfallHook,
+  });
+  // 进程级 launch 模板（与 runSdkMode 对齐）：worker 的 Web UI 若「新建工作区」，新 cwd 的会话
+  // 经 routes/workspaces.js → createSdkSession 继承此模板，拿到 proxy env/settings/claude 二进制，
+  // 否则新会话会绕过回环代理、无 transcript、permissionMode 落回 default（review P2-6/P2-2）。
+  // 模板刻意不含 unattended/insideLogDir —— 那是 IM 工作目录专属，新建的普通工作区不应继承。
+  sdkManager.setSdkLaunchConfig({
+    permissionMode: 'bypassPermissions',
+    env: childEnv,
+    settings: settingsObj,
+    model: null,
+    userArgs: [],
+    claudeExecutable: sdkClaudePath,
+  });
+
+  // 12) 注册 server 侧 sdk-* 回调（worker 的 Web UI 可用）。
+  serverMod.setSdkResolveApproval(sdkManager.resolveApproval);
+  serverMod.setSdkCancelApproval(sdkManager.cancelApproval);
+  serverMod.setSdkAutoCancelApproval(sdkManager.autoCancelApproval);
+  serverMod.setSdkSendUserMessage(sdkManager.sendUserMessage);
+  serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
+  serverMod.setSdkRetryTurn(sdkManager.retryInterruptedTurn);
+  serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);
+  serverMod.setSdkGetInitSnapshot(sdkManager.getSdkInitSnapshot);
+  serverMod.setSdkGetSkillsSnapshot(sdkManager.getSkillsSnapshot);
+  serverMod.setSdkGetContextUsageSnapshot(sdkManager.getContextUsageSnapshot);
+  serverMod.setSdkGetMcpStatusSnapshot(sdkManager.getMcpStatusSnapshot);
+  serverMod.setSdkGetSessionStateSnapshot(sdkManager.getSessionStateSnapshot);
+  serverMod.setSdkGetSdkTaskSnapshot(sdkManager.getSdkTaskSnapshot);
+  serverMod.setSdkResolveBoundPrimaryInstanceKey(sdkManager.resolveBoundPrimaryInstanceKey);
+  serverMod.setSdkSendQueuedNow(sdkManager.sendQueuedNow);
+  serverMod.setSdkRemoveQueued(sdkManager.removeQueued);
+  serverMod.setSdkClearQueued(sdkManager.clearQueued);
+  serverMod.setSdkGetQueueSnapshot(sdkManager.getQueueSnapshot);
+
+  // 13) 启动 SDK 形状的 IM bridge —— 必须在 initSdkSession 之后（session 已注册，消息不丢）。
+  const imCore = await import('./server/lib/im/im-bridge-core.js');
+  const { loadConfig } = await import('./server/lib/im/im-config.js');
+  await imCore.startBridge(platformId, {
+    // 入站：结构化推送（sendUserMessage），无需 bracketed-paste 转义帧。
+    sendPrompt: (text, cb) => {
+      // 回合起点重置兜底文本（与 armActiveInjection 的 resetLiveText 对称）：死亡/中断路径不触发
+      // onTurnEnd/onQueryError，若不清空，bridge 空闲合成 turn_end 时会把上一轮旧答复重发（P1-4）。
+      lastResultText = '';
+      let p;
+      try { p = sdkManager.sendUserMessage(text, { cwd: dir }); }
+      catch (e) { reportSwallowed('cli.imSdkSend', e); cb?.(false); return; }
+      // sendUserMessage 的 promise 在回合结束才 resolve，绝不能 await；仅投递前失败才 cb(false)。
+      Promise.resolve(p).then(() => cb?.(true), (err) => {
+        console.warn('[CC Viewer] IM SDK send failed:', err?.message || err);
+        cb?.(false);
+      });
+    },
+    interrupt: () => { try { sdkManager.interruptTurn({ cwd: dir }); } catch { /* best-effort */ } },
+    // 会话存在性走真实查询：会话被移除/关闭时快速回 noSession（review-concurrency P1-2），
+    // 而不是把每条消息排进 SDK 队列、占住单飞槽拖到 2 分钟超时。子进程死亡仍由 sdk-manager 自愈重建
+    // （session 记录还在 → hasSession 为 true，不影响自愈）。
+    isSessionAvailable: () => sdkManager.hasSession({ cwd: dir }),
+    isStreaming: () => {
+      const snap = sdkManager.getSessionStateSnapshot({ cwd: dir });
+      return !!snap && (snap.state === 'running' || snap.state === 'requires_action');
+    },
+    // 出站：interceptor 逐字文本（与流式卡片同源、回合内 reset）优先；采不到时退回 SDK result 全文。
+    getReplyText: () => getImLiveText() || lastResultText,
+    getConfig: () => loadConfig(platformId),
+    getLiveText: () => getImLiveText(),
+    resetLiveText: () => resetImLiveText(),
+  });
+
+  // 14) 日志 + 退出清理（同 runSdkMode；serverMod.stopViewer → imCore.stopAll 回收 bridge）。
+  const protocol = serverMod.getProtocol();
+  const _cfg = resolveBaseConfig();
+  console.log('CC Viewer (SDK mode):');
+  console.log(`  ➜ Local:   ${protocol}://127.0.0.1:${port}${_cfg.basePath}`);
+  const _token = serverMod.getAccessToken();
+  for (const _ip of serverMod.getAllLocalIps()) {
+    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}${_cfg.basePath}?token=${_token}`);
+  }
+  const cleanup = createHardenedCleanup({
+    doCleanup: () => {
+      try { sdkManager.stopSession(); } catch { /* noop */ }
+      return Promise.all([
+        serverMod.stopViewer(),
+        import('./server/scratch-pty-manager.js')
+          .then(({ killAllScratch }) => killAllScratch())
+          .catch((e) => reportSwallowed('cli.cleanup.scratch', e)),
+      ]);
+    },
+  });
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+  installWinKeypressFallback({ onInterrupt: cleanup });
+  serverMod.setRestartHandler(async (version) => {
+    const { launchRestart } = await import('./server/lib/restart.js');
+    await launchRestart({ ...ccvLaunch, version, accessToken: serverMod.getAccessToken() });
+    setImmediate(cleanup);
+  });
 }
 
 async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
@@ -1152,18 +1427,26 @@ if (usePwdIdx !== -1) {
   args.splice(usePwdIdx, 1);
 }
 
-// Extract --im <platformId> — 启动一个独立常驻 IM worker：工作目录 IM_<id>/、绑 127.0.0.1、
-// skip-permissions、全局唯一锁。必须在动态 import 之前提取（runImMode 会在 import server.js 前设 env）。
+// Extract the IM worker flag — 启动一个独立常驻 IM worker：工作目录 IM_<id>/、绑 127.0.0.1、
+// skip-permissions、全局唯一锁。必须在动态 import 之前提取（worker 会在 import server.js 前设 env）。
+// 三种形态：
+//   --im <id>     → SDK worker（默认；也是旧主进程升级后仍 spawn 的别名）
+//   --im-sdk <id> → SDK worker（显式）
+//   --im-pty <id> → 隐藏 legacy PTY worker（排障逃生口；会渲染 TUI 确认框，无人值守时可能卡住）
 let imPlatform = null;
-const imIdx = args.indexOf('--im');
-if (imIdx !== -1) {
-  const val = args[imIdx + 1];
-  if (val && !val.startsWith('-')) {
-    imPlatform = val;
-    args.splice(imIdx, 2);
-  } else {
-    console.error(t('cli.imRequiresId'));
-    process.exit(1);
+let imLaunch = 'sdk'; // 'sdk' | 'pty'
+{
+  const imIdx = args.findIndex((a) => a === '--im' || a === '--im-sdk' || a === '--im-pty');
+  if (imIdx !== -1) {
+    const val = args[imIdx + 1];
+    if (val && !val.startsWith('-')) {
+      imPlatform = val;
+      imLaunch = args[imIdx] === '--im-pty' ? 'pty' : 'sdk';
+      args.splice(imIdx, 2);
+    } else {
+      console.error(t('cli.imRequiresId'));
+      process.exit(1);
+    }
   }
 }
 
@@ -1354,8 +1637,9 @@ if (isLogger) {
 }
 
 if (imPlatform) {
-  // 独立 IM worker 模式
-  runImMode(imPlatform).catch(err => {
+  // 独立 IM worker 模式：默认 SDK（无 TTY、无 TUI 确认框）；--im-pty 走 legacy PTY。
+  const runIm = imLaunch === 'pty' ? runImMode : runImSdkMode;
+  runIm(imPlatform).catch(err => {
     console.error('IM mode error:', err);
     process.exit(1);
   });

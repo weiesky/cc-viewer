@@ -94,7 +94,10 @@ export function evaluateImDeny(toolName, toolInput = {}, opts = {}) {
     return { deny: false };
   }
 
-  if (toolName === 'Read') {
+  // Read-class tools: Read (file_path), Grep/Glob (path), NotebookRead (notebook_path).
+  // Grep/Glob 的 path 指向被读取的目录/文件 —— 否则 `Grep {path:'~/.ssh'}` 会绕过 Read 路径层
+  // 把凭证内容读进上下文再随答复外带（review-security P1-3）。复用同一套读取判定。
+  if (toolName === 'Read' || toolName === 'Grep' || toolName === 'Glob' || toolName === 'NotebookRead') {
     const abs = pathOf(toolInput, home);
     if (!abs) return { deny: false };
     if (isVaultFile(abs) || isTaskDataFile(abs)) return { deny: true, reason: 'read of the credential vault / master key' };

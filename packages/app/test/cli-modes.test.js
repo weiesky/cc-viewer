@@ -619,11 +619,11 @@ describeCli('cli-modes: -SDK 模式 SDK 不可用 → fallback 到 PTY', { concu
 // ensureImAppendSystem + 设 IM env → runCliMode → claude 缺失 → exit 1。
 // 覆盖 442-471（runImMode 锁/目录/CC_APPEND_SYSTEM.md/env 主体）。所有副作用落在隔离的 CCV_LOG_DIR。
 
-describeCli('cli-modes: --im <合法平台> 进入 runImMode 主体后 claude 缺失退出', { concurrency: false }, () => {
+describeCli('cli-modes: --im-pty <合法平台> 进入 runImMode 主体后 claude 缺失退出', { concurrency: false }, () => {
   it('--im dingtalk：建 IM_dingtalk/ + 写 CC_APPEND_SYSTEM.md + 取锁，随后 claude 缺失 exit 1', () => {
     const home = mkTmp('ccv-g2-im-');
     const logDir = mkTmp('ccv-g2-imlog-');
-    const r = runCli(['--im', 'dingtalk'], {
+    const r = runCli(['--im-pty', 'dingtalk'], {
       env: {
         PATH: '/usr/bin:/bin',
         HOME: home,
@@ -650,7 +650,7 @@ describeCli('cli-modes: --im <合法平台> 进入 runImMode 主体后 claude �
     mkdirSync(join(logDir, 'IM_dingtalk'), { recursive: true });
     const persona = '# 迁移哨兵\n保持原样。';
     writeFileSync(join(logDir, 'IM_dingtalk', 'CLAUDE.md'), persona);
-    const r = runCli(['--im', 'dingtalk'], {
+    const r = runCli(['--im-pty', 'dingtalk'], {
       env: {
         PATH: '/usr/bin:/bin',
         HOME: home,
@@ -672,7 +672,7 @@ describeCli('cli-modes: --im <合法平台> 进入 runImMode 主体后 claude �
 // 预写 im.lock（pid = 当前测试进程，存活且 ≠ cli 子进程）→ acquireImLock 返回 {ok:false}
 // → cli.js 报 "already running" 并 exit 3。覆盖 452-454（lock-held 分支）。
 
-describeCli('cli-modes: --im 锁已被活进程持有 → exit 3', { concurrency: false }, () => {
+describeCli('cli-modes: --im-pty 锁已被活进程持有 → exit 3', { concurrency: false }, () => {
   it('预置一个持有者 pid 存活的 im.lock → 拒绝启动，exit 3', () => {
     const home = mkTmp('ccv-g2-imlock-');
     const logDir = mkTmp('ccv-g2-imlocklog-');
@@ -682,7 +682,7 @@ describeCli('cli-modes: --im 锁已被活进程持有 → exit 3', { concurrency
     writeFileSync(join(imDir, 'im.lock'),
       JSON.stringify({ pid: process.pid, port: 7051, startedAt: new Date().toISOString() }));
 
-    const r = runCli(['--im', 'feishu'], {
+    const r = runCli(['--im-pty', 'feishu'], {
       env: {
         PATH: '/usr/bin:/bin',
         HOME: home,

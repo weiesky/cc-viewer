@@ -3,12 +3,13 @@ import { normalizeSessionCwd } from './lib/v2/layout.js';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, sep, resolve } from 'node:path';
 import { chmodSync, statSync, existsSync } from 'node:fs';
-import { platform, arch, homedir } from 'node:os';
+import { platform, arch } from 'node:os';
 import { createRequire } from 'node:module';
 import { prepareEmbeddedShellSpawn, stripClaudeNoFlickerUnlessOptedIn, applyClaudeAltScreenPref } from './lib/terminal-env.js';
 import { killPtyTree } from './lib/term-signals.js';
 import { findSafeSliceStart, splitTrailingIncomplete } from './lib/ansi-safe-slice.js';
 import { imDir } from './lib/im/im-lock.js';
+import { buildImDenySettings } from './lib/im/im-permissions.js';
 import { resolveSpawnModel } from './lib/spawn-model-resolver.js';
 import { mergeSettingsIntoArgs } from './lib/settings-merge.js';
 import { projectKeyForCwd } from './lib/system-prompt-snapshots.js';
@@ -522,34 +523,8 @@ async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath 
   // Note: under bypass mode whether deny is still honored depends on Claude Code's
   // behavior; the truly reliable enforcement layer is perm-bridge.js's PreToolUse deny
   // (CCV_IM_DENY). This is a best-effort defense-in-depth layer.
-  if (process.env.CCV_IM_DENY === '1') {
-    const home = homedir();
-    settingsObj.permissions = {
-      deny: [
-        'Bash(sudo:*)', 'Bash(rm -rf:*)', 'Bash(rm -fr:*)',
-        'Bash(git push:*)', 'Bash(npm publish:*)', 'Bash(ssh:*)', 'Bash(scp:*)',
-        `Read(${home}/.ssh/**)`, `Edit(${home}/.ssh/**)`, `Write(${home}/.ssh/**)`,
-        `Read(${home}/.aws/**)`, `Edit(${home}/.aws/**)`, `Write(${home}/.aws/**)`,
-        // File-precise: protect the deny mechanism itself (settings/hooks), the IM
-        // credential store (preferences.json), and the credential vault (credentials.json +
-        // master.key), but do not block all of ~/.claude — the worker's working directory
-        // sits under ~/.claude/cc-viewer/IM_<id>/ and must stay writable.
-        `Edit(${home}/.claude/settings.json)`, `Write(${home}/.claude/settings.json)`,
-        `Edit(${home}/.claude/settings.local.json)`, `Write(${home}/.claude/settings.local.json)`,
-        `Edit(${home}/.claude/cc-viewer/preferences.json)`, `Write(${home}/.claude/cc-viewer/preferences.json)`,
-        // preferences.json 现承载定时任务定义(含 prompt);运行历史/旧版任务文件同理拒读拒写。
-        `Read(${home}/.claude/cc-viewer/preferences.json)`,
-        `Read(${home}/.claude/cc-viewer/scheduled-task-runs.json)`, `Edit(${home}/.claude/cc-viewer/scheduled-task-runs.json)`, `Write(${home}/.claude/cc-viewer/scheduled-task-runs.json)`,
-        `Read(${home}/.claude/cc-viewer/scheduled-tasks.json)`, `Edit(${home}/.claude/cc-viewer/scheduled-tasks.json)`, `Write(${home}/.claude/cc-viewer/scheduled-tasks.json)`,
-        `Read(${home}/.claude/cc-viewer/credentials.json)`, `Edit(${home}/.claude/cc-viewer/credentials.json)`, `Write(${home}/.claude/cc-viewer/credentials.json)`,
-        `Read(${home}/.claude/cc-viewer/master.key)`, `Edit(${home}/.claude/cc-viewer/master.key)`, `Write(${home}/.claude/cc-viewer/master.key)`,
-        // Backup copies of the vault (cc-viewer-config-backups/<ts>/) hold the same decryption
-        // kit (credentials.json + master.key) — deny the whole subtree or an IM worker could read
-        // a rolled backup and decrypt every secret.
-        `Read(${home}/.claude/cc-viewer-config-backups/**)`, `Edit(${home}/.claude/cc-viewer-config-backups/**)`, `Write(${home}/.claude/cc-viewer-config-backups/**)`,
-      ],
-    };
-  }
+  // Shared with the SDK IM worker (runImSdkMode) via buildImDenySettings().
+  Object.assign(settingsObj, buildImDenySettings());
   // Inject --thinking-display summarized; skip injection when either of these holds:
   // - the path is in the rejection set (it crashed because of this last time)
   // - env CCV_SKIP_THINKING_DISPLAY=1 (user global opt-out, consistent with cli.js)
