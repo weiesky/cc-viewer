@@ -1,0 +1,140 @@
+.changeset/im-sdk-worker.md
+  s_2acd65179b08b6::t_d5bb565636641f 1-4
+  s_2acd65179b08b6::t_d6c51d7929b549 5
+packages/app/server/lib/im/im-permissions.js
+  s_2acd65179b08b6::t_4abb080370e36d 1-4,9,11-48
+  s_2acd65179b08b6::t_c49dbe4e27ddfb 5-8,10
+packages/app/server/lib/im-deny.js
+  s_2acd65179b08b6::t_c4754067e5f0fc 97-100
+packages/app/test/branch-cli.test.js
+  s_2acd65179b08b6::t_821fa4577688da 332-333,335
+  s_2acd65179b08b6::t_9246fc779af5f7 372-373
+  s_2acd65179b08b6::t_e334fdea6b64a5 355
+  s_2acd65179b08b6::t_58354f26ddfead 348-350
+packages/app/test/cli-modes.test.js
+  s_2acd65179b08b6::t_049b7f835f36c2 653
+  s_2acd65179b08b6::t_e26f15299fe66e 622,675
+  s_2acd65179b08b6::t_0ac5ffce15f679 626
+  s_2acd65179b08b6::t_64f1b7986d096d 685
+packages/app/server/lib/sdk-manager.js
+  s_2acd65179b08b6::t_65e08fc5ebe2db 1149-1151
+  s_2acd65179b08b6::t_6cc172c6d760a5 672,680-681
+  s_2acd65179b08b6::t_e06c50170d147c 531
+  s_2acd65179b08b6::t_4fa08ed1bcd2a0 1064-1070
+  s_2acd65179b08b6::t_9c6024542ece9e 2230-2234,2241-2249
+  s_2acd65179b08b6::t_39f77af4337872 532
+  s_2acd65179b08b6::t_9f0161d7ba541a 2235-2239
+  s_2acd65179b08b6::t_b6c39a002fb741 3223
+  s_2acd65179b08b6::t_30eac8e59fcbec 1041,1048-1052,1061-1063,1071-1075
+  s_2acd65179b08b6::t_5f5cb1fa0dbc74 1042-1047,1053-1060
+  s_2acd65179b08b6::t_3df9b351df6395 1931-1936
+  s_2acd65179b08b6::t_028f7db75522c6 2196-2198
+  s_2acd65179b08b6::t_5f8fa0d22b53cf 3202
+  s_2acd65179b08b6::t_899e71278d555f 2240
+  s_2acd65179b08b6::t_038c0956c74be7 217-224
+packages/app/server/lib/im/im-process-manager.js
+  s_2acd65179b08b6::t_cd74101cfef899 57-58
+  s_2acd65179b08b6::t_d2360ab6d20b9d 90
+  s_2acd65179b08b6::t_3043a40525b6c4 2-3,6
+packages/app/server/lib/im/im-bridge-core.js
+  s_2acd65179b08b6::t_5a5c0f5a8b9b83 884-888
+  s_2acd65179b08b6::t_0d044eb75e3a26 1-10,14,16-17
+  s_2acd65179b08b6::t_f5b27a91346f1a 733-736
+  s_2acd65179b08b6::t_aecd4169be5b5b 583-589
+  s_2acd65179b08b6::t_2d0bf4efb25716 276-281
+  s_2acd65179b08b6::t_69db7a71930e3a 329
+  s_2acd65179b08b6::t_4993af63c40f74 624-629
+  s_2acd65179b08b6::t_34118dac772b58 686
+  s_2acd65179b08b6::t_bdb13adbfdfe90 697-702
+  s_2acd65179b08b6::t_88c0ed3a6f280a 738-740,743
+  s_2acd65179b08b6::t_07221828c07cd1 34
+  s_2acd65179b08b6::t_5bd9d320aec08b 741-742
+  s_2acd65179b08b6::t_fda17e9fe78943 652
+  s_2acd65179b08b6::t_a7040a8a7320b5 737
+  s_2acd65179b08b6::t_7ca0dad25e8b26 744
+packages/app/server/i18n.js
+  s_2acd65179b08b6::t_712a30fd6abd70 3102-3105
+packages/app/test/sdk-unattended.test.js
+  s_2acd65179b08b6::t_1be294e1c4e97d 245-282
+  s_2acd65179b08b6::t_788953d1bf0826 1-84,88-99,101-173,206
+  s_2acd65179b08b6::t_3c2653fbe20618 85-87,100
+  s_2acd65179b08b6::t_6b0543b88b7a57 207-244,283-294
+  s_2acd65179b08b6::t_dc0ec31f887db5 174-205
+packages/app/test/server-im-worker-sdk.test.js
+  s_2acd65179b08b6::t_6a6b2eb8a1dfea 1-87,94-95
+  s_2acd65179b08b6::t_d30523d7534d42 88-93
+scripts/tarball-baseline.json
+  s_2acd65179b08b6::t_377bb3edf8c958 1454
+packages/app/test/im-sdk-bridge.test.js
+  s_2acd65179b08b6::t_f20515ec7893bc 14
+  s_2acd65179b08b6::t_da425dc61636ca 74,79
+  s_2acd65179b08b6::t_091657e58a2037 76
+  s_2acd65179b08b6::t_094df1e50acc49 103-123
+  s_2acd65179b08b6::t_e4ab4679ac3fa7 1-13,15-21,24-38,40-48,50-55,58-59,62-73,75,77-78,80-102,124-150
+  s_2acd65179b08b6::t_ff7daf40ee37f6 39
+  s_2acd65179b08b6::t_18aaab88783018 49,56-57,60-61
+  s_2acd65179b08b6::t_a2b355da1d253d 22-23
+packages/app/server/pty-manager.js
+  s_2acd65179b08b6::t_06c10241e23d9e 12
+  s_2acd65179b08b6::t_af0fa5dbfbe414 526-527
+  s_2acd65179b08b6::t_6a5c291540d3e2 6
+packages/app/test/cli-extra.test.js
+  s_2acd65179b08b6::t_3ab174fb35a4e7 190-195
+packages/app/test/im-spawn-test-guard.test.js
+  s_2acd65179b08b6::t_2e014b74f434d1 40
+packages/app/test/im-process-manager.test.js
+  s_2acd65179b08b6::t_91cb967d5ee29e 188
+  s_2acd65179b08b6::t_e26f15299fe66e 59
+  s_2acd65179b08b6::t_e92fb719f6c3ac 68
+packages/app/cli.js
+  s_2acd65179b08b6::t_4cf85ba5be383a 1640-1642
+  s_2acd65179b08b6::t_9c2639141712c4 972-974
+  s_2acd65179b08b6::t_d3fbacfbc4bcd2 664-669,671-706
+  s_2acd65179b08b6::t_809c964a18d002 855
+  s_2acd65179b08b6::t_a6d3bf48e13b39 879-881
+  s_2acd65179b08b6::t_dcc9c17e0bcc3c 9
+  s_2acd65179b08b6::t_8648b071a7c38c 670
+  s_2acd65179b08b6::t_c625e678fbe1c9 902-904
+  s_2acd65179b08b6::t_b9222877efaa78 707-709
+  s_2acd65179b08b6::t_c0d5a07b8cc84f 890-892
+  s_2acd65179b08b6::t_49bfee836b31c7 933-944
+  s_2acd65179b08b6::t_42a47fc4449a4e 15
+  s_2acd65179b08b6::t_b595b8a75e8641 756-758
+  s_2acd65179b08b6::t_a10bcc1353d7b7 985-988
+  s_2acd65179b08b6::t_531836ec6dba93 825-826,831-832
+  s_2acd65179b08b6::t_4641db0de8794d 1430-1435,1437-1449
+  s_2acd65179b08b6::t_9bc902a953d01f 764-824,827-830,833-854,856-878,882-885,893-901,905-932,945-971,975-976,978-984,989-1029
+  s_2acd65179b08b6::t_6a6ba28af48c0c 523-525
+  s_2acd65179b08b6::t_9eae7269940ac5 886-889
+  s_2acd65179b08b6::t_cc88d2e61a86a2 752
+  s_2acd65179b08b6::t_6231ee1ddbc8e5 977
+history.md
+  s_2acd65179b08b6::t_4e503d0836433d 6
+  s_2acd65179b08b6::t_1cb7e378e8b098 5
+packages/app/test/im-permissions.test.js
+  s_2acd65179b08b6::t_10a9261420eb0d 1-43
+packages/app/server/server.js
+  s_2acd65179b08b6::t_e1d3dcc706aee0 1708-1714,1735,1738
+packages/app/test/cli.test.js
+  s_2acd65179b08b6::t_538dc60bc9178e 588,590,594-595,599,601-602
+packages/app/test/cli-deep.test.js
+  s_2acd65179b08b6::t_e26f15299fe66e 214
+  s_2acd65179b08b6::t_6dab72890cb9d0 219
+  s_2acd65179b08b6::t_d2ce4d85275514 238-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "83a217cd99e13a75c1aae8cbbd901390867a6610",
+  "prompts": {},
+  "sessions": {
+    "s_2acd65179b08b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c6f5cf2-396d-4c40-9d1e-88b90b909f39",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
