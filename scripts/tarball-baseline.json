@@ -1479,6 +1479,7 @@
   "server/lib/prefs-store.js",
   "server/lib/project-prefs.js",
   "server/lib/project-state.js",
+  "server/lib/proxy-session-registry.js",
   "server/lib/proxy/proxy-env.js",
   "server/lib/proxy/proxy-errors.js",
   "server/lib/proxy/proxy-retry.js",

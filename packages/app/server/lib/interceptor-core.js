@@ -751,3 +751,54 @@ export function isValidRoleValue(v, profilesById) {
   if (typeof v !== 'string' || !v) return false;
   return !!(profilesById && typeof profilesById.get === 'function' && profilesById.get(v));
 }
+
+// ─── Per-session (per-instanceKey) proxy resolution ───────────────────────────
+// A session binding is { main, roles:{subagent,teammate} } (see
+// lib/proxy-session-registry.js). These pure functions fold a session binding on top
+// of the process-global profile so a request can be rerouted per session. They are
+// the SINGLE source of truth shared by proxy.js (upstream pick) and the interceptor
+// fetch hook (URL/auth/model rewrite) — the two layers must never diverge.
+//
+// mapped === undefined means "this session has no binding" (PTY / ephemeral / an
+// external caller): the request follows the legacy global profile exactly as before.
+// A present binding with main==='max' means the session explicitly chose Default:
+// return null (no rewrite) and DO NOT follow the global profile afterwards.
+
+// Resolve a session's effective MAIN profile.
+//   sessionEntry: the binding (or undefined when unbound)
+//   profilesById: Map<profileId, profile>
+//   legacyMain:   the process-global effective main profile (_activeProfile)
+export function resolveSessionMainProfile(sessionEntry, profilesById, legacyMain) {
+  if (sessionEntry === undefined || sessionEntry === null) return legacyMain || null;
+  const main = sessionEntry.main;
+  if (main === 'max') return null; // explicit Default
+  if (typeof main === 'string' && main) {
+    const hit = profilesById && typeof profilesById.get === 'function' ? profilesById.get(main) : undefined;
+    return hit || legacyMain || null; // dangling id → fall back to the legacy global
+  }
+  return legacyMain || null;
+}
+
+// Resolve an effective ROLE profile for a session. Precedence:
+//   session role explicit id/'max'  (per-session role assignment)
+//   session role 'follow'           → the SESSION's main (so main+subagent stay together)
+//   workspace role id/'max'         (legacyRoleIds, when the session has no binding/override)
+//   legacyMain
+// 'role' is 'main' | 'subagent' | 'teammate'.
+export function resolveSessionRoleProfile(role, sessionEntry, profilesById, legacyMain, legacyRoleIds) {
+  const sessionMain = resolveSessionMainProfile(sessionEntry, profilesById, legacyMain);
+  if (role === 'main') return sessionMain;
+  const sessionRole = sessionEntry && sessionEntry.roles ? sessionEntry.roles[role] : undefined;
+  if (typeof sessionRole === 'string' && sessionRole && sessionRole !== 'follow') {
+    if (sessionRole === 'max') return null; // explicit Default for this role
+    const hit = profilesById && typeof profilesById.get === 'function' ? profilesById.get(sessionRole) : undefined;
+    return hit || sessionMain;
+  }
+  // session role is 'follow'/absent → follow the session main. When the session has NO
+  // binding at all, defer to the legacy workspace role assignment (existing behavior).
+  if (sessionEntry === undefined || sessionEntry === null) {
+    return resolveRoleProfile(role, legacyRoleIds, profilesById, legacyMain);
+  }
+  return sessionMain;
+}
+

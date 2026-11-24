@@ -1,0 +1,5 @@
+---
+"cc-viewer": patch
+---
+
+feat(server+web): scope the proxy hot-switch to the session (SDK instance) instead of the whole process. Previously a proxy change was a process-global: every session and every open tab picked it up on the next request, because the upstream/rewrite layers read a single global `_activeProfile` and the `proxy_profile` broadcast was unfiltered. Now each SDK session gets its own binding (an in-memory `instanceKey → { main, roles }` map, seeded at activation from the workspace-effective profile AND its stored role assignments, never persisted), the proxy and the fetch hook resolve the effective profile per-request from the request's `x-ccv-instance` header, and a change defaults to `scope: 'session'` so it only touches the current session. A "Set as global default" action still exists for the baseline that NEW sessions follow. PTY and legacy (no-scope) clients keep the previous workspace/global behavior. Bound (single-session) views resolve the current session via the server's `currentInstanceKey`, with a server-side bound-cwd fallback for session writes that arrive without a key.

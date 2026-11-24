@@ -88,8 +88,8 @@ export default function ProxyModal({
           const pr = await fetch(appendToken(apiUrl('/api/proxy-profiles')));
           const pd = await pr.json();
           if (pd.profiles && onProxyProfileChange) {
-            // 不带 roles：导入不改角色分配，服务端合并语义保留存储值（防多窗口陈旧回写）
-            onProxyProfileChange({ active: pd.active, profiles: pd.profiles });
+            // 不带 roles/active：导入不改角色分配、也不改任何会话/全局的激活项（防多窗口陈旧回写）。
+            onProxyProfileChange({ profiles: pd.profiles });
           }
         } catch (e) { reportSwallowed('fetch.ccswitch-refresh', e); /* SSE refresh is the fallback */ }
       } else if (data && typeof data.error === 'string' && data.error.startsWith('node:sqlite unavailable')) {
@@ -164,11 +164,17 @@ export default function ProxyModal({
     if (!deleteConfirmTarget) return;
     const newProfiles = profiles.filter(x => x.id !== deleteConfirmTarget.id);
     const newActive = activeId === deleteConfirmTarget.id ? 'max' : activeId;
-    // 被删 profile 若是某角色的当前分配 → 该角色归 follow（客户端 scrub；服务端读取时归 follow 兜底）
+    // 被删 profile 若是某角色的当前分配 → 该角色归 follow（客户端 scrub；服务端读取时归 follow 兜底）。
+    // active 变化仅在被删的是当前激活项时发生，且限定当前会话作用域（不写成全局默认）。
     const newRoles = { ...roles };
     if (newRoles.subagent === deleteConfirmTarget.id) newRoles.subagent = 'follow';
     if (newRoles.teammate === deleteConfirmTarget.id) newRoles.teammate = 'follow';
-    onProxyProfileChange({ active: newActive, profiles: newProfiles, roles: newRoles });
+    onProxyProfileChange({
+      profiles: newProfiles,
+      roles: newRoles,
+      scope: 'session',
+      ...(newActive !== activeId ? { active: newActive } : {}),
+    });
     setDeleteConfirmTarget(null);
   };
 
@@ -179,16 +185,24 @@ export default function ProxyModal({
   const handleActivate = (p) => {
     // 注意：不带 roles —— 本 handler 不改角色，回传本地 roles 会在其陈旧时（多窗口 /
     // GET 落入 catch 回退）覆盖磁盘上的新值；服务端合并语义会原样保留存储分配。
+    // scope:'session'：默认只改当前会话；服务端在无实例可寻址时降级为全局。
     if (p.id !== activeId) {
-      onProxyProfileChange({ active: p.id, profiles });
+      onProxyProfileChange({ active: p.id, profiles, scope: 'session' });
     }
+  };
+
+  // 设为全局默认：影响之后新建的会话；已激活会话的各自选择保持不变。等请求成功再提示。
+  const handleSetGlobalDefault = () => {
+    Promise.resolve(onProxyProfileChange({ scope: 'global', active: activeId, profiles }))
+      .then(() => message.success(t('ui.proxy.globalDefaultSet')))
+      .catch(() => { /* 失败由 handleProxyProfileChange 的 catch 兜底 */ });
   };
 
   // 分配区：主 Agent 切换与列表 radio 同义；子/Teammate 走 roles 合并（服务端合并语义持久化）。
   // 只发变更的 key：本地 roles 尚未加载（GET 未回/失败回退默认）时，全量提交会把另一角色的
-  // 存储分配冲成 follow；单 key 提交由服务端 per-key 合并保住另一角色。
+  // 存储分配冲成 follow；单 key 提交由服务端 per-key 合并保住另一角色。角色跟随主代理的会话作用域。
   const handleRoleChange = (role, value) => {
-    onProxyProfileChange({ active: activeId, profiles, roles: { [role]: value } });
+    onProxyProfileChange({ scope: 'session', profiles, roles: { [role]: value } });
   };
 
   const handleSave = () => {
@@ -214,7 +228,7 @@ export default function ProxyModal({
       // 直接以 updated 覆盖（不 spread 旧 p）—— 顺带清掉老 models/activeModel 遗留字段
       newProfiles = profiles.map(p => p.id === editingProxy ? { ...updated, id: p.id } : p);
     }
-    onProxyProfileChange({ active: activeId, profiles: newProfiles });
+    onProxyProfileChange({ profiles: newProfiles });
     setEditingProxy(null);
   };
 
@@ -241,7 +255,7 @@ export default function ProxyModal({
               size="small"
               className={styles.fullWidthSelect}
               value={activeId}
-              onChange={id => { if (id !== activeId) onProxyProfileChange({ active: id, profiles }); }}
+              onChange={id => { if (id !== activeId) onProxyProfileChange({ active: id, profiles, scope: 'session' }); }}
             >
               {profiles.map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
             </Select>
@@ -310,6 +324,12 @@ export default function ProxyModal({
           <Button type="dashed" icon={<PlusOutlined />} style={{ flex: 1 }} onClick={handleStartNew}>
             {t('ui.proxy.addProxy')}
           </Button>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <Button type="text" size="small" style={{ padding: 0 }} onClick={handleSetGlobalDefault}>
+            {t('ui.proxy.setGlobalDefault')}
+          </Button>
+          <span style={{ marginLeft: 8, color: 'var(--text-tertiary)', fontSize: 12 }}>{t('ui.proxy.globalDefaultHint')}</span>
         </div>
       </div>
   );

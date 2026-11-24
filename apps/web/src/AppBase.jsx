@@ -162,6 +162,10 @@ class AppBase extends React.Component {
 
   constructor(props) {
     super(props);
+    // Per-session proxy caches: instanceKey → that session's resolved active id (display),
+    // and a monotonic sequence guarding _loadProxyProfiles against out-of-order responses.
+    this._proxyActiveByInstance = new Map();
+    this._proxyLoadSeq = 0;
     // 从 localStorage 恢复缓存倒计时
     const savedExpireAt = parseInt(localStorage.getItem('ccv_cacheExpireAt'), 10) || null;
     const savedCacheType = localStorage.getItem('ccv_cacheType') || null;
@@ -287,6 +291,10 @@ class AppBase extends React.Component {
       // （main=Default 且官方端点时分配区隐藏、存储分配休眠）。两者均由 GET /api/proxy-profiles 下发。
       proxyRoles: { subagent: 'follow', teammate: 'follow' },
       proxyOfficialDefault: true,
+      // Per-session proxy: the global default (profile.json.active) and whether the
+      // currently-viewed session has its own binding. Drive the ProxyModal scope UI.
+      globalProxyActiveId: 'max',
+      proxySessionScoped: false,
       // 代理重试配置（GET /api/retry-config 注入；SSE 'retry_config' 刷新）
       retryConfig: null,
       retryDefaults: null,
@@ -721,6 +729,10 @@ class AppBase extends React.Component {
     // Pass the attached-session scope explicitly — setState hasn't flushed (React 18 batching),
     // so reading this.state here would see the pre-attach view.
     this._activateScope({ sid: uuid, project: scopeProject, instance: scopeInstance }, { reason: 'attach', overlayUuid: uuid });
+    // Per-session proxy: reload the attached session's proxy view (parallel → its instance,
+    // bound resume → the bound instance). Use the explicit scope, NOT _proxyInstanceKey()
+    // (setState above hasn't flushed, so the resolver would read the pre-attach view).
+    this._loadProxyProfiles(scopeProject && scopeProject !== this.state.projectName ? scopeInstance : (this._boundInstanceKey || this._boundInstance || null));
     // Overlay clears on the cold load's load_end (_onLoadEnd).
   };
 
@@ -821,6 +833,10 @@ class AppBase extends React.Component {
       overlayUuid: this.state.projectName || 'bound',
     });
     this._maintainPinState(null);
+    // Per-session proxy: back on the bound view, reload THAT instance's proxy view. Pass the
+    // bound instance explicitly — setState above hasn't flushed, so _proxyInstanceKey() would
+    // still read the departing parallel instance.
+    this._loadProxyProfiles(this._boundInstanceKey || this._boundInstance || null);
   };
 
   // Multi-project tab bar (2026-10): the header reports its latest
@@ -831,12 +847,15 @@ class AppBase extends React.Component {
   // while a view switch is already in flight (resumeSwitch) so a
   // cold-load-in-progress list can't yank the rug out. (The close path does
   // NOT read this list — the header supplies the survivor via fallbackProject.)
-  handleLiveProjectsChange = (tabs, boundInstance = null) => {
+  handleLiveProjectsChange = (tabs, boundInstance = null, currentInstanceKey = null) => {
     this._lastProjectTabs = Array.isArray(tabs) ? tabs : [];
     // Same-name file-tree fix (2026-10-07): the bound project's instance identity, reported by
     // the Header (resolveBoundInstance — only set when the bound name is duplicated AND
     // resolvable). Used to disambiguate view-scoped readers (file tree) on the BOUND view.
     this._boundInstance = boundInstance || null;
+    // Per-session proxy: the bound session's instanceKey, resolved unconditionally by the server
+    // (single-session bound views included), so _proxyInstanceKey can address it.
+    this._boundInstanceKey = (typeof currentInstanceKey === 'string' && currentInstanceKey) ? currentInstanceKey : null;
     if (this.state.boundInstance !== this._boundInstance) this.setState({ boundInstance: this._boundInstance });
     const vp = this.state.viewedProject;
     if (!vp || this.state.resumeSwitch) return;
@@ -956,6 +975,9 @@ class AppBase extends React.Component {
     // Multi-instance: carry the instanceKey so the server attaches THIS exact process.
     attachMainPty(chip.project, { instanceKey: chipInstance });
     this.setState({ viewedProject: chip.project, viewedInstance: chipInstance, attachedSid: null, pinnedSessionTs: null });
+    // Per-session proxy: reload the proxy view for the now-active session (its own binding
+    // or the global default it was seeded with), so the chip/Modal reflect THIS session.
+    this._loadProxyProfiles(chipInstance);
     // Persist the viewed workspace so a refresh restores it. cwd comes from the
     // header-reported tab list (the chip payload may not carry it) and is the
     // restart-stable anchor for re-resolving a dead instanceKey.
@@ -1759,7 +1781,7 @@ class AppBase extends React.Component {
           });
           if (match) {
             activeId = match.id;
-            this.handleProxyProfileChange({ active: match.id, profiles: data.profiles });
+            this.handleProxyProfileChange({ active: match.id, profiles: data.profiles, scope: 'global' });
           }
         }
         this.setState({
@@ -1767,6 +1789,7 @@ class AppBase extends React.Component {
           // 条件合并：GET 失败回退路径不带 roles/officialDefault，不能覆盖本地默认
           ...(data.roles ? { proxyRoles: data.roles } : {}),
           ...(typeof data.officialDefault === 'boolean' ? { proxyOfficialDefault: data.officialDefault } : {}),
+          ...(typeof data.globalActive === 'string' ? { globalProxyActiveId: data.globalActive } : {}),
         });
       })
       .catch(() => { });
@@ -1878,6 +1901,8 @@ class AppBase extends React.Component {
         // Pass the restored scope explicitly — setState hasn't flushed (React
         // 18 batching), so reading this.state would boot the bound view.
         this._scheduleInitSSE({ sid: null, project: scope.project, instance });
+        // Per-session proxy: reload the restored session's proxy view.
+        this._loadProxyProfiles(instance || null);
       })
       .catch((err) => {
         reportSwallowed('viewed-workspace.restore', err);
@@ -3442,19 +3467,17 @@ class AppBase extends React.Component {
     if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
     try {
       const data = JSON.parse(event.data);
-      if (data.active) this.setState({ activeProxyId: data.active });
-      if (data.roles) this.setState({ proxyRoles: data.roles });
-      if (data.profile) {
-        // 刷新完整列表
-        fetch(apiUrl('/api/proxy-profiles')).then(r => r.json()).then(d => {
-          if (d.profiles) this.setState({
-            proxyProfiles: d.profiles,
-            activeProxyId: d.active || 'max',
-            ...(d.roles ? { proxyRoles: d.roles } : {}),
-            ...(typeof d.officialDefault === 'boolean' ? { proxyOfficialDefault: d.officialDefault } : {}),
-          });
-        }).catch(() => { });
+      // 全局默认变更：更新 globalProxyActiveId（不影响已激活会话的 sessionScoped 选择）。
+      if (typeof data.globalActive === 'string') this.setState({ globalProxyActiveId: data.globalActive });
+      // 会话作用域帧只影响被寻址的实例；若它不是当前正在看的会话，忽略其 active。
+      const myKey = this._proxyInstanceKey();
+      if (data.instanceKey && data.instanceKey !== myKey) return;
+      // 列表 / 角色 / 任一生效变更 → 以服务端为准重取当前会话视图（避免用别的实例的 active 覆盖）。
+      if (data.profile || data.active || data.instanceKey) {
+        this._loadProxyProfiles(myKey);
+        return;
       }
+      if (data.roles) this.setState({ proxyRoles: { ...this.state.proxyRoles, ...data.roles } });
     } catch (e) { reportSwallowed('sse.proxy_profile', e); }
   }
 
@@ -4326,6 +4349,7 @@ class AppBase extends React.Component {
     }
     this._commitChannel(ch, { contextBarLocked: false, contextBarOptimistic: false });
     this._boundInstance = null;
+    this._boundInstanceKey = null;
     this.setState({
       boundInstance: null,
       workspaceMode: false,
@@ -4389,6 +4413,7 @@ class AppBase extends React.Component {
         // Returned to the workspace list (no bound project) — drop the persisted workspace.
         clearViewedWorkspace();
         this._boundInstance = null;
+        this._boundInstanceKey = null;
         this._commitChannel(ch, {
           requests: [],
           mainAgentSessions: [],
@@ -4409,25 +4434,83 @@ class AppBase extends React.Component {
         });
       })
       .catch(() => {});
+    // Back on the workspace list (no bound session) — reload the global proxy view.
+    this._loadProxyProfiles(null);
   };
 
   // ─── Proxy Profile ─────────────────────────────────────
 
+  // The instanceKey of the currently-viewed session (SDK). viewedInstance wins; on the
+  // bound view falls back to the server's resolved bound instance — but ONLY in SDK mode
+  // (a PTY "instance" must not be session-scoped: PTY keeps the legacy global behavior).
+  // null only when there's no resolvable SDK instance — callers then degrade to global.
+  _proxyInstanceKey = () => {
+    if (this.state.sdkMode !== true) return null;
+    const vi = this.state.viewedInstance;
+    if (typeof vi === 'string' && /^ccv-[0-9a-f]+$/.test(vi)) return vi;
+    const vp = this.state.viewedProject;
+    if (!vp || vp === this.state.projectName) {
+      const bi = this._boundInstanceKey || this.state.boundInstance || this._boundInstance;
+      if (typeof bi === 'string' && /^ccv-[0-9a-f]+$/.test(bi)) return bi;
+    }
+    return null;
+  };
+
+  // Fetch proxy profiles, optionally resolved for a specific session instance. A sequence
+  // guard prevents a slower earlier response from clobbering a newer view's result.
+  _loadProxyProfiles = (instanceKey = this._proxyInstanceKey()) => {
+    const seq = ++this._proxyLoadSeq;
+    const q = instanceKey ? `?instanceKey=${encodeURIComponent(instanceKey)}` : '';
+    fetch(apiUrl('/api/proxy-profiles' + q))
+      .then(res => res.json())
+      .then(data => {
+        if (!data.profiles || seq !== this._proxyLoadSeq) return;
+        if (instanceKey) this._proxyActiveByInstance.set(instanceKey, data.active);
+        this.setState({
+          proxyProfiles: data.profiles,
+          activeProxyId: data.active || 'max',
+          defaultConfig: data.defaultConfig || null,
+          ...(data.roles ? { proxyRoles: data.roles } : {}),
+          ...(typeof data.officialDefault === 'boolean' ? { proxyOfficialDefault: data.officialDefault } : {}),
+          ...(typeof data.globalActive === 'string' ? { globalProxyActiveId: data.globalActive } : {}),
+          ...(typeof data.sessionScoped === 'boolean' ? { proxySessionScoped: data.sessionScoped } : {}),
+        });
+      })
+      .catch(() => { });
+  };
+
   handleProxyProfileChange = (data) => {
-    fetch(apiUrl('/api/proxy-profiles'), {
+    const body = { ...data };
+    // Session scope: bind the change to the currently-viewed session. PTY / no resolvable
+    // instance degrades to 'global' (behavior identical to before this feature).
+    if (body.scope === 'session') {
+      const key = this._proxyInstanceKey();
+      if (key) body.instanceKey = key;
+      else body.scope = 'global';
+    }
+    // Return the promise so callers (e.g. "set as global default") can toast only on success.
+    return fetch(apiUrl('/api/proxy-profiles'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body: JSON.stringify(body),
     })
       .then(r => r.json())
-      .then(() => {
+      .then((resp) => {
         // roles 条件合并 + 深合并：调用点可能只提交单个角色 key（防陈旧全量覆盖），
         // 本地 state 按 key 并入而不是整体替换；不带 roles 的调用点（自动匹配/激活/保存）
         // 保留现值（与服务端合并语义一致）。
+        const respScope = typeof resp?.scope === 'string' ? resp.scope : null;
+        // Adopt the returned active only when it matches this POST's own scope — a session
+        // write updates the session view; a roles-only (undefined active) response adopts the
+        // caller-intended active. A global-scoped write must NOT overwrite a session view.
+        const adoptActive = typeof resp?.active === 'string'
+          && (respScope === 'session' || (!respScope && typeof data.active === 'string'));
         this.setState({
           proxyProfiles: data.profiles,
-          activeProxyId: data.active,
+          ...(adoptActive ? { activeProxyId: resp.active } : {}),
           ...(data.roles ? { proxyRoles: { ...this.state.proxyRoles, ...data.roles } } : {}),
+          ...(typeof resp?.globalActive === 'string' ? { globalProxyActiveId: resp.globalActive } : {}),
+          ...(typeof resp?.scope === 'string' ? { proxySessionScoped: resp.scope === 'session' } : {}),
         });
       })
       .catch(() => { });

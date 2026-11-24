@@ -3,8 +3,10 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlin
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, discoverClaudeExecutables, resolveExplicitClaudePath, CLAUDE_EXECUTABLE_PREF_KEY } from '../../findcc.js';
-import { PROFILE_PATH, _defaultConfig, getActiveProfileId, getStoredRoles, isOfficialDefaultEndpoint, setActiveProfileForWorkspace, _loadProxyProfile, hydrateProfilesWithApiKeys, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
+import { PROFILE_PATH, _defaultConfig, getActiveProfileId, getStoredRoles, isOfficialDefaultEndpoint, setActiveProfileForWorkspace, _loadProxyProfile, getGlobalDefaultProfileId, hydrateProfilesWithApiKeys, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
 import { migrateProxyProfileList, isValidRoleValue, PROXY_ROLE_KEYS } from '../lib/interceptor-core.js';
+import { getSessionProxy, setSessionProxyProfile, pruneSessionProxyProfiles } from '../lib/proxy-session-registry.js';
+import { filterClientsByInstance } from '../lib/v2/view-router.js';
 import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy/proxy-retry.js';
 import { discoverCcSwitchProviders, mergeImportedProfiles } from '../lib/ccswitch-import.js';
 import { reportSwallowed } from '../lib/error-report.js';
@@ -319,6 +321,22 @@ function claudeSettingsPost(req, res, parsedUrl, isLocal, deps) {
   });
 }
 
+// ── Per-session proxy binding helpers (GET /api/proxy-profiles?instanceKey=) ──────
+// A binding counts as "session-scoped" only when its main is still resolvable: 'max'
+// (explicit Default) or a profile id present in the served list. A dangling binding
+// (profile deleted out from under it) falls back to the global view instead of
+// surfacing an id the UI can't render.
+function sessionScopedBindingPresent(binding, data) {
+  if (!binding || typeof binding.main !== 'string' || !binding.main) return false;
+  if (binding.main === 'max') return true;
+  const list = data && Array.isArray(data.profiles) ? data.profiles : [];
+  return list.some((p) => p && p.id === binding.main);
+}
+function sessionBindingActive(binding) { return binding.main; }
+function sessionBindingRoles(binding) {
+  return { subagent: binding.roles?.subagent || 'follow', teammate: binding.roles?.teammate || 'follow' };
+}
+
 function proxyProfilesGet(req, res, parsedUrl, isLocal, deps) {
   try {
     let data = existsSync(PROFILE_PATH) ? JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')) : deps.defaultProxyProfiles;
@@ -349,13 +367,24 @@ function proxyProfilesGet(req, res, parsedUrl, isLocal, deps) {
       data = { ...data, profiles: hydrateProfilesWithApiKeys(data.profiles) };
     }
     // 用 interceptor.getActiveProfileId() 返回 effective active（workspace > profile.json.active > 'max'）
-    const effectiveActive = getActiveProfileId();
+    // Per-session override: ?instanceKey= with an existing binding resolves that session's
+    // OWN main/roles (and marks sessionScoped) instead of the process-global value.
+    const globalActive = getGlobalDefaultProfileId();
+    const reqInstance = (() => {
+      const v = parsedUrl && parsedUrl.searchParams && typeof parsedUrl.searchParams.get === 'function'
+        ? parsedUrl.searchParams.get('instanceKey') : null;
+      return (typeof v === 'string' && /^ccv-[0-9a-f]+$/.test(v)) ? v : null;
+    })();
+    const sessionBinding = reqInstance ? getSessionProxy(reqInstance) : undefined;
+    const sessionScoped = sessionScopedBindingPresent(sessionBinding, data);
+    const effectiveActive = sessionScoped ? sessionBindingActive(sessionBinding) : getActiveProfileId();
+    const effectiveRoles = sessionScoped ? sessionBindingRoles(sessionBinding) : getStoredRoles();
     // 本机(127.0.0.1)= admin：下发明文 profile.apiKey 供本人在编辑表单(👁 折叠)里查阅/复制；已授权
     // 的远程客户端只拿脱敏值(****+后4位)。保存时若回传脱敏值，POST 侧 isMasked() 会保留磁盘原值。
     // 镜像 /api/auth/state 的密码、/api/dingtalk/status 的 appSecret 策略。
     // roles 返回**存储值**（不做休眠调整）：休眠只是请求侧不生效，若返回有效值，UI 缓存后
     // 在下次无关 POST 回写会把休眠中的分配清掉。officialDefault 驱动 UI 隐藏角色分配区。
-    const full = { ...data, active: effectiveActive, roles: getStoredRoles(), officialDefault: isOfficialDefaultEndpoint() };
+    const full = { ...data, active: effectiveActive, roles: effectiveRoles, officialDefault: isOfficialDefaultEndpoint(), globalActive, sessionScoped, ...(reqInstance ? { instanceKey: reqInstance } : {}) };
     const payload = isLocal ? full : deps.maskProfiles(full);
     // defaultConfig.apiKey 始终脱敏：它在列表里是常显文本(无 👁 折叠)，且 Max/OAuth 默认配置的 key
     // 可能是 OAuth token；只有可编辑 profile 的 key 才按 isLocal 明文下发。
@@ -371,7 +400,7 @@ function proxyProfilesGet(req, res, parsedUrl, isLocal, deps) {
 function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
   let body = '';
   req.on('data', chunk => { body += chunk; if (body.length > deps.MAX_POST_BODY) req.destroy(); });
-  req.on('end', () => {
+  req.on('end', async () => {
     try {
       const incoming = JSON.parse(body);
       if (!incoming || typeof incoming !== 'object' || !Array.isArray(incoming.profiles)) {
@@ -379,9 +408,52 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid profile data: profiles must be an array' }));
         return;
       }
+      // active/roles 作用域：'session'（按 instanceKey 写会话映射，不落盘）/
+      // 'global'（设为全局默认 + workspace）/ 缺省（旧客户端 = 现状，workspace+全局回退）。
+      // 在读/校验阶段只确定 scope 与 instanceKey；active/roles 的具体校验在 sanitizedRoles
+      // 之后、落盘之前（见下），以便 roles-only 会话调用也有合法判定依据。
+      const scope = incoming.scope === 'session' || incoming.scope === 'global' ? incoming.scope : null;
+      const hasActive = typeof incoming.active === 'string' && incoming.active;
+      let sessionKey = (typeof incoming.instanceKey === 'string' && /^ccv-[0-9a-f]+$/.test(incoming.instanceKey)) ? incoming.instanceKey : null;
       // 确保 max profile 始终存在
       if (!incoming.profiles.some(p => p.id === 'max')) {
         incoming.profiles = [{ id: 'max', name: 'Default' }, ...(incoming.profiles || [])];
+      }
+      // 角色分配校验：只认 subagent/teammate 两个 key（roles.main 之类的杂键直接丢弃）；
+      // 值必须是 follow / max / 入参 profiles 里存在的 id（按将落盘的列表校验，而非旧文件），
+      // 非法值归 'follow'（宽容风格，不 400）。被删 profile 的悬空角色由读取时归 follow 兜底。
+      let sanitizedRoles;
+      if (incoming.roles && typeof incoming.roles === 'object' && !Array.isArray(incoming.roles)) {
+        const byId = new Map(incoming.profiles.map(p => [p.id, p]));
+        sanitizedRoles = {};
+        for (const k of PROXY_ROLE_KEYS) {
+          if (!(k in incoming.roles)) continue; // 未提交的 key 不进 patch → 合并时保留存储值
+          const v = incoming.roles[k];
+          // key 提交了但值非法（非字符串 / 悬空 id）→ 归 'follow'（显式纠正，不是保留）
+          sanitizedRoles[k] = (typeof v === 'string' && v && isValidRoleValue(v, byId)) ? v : 'follow';
+        }
+      }
+      // session 作用域的兜底寻址 + 校验。必须在落盘之前完成——被拒（400）的请求不得改写
+      // profile.json / vault。
+      if (scope === 'session' && !sessionKey) {
+        // Fallback: an older/again-loading frontend may legitimately lack the key on the
+        // bound view. Resolve the bound session's primary instance server-side (dynamic
+        // import — never eagerly load the Agent SDK in PTY mode) instead of silently
+        // degrading to a global write that wouldn't reach the (already-seeded) session.
+        try {
+          const boundCwd = process.env.CCV_PROJECT_DIR || process.cwd();
+          const sdk = await import('../lib/sdk-manager.js');
+          const resolved = sdk.resolveBoundPrimaryInstanceKey(boundCwd);
+          if (typeof resolved === 'string' && /^ccv-[0-9a-f]+$/.test(resolved)) sessionKey = resolved;
+        } catch (err) { reportSwallowed('proxy-profiles.resolve-session-key', err); }
+      }
+      if (scope === 'session') {
+        const byId = new Map(incoming.profiles.map(p => [p.id, p]));
+        if (!sessionKey || (hasActive && !isValidRoleValue(incoming.active, byId)) || (!hasActive && !sanitizedRoles)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid instanceKey/profile for session scope' }));
+          return;
+        }
       }
       // Only the profiles list is written to profile.json; `active` is no longer persisted here
       // (avoids cross-process clobbering). The existing file's `active` field is preserved so an
@@ -398,34 +470,46 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
         existing.profiles = strippedProfiles;
         return existing;
       }, { mode: 0o600, strictCorrupt: true, fallback: {} });
-      // 角色分配校验：只认 subagent/teammate 两个 key（roles.main 之类的杂键直接丢弃）；
-      // 值必须是 follow / max / 入参 profiles 里存在的 id（按将落盘的列表校验，而非旧文件），
-      // 非法值归 'follow'（宽容风格，不 400）。被删 profile 的悬空角色由读取时归 follow 兜底。
-      let sanitizedRoles;
-      if (incoming.roles && typeof incoming.roles === 'object' && !Array.isArray(incoming.roles)) {
-        const byId = new Map(incoming.profiles.map(p => [p.id, p]));
-        sanitizedRoles = {};
-        for (const k of PROXY_ROLE_KEYS) {
-          if (!(k in incoming.roles)) continue; // 未提交的 key 不进 patch → 合并时保留存储值
-          const v = incoming.roles[k];
-          // key 提交了但值非法（非字符串 / 悬空 id）→ 归 'follow'（显式纠正，不是保留）
-          sanitizedRoles[k] = (typeof v === 'string' && v && isValidRoleValue(v, byId)) ? v : 'follow';
-        }
-      }
       // active/roles 走 workspace 级别存储（当前进程独占）；合并语义：缺省字段保留文件现值
-      const hasActive = typeof incoming.active === 'string' && incoming.active;
-      if (hasActive || sanitizedRoles) {
+      if (scope === 'session') {
+        // 会话级：写进程内映射（主代理 + 角色），不碰 workspace 文件 / 全局默认。
+        // roles 按 key 合并：未提交的角色保留会话现值（与 workspace mergeActivePayload 同语义）。
+        const existing = getSessionProxy(sessionKey);
+        setSessionProxyProfile(sessionKey, {
+          main: hasActive ? incoming.active : (existing?.main || getGlobalDefaultProfileId()),
+          roles: {
+            subagent: sanitizedRoles && 'subagent' in sanitizedRoles ? sanitizedRoles.subagent : (existing?.roles?.subagent || 'follow'),
+            teammate: sanitizedRoles && 'teammate' in sanitizedRoles ? sanitizedRoles.teammate : (existing?.roles?.teammate || 'follow'),
+          },
+        });
+        _loadProxyProfile(); // 列表可能同时变了
+      } else if (hasActive || sanitizedRoles) {
         setActiveProfileForWorkspace(hasActive ? incoming.active : undefined, sanitizedRoles);
       } else {
         _loadProxyProfile(); // 仅列表变化时也刷新一次以反映删除 / 重命名
       }
-      // SSE 广播仅给本进程客户端（sendEventToClients 本就是 per-process；另外 active 不跨进程）
-      const effectiveActive = getActiveProfileId();
+      // 清理悬空会话映射：只针对"本次确实从列表中消失"的 profile id（而非整张提交列表），
+      // 避免陈旧 tab 的全量列表把别的会话仍有效的绑定清掉。与 scope 无关。
+      if (pruneSessionProxyProfiles) {
+        // incoming.profiles 已是落盘后的全量；任何不在这张表里的绑定 id 都是悬空。
+        // 注意：这是删 profile 的唯一入口，故以新列表为准清理是安全的。
+        pruneSessionProxyProfiles(new Set(incoming.profiles.map(p => p.id)));
+      }
+      // SSE：session 变更只发同实例客户端（别戳到其他会话的 tab）；global/列表刷新全发。
+      // session 作用域下生效的 active 是该会话映射里的 main（roles-only 调用时回退到现值）。
+      const sessionNow = scope === 'session' ? getSessionProxy(sessionKey) : null;
+      const effectiveActive = scope === 'session' ? (sessionNow?.main || null) : getActiveProfileId();
       const activeProfile = incoming.profiles?.find(p => p.id === effectiveActive) || null;
       const maskedProfile = activeProfile?.apiKey ? { ...activeProfile, apiKey: deps.maskApiKey(activeProfile.apiKey) } : activeProfile;
-      sendEventToClients(deps.clients, 'proxy_profile', { active: effectiveActive, profile: maskedProfile, roles: getStoredRoles() });
+      const globalActive = getGlobalDefaultProfileId();
+      if (scope === 'session') {
+        const targets = filterClientsByInstance(deps.clients, sessionKey);
+        sendEventToClients(targets, 'proxy_profile', { active: effectiveActive, profile: maskedProfile, instanceKey: sessionKey, roles: sessionNow ? sessionBindingRoles(sessionNow) : undefined, globalActive });
+      } else {
+        sendEventToClients(deps.clients, 'proxy_profile', { active: effectiveActive, profile: maskedProfile, roles: getStoredRoles(), global: true, globalActive });
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, scope: scope || 'global', active: effectiveActive, globalActive }));
     } catch {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON' }));

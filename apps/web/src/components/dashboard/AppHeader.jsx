@@ -441,7 +441,9 @@ function HeaderProjectSwitcher(props) {
           // is one of two same-basename tabs. resolveBoundInstance returns the key only when the
           // bound name is genuinely duplicated AND resolvable — else null (no tiebreak needed).
           const boundInstance = resolveBoundInstance(nextTabs, cur || currentProject || null, nextCurKey);
-          if (onLiveProjectsChange) onLiveProjectsChange(nextTabs, boundInstance);
+          // 第三个参数透传服务端按绑定 cwd 无条件解析的 currentInstanceKey（SDK 主实例），
+          // 供 per-session proxy 在绑定视图寻址当前会话；resolveBoundInstance 仅重名时非 null，不够。
+          if (onLiveProjectsChange) onLiveProjectsChange(nextTabs, boundInstance, nextCurKey);
         })
         .catch(err => { if (!cancelled) reportSwallowed('activeChips.fetch', err); });
     };

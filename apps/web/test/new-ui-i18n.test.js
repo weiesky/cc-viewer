@@ -33,6 +33,9 @@ const KEYS = [
   'ui.proxy.effort',        // proxy hot-switch effort dropdown label (ProxyModal.jsx)
   'ui.proxy.effortDefault', // proxy hot-switch effort "not enforced by default" option (ProxyModal.jsx)
   'ui.proxy.modelMapHint',  // proxy hot-switch extended-model field description (ProxyModal.jsx)
+  'ui.proxy.setGlobalDefault',  // per-session proxy: "set as global default" button (ProxyModal.jsx)
+  'ui.proxy.globalDefaultHint', // per-session proxy: explains global default affects only NEW sessions
+  'ui.proxy.globalDefaultSet',  // per-session proxy: toast after setting the global default
   'ui.systemMessage',       // mid-conversation role:"system" meta row label (ChatMessage/ChatView role filter)
   // remote plugin panel shell (PanelHost.jsx / PluginPanelModal.jsx):
   'ui.pluginPanel.loading',

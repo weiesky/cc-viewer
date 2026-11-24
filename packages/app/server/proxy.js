@@ -136,12 +136,19 @@ export function startProxy() {
         // req.url 是 origin-form 相对路径，new URL 需补基址，否则锚定判定落空到宽松正则。
         const _reqPath = (() => { try { return new URL(req.url || '/', 'http://x').pathname; } catch { return req.url || ''; } })();
         const _isUtility = /\/messages\/count_tokens$/.test(_reqPath) || /^\/api\/eval\/sdk-/.test(_reqPath);
+        // Per-session override: the spawned claude self-reports its instanceKey via
+        // x-ccv-instance; a bound session's proxy choice overrides the global one. This
+        // must stay consistent with the interceptor fetch hook's per-request rewrite.
+        const _instKey = (() => {
+          const v = findHeader(headers, 'x-ccv-instance');
+          return (typeof v === 'string' && /^ccv-[0-9a-f]+$/.test(v)) ? v : undefined;
+        })();
         let roleProfile;
         let _role; // live system 改写的 role 门（仅 main 生效）；未分类 → undefined → main 语义
         const _needClassify = body.length > 0 && isAnthropicApiPath(_reqPath) && !_isUtility;
         // 角色分类在两种情况下都必须做：显式角色分配（选路）或 live system 已启用
         // （否则默认配置下 subagent/teammate 会以 role=undefined 穿过 proxy 侧门被注入主 system）。
-        if (_needClassify && (interceptor.hasExplicitRoleAssignments() || liveSystemPromptEnabled())) {
+        if (_needClassify && (interceptor.hasExplicitRoleAssignments(_instKey) || liveSystemPromptEnabled())) {
           let parsedBody = null;
           try { parsedBody = JSON.parse(body.toString('utf8')); } catch { /* 非 JSON body → 保持 main 语义 */ }
           if (parsedBody && typeof parsedBody === 'object') {
@@ -157,13 +164,13 @@ export function startProxy() {
               _role = _agent
                 ? (_agent.named ? 'teammate' : 'subagent')
                 : classifyProxyRole(parsedBody, {});
-              if (interceptor.hasExplicitRoleAssignments()) {
-                roleProfile = interceptor.getEffectiveRoleProfile(_role);
+              if (interceptor.hasExplicitRoleAssignments(_instKey)) {
+                roleProfile = interceptor.getEffectiveRoleProfile(_role, _instKey);
               }
             } catch (err) { reportSwallowed('proxy.role-classify', err); }
           }
         }
-        const originalBaseUrl = getOriginalBaseUrl(roleProfile);
+        const originalBaseUrl = getOriginalBaseUrl(roleProfile !== undefined ? roleProfile : interceptor.getEffectiveMainProfile(_instKey));
 
         const fetchOptions = {
           method: req.method,
@@ -185,7 +192,7 @@ export function startProxy() {
         // 模型替换由重试引擎用 resolveProfileModel 纯函数完成（interceptor 对 trace 请求会再跑一次，幂等 no-op）。
         // 非大模型 API 请求走原逻辑（同样用 x-cc-viewer-trace 让 interceptor 记录，但不经重试引擎）。
         if (isAnthropicApiPath(fullUrl)) {
-          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile, { role: _role, isUtility: _isUtility });
+          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile, { role: _role, isUtility: _isUtility, instanceKey: _instKey });
           return;
         }
 
@@ -304,8 +311,9 @@ const _retryConfigGetter = () => interceptor._retryConfigState;
 async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile, liveCtx = {}) {
   const statsEnabled = process.env.CCV_PROXY_STATS !== 'off';
   const retryConfig = _retryConfigGetter(); // live binding：每请求取最新重试配置
-  // 角色解析后的有效 profile（上游/模型替换/统计归属）。undefined = 未分类 → 沿用 main 活跃 profile。
-  const profile = roleProfile !== undefined ? roleProfile : (interceptor._activeProfile || null);
+  // 角色解析后的有效 profile（上游/模型替换/统计归属）。undefined = 未分类 → 沿用 main 活跃 profile
+  // （会话有绑定时为该会话的 main，否则为全局 _activeProfile）。
+  const profile = roleProfile !== undefined ? roleProfile : (interceptor.getEffectiveMainProfile(liveCtx.instanceKey) || null);
 
   // 清理可能的 trace 头（singleFetch 会重新加，避免旧值干扰）；interceptor 会正常记录请求
   // 同时清理 hop-by-hop / 传输编码头：body 已被 buffer 成完整 Buffer，

@@ -35,6 +35,7 @@ import { reportSwallowed } from '../lib/error-report.js';
 import { resolve as _pathResolve, dirname as _pathDirname, sep as _pathSep } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
+import { seedSessionProxyProfile, clearSessionProxyProfile, clearSessionProxyProfiles } from './proxy-session-registry.js';
 import { readPrefsRaw } from './prefs-store.js';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
 import { AGENT_PROMPT_SNIPPET_LEN } from '@ccv/core/contentFilter';
@@ -3143,6 +3144,9 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
   const sess = _getOrCreateSession(cwd);
   sess.init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable });
   _activeKey = sess.instanceKey;
+  // Seed the per-session proxy binding from the global default (no-op when the
+  // session is already bound, so a re-init never clobbers a user's choice).
+  seedSessionProxyProfile(sess.instanceKey);
 }
 
 /**
@@ -3186,6 +3190,7 @@ export function createSdkSession(cwd, cfg) {
   sess._markFreshLaunch();
   _adoptProcessWiring();
   _activeKey = sess.instanceKey;
+  seedSessionProxyProfile(sess.instanceKey);
   return { instanceKey: sess.instanceKey };
 }
 
@@ -3366,6 +3371,7 @@ export function stopSession() {
   }
   _sessions.clear();
   _activeKey = null;
+  clearSessionProxyProfiles();
   // Process-global wiring is cleared on the HARD teardown boundary. initSdkSession only
   // overwrites a callback when one is actually passed (so a per-workspace launch init
   // cannot wipe cli.js's process-wide wiring mid-run); that guard means an init that
@@ -3410,6 +3416,9 @@ export function attachSdkSession(anchor) {
   if (!sess) return { ok: false, reason: 'not-found' };
   const switched = sess.instanceKey !== _activeKey;
   _activeKey = sess.instanceKey;
+  // Activating a session binds its proxy (seeded from the global default when the
+  // session predates the mapping or its binding was cleared).
+  seedSessionProxyProfile(sess.instanceKey);
   return { ok: true, key: sess.instanceKey, instanceKey: sess.instanceKey, cwd: sess.cwd, switched };
 }
 
@@ -3464,6 +3473,7 @@ export function closeSdkSession(anchor = {}) {
   // close/relaunch triggered by one of those frames must register a fresh session,
   // never be deleted by the tail of the older close operation.
   _sessions.delete(sess.instanceKey);
+  clearSessionProxyProfile(sess.instanceKey);
   if (killedActive) {
     // Prefer a SAME-CWD sibling (the twin the user most likely wants next), else fall
     // back to the next registered session (Map insertion order).

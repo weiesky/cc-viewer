@@ -14,7 +14,8 @@ import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 import { LOG_DIR } from '../findcc.js';
-import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, replaceTopLevelSystem, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
+import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, replaceTopLevelSystem, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, resolveSessionMainProfile, resolveSessionRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
+import { registerGlobalDefaultProvider, registerSeedProvider, getSessionProxy } from './lib/proxy-session-registry.js';
 import { V2Writer } from './lib/v2/v2-writer.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { latestMainSessionDir, sessionHasMainTurn, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
@@ -247,6 +248,9 @@ let _activeProfile = null; // { id, name, baseURL?, apiKey?, effort?, ANTHROPIC_
 // Per-role state (STORED values, never dormancy-adjusted — dormancy is enforced per request):
 let _roleIds = normalizeRoles(undefined); // { subagent, teammate }
 let _profilesById = new Map();            // id → profile object from profile.json
+// Global default (profile.json.active) mirrored for the session registry's seed
+// fallback. Independent of _activeProfile (which is workspace-override-first).
+let _globalDefaultId = 'max';
 
 // proxy 属主进程（ccv run / runCliMode / Electron mgmt+tab-worker）同样参与角色分流：
 // proxy.js 在 body 缓冲后按角色选上游 + 供重试引擎做模型替换，本 hook 对 trace 请求
@@ -398,6 +402,7 @@ function _loadProxyProfile() {
       profiles.push({ ...p, apiKey });
     }
     _profilesById = new Map(profiles.map(p => [p.id, p]));
+    _globalDefaultId = (typeof data.active === 'string' && data.active) ? data.active : 'max';
     // active 解析优先级：workspace override > profile.json.active (兼容老数据 / 全局回退) > null
     const ws = _readWorkspaceActive();
     _roleIds = ws.roles;
@@ -406,6 +411,7 @@ function _loadProxyProfile() {
     _activeProfile = (active && active.id !== 'max') ? active : null;
   } catch (err) {
     _activeProfile = null;
+    _globalDefaultId = 'max';
     _roleIds = normalizeRoles(undefined);
     _profilesById = new Map();
     if (process.env.CCV_DEBUG_HOTSWITCH) {
@@ -495,31 +501,54 @@ export function isOfficialDefaultEndpoint() {
   return !CUSTOM_API_HOST || /(^|\.)anthropic\.com$/i.test(CUSTOM_API_HOST);
 }
 
+// Per-session main profile: fold the session binding (instanceKey) on top of the
+// process-global _activeProfile. An unbound session returns _activeProfile unchanged.
+function _mainProfileForInstance(instanceKey) {
+  if (typeof instanceKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instanceKey)) return _activeProfile;
+  return resolveSessionMainProfile(getSessionProxy(instanceKey), _profilesById, _activeProfile);
+}
+
+// proxy.js 消费方：当前生效的 main profile（可按 instanceKey 覆盖）。
+function getEffectiveMainProfile(instanceKey) {
+  return _mainProfileForInstance(instanceKey);
+}
+
+// 全局默认（profile.json.active），供「设为全局默认」/ 新会话 seed 的 UI 回显。
+function getGlobalDefaultProfileId() {
+  return _globalDefaultId;
+}
+
 // 请求时的有效角色 profile（含休眠强制）。休眠规则：main=Default（无改写）且端点为官方时，
-// 存储的 sub/teammate 分配不生效（Max 订阅保护；main 切走后原样恢复）。
-function _effectiveRoleProfile(role) {
-  const p = resolveRoleProfile(role, _roleIds, _profilesById, _activeProfile);
-  if (role !== 'main' && !_activeProfile && isOfficialDefaultEndpoint()) return null;
+// 存储的 sub/teammate 分配不生效（Max 订阅保护；main 切走后原样恢复）。按会话 main 判定。
+function _effectiveRoleProfile(role, instanceKey) {
+  const main = _mainProfileForInstance(instanceKey);
+  const p = resolveSessionRoleProfile(role, getSessionProxy(instanceKey), _profilesById, _activeProfile, _roleIds);
+  if (role !== 'main' && !main && isOfficialDefaultEndpoint()) return null;
   return p;
 }
 
 // proxy.js 消费方：属主进程在 body 缓冲后按角色选上游，与 hook 的改写保持同一解析路径。
-function getEffectiveRoleProfile(role) {
-  return _effectiveRoleProfile(role);
+function getEffectiveRoleProfile(role, instanceKey) {
+  return _effectiveRoleProfile(role, instanceKey);
 }
 
 // proxy.js 分类短路用：存在显式角色分配（非 follow）才值得在属主进程解析 body 分类——
-// 无分配时任意角色都解析到 main 活跃 profile，分类不影响选路。
-function hasExplicitRoleAssignments() {
-  return _roleIds.subagent !== 'follow' || _roleIds.teammate !== 'follow';
+// 无分配时任意角色都解析到 main 活跃 profile，分类不影响选路。会话绑定也算"有分配"。
+// （只判 roles：会话 main 与全局默认的差异已由 getEffectiveMainProfile 在选路/改写两端
+// 直接处理，不需要为此对每个 LLM 请求做 body 分类解析。）
+function hasExplicitRoleAssignments(instanceKey) {
+  if (_roleIds.subagent !== 'follow' || _roleIds.teammate !== 'follow') return true;
+  const sess = typeof instanceKey === 'string' ? getSessionProxy(instanceKey) : undefined;
+  if (!sess) return false;
+  return sess.roles.subagent !== 'follow' || sess.roles.teammate !== 'follow';
 }
 
-// 测试用：当前各角色的有效 profile（main 恒为 _activeProfile）。
-function getProxyRoleProfiles() {
+// 测试用：当前各角色的有效 profile（main 恒为会话/全局 main）。
+function getProxyRoleProfiles(instanceKey) {
   return {
-    main: _activeProfile,
-    subagent: _effectiveRoleProfile('subagent'),
-    teammate: _effectiveRoleProfile('teammate'),
+    main: _mainProfileForInstance(instanceKey),
+    subagent: _effectiveRoleProfile('subagent', instanceKey),
+    teammate: _effectiveRoleProfile('teammate', instanceKey),
   };
 }
 
@@ -560,7 +589,7 @@ function _replaceProxyAuthHeaders(headers, apiKey) {
   return { headers: newHeaders, matchedAuthKey, matchedXApiKey };
 }
 
-export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setActiveProfileForWorkspace, getActiveProfileId, getStoredRoles, getProxyRoleProfiles, getEffectiveRoleProfile, hasExplicitRoleAssignments, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState };
+export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setActiveProfileForWorkspace, getActiveProfileId, getStoredRoles, getProxyRoleProfiles, getEffectiveRoleProfile, getEffectiveMainProfile, getGlobalDefaultProfileId, hasExplicitRoleAssignments, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState };
 
 // 1.7.0: the v1 single-file write path is retired — logs live in per-session
 // v2 dirs owned by V2Writer. Only the project binding (name + dir) remains
@@ -867,6 +896,14 @@ _syncContinuationMode(); // seed from the CLI env at module load (`ccv -c`)
 _loadProxyProfile();
 try { watchFile(PROFILE_PATH, { interval: 1500 }, _loadProxyProfile); } catch { }
 _armWorkspaceActiveWatcher();
+// Let the per-session registry resolve the global default (profile.json.active) from the
+// live value instead of re-reading disk on every session seed.
+registerGlobalDefaultProvider(() => _globalDefaultId);
+// Seed a fresh session with the WORKSPACE-EFFECTIVE main (getActiveProfileId: workspace
+// override > profile.json.active) and the workspace's stored role assignments — so a
+// seeded session matches the legacy behavior (same upstream AND same role routing as an
+// unbound request), instead of silently dropping pre-existing role assignments.
+registerSeedProvider(() => ({ main: getActiveProfileId(), roles: { ..._roleIds } }));
 
 // Retry config: initial load + watchFile cross-process sync (UI writes
 // retry-config.json → hot-reloaded within 1.5s, mirroring PROFILE_PATH above).
@@ -1261,8 +1298,13 @@ export function setupInterceptor() {
     // 仅当「确实无需分类」（无 profile + 无角色分配 + live 未启用）才短路。
     let _fetchUrl = url;
     let _fetchOpts = options;
-    const _skipClassify = !_activeProfile && _roleIds.subagent === 'follow' && _roleIds.teammate === 'follow'
-      && !liveSystemPromptEnabled();
+    // Per-session override: the spawned claude self-reports its instanceKey via
+    // x-ccv-instance (validated into requestEntry._ccvInstance upstream). When this
+    // request belongs to a bound session, its proxy choice overrides the global one.
+    const _ccvInstance = requestEntry?._ccvInstance;
+    const _reqMain = _mainProfileForInstance(_ccvInstance);
+    const _skipClassify = !_reqMain && _roleIds.subagent === 'follow' && _roleIds.teammate === 'follow'
+      && !liveSystemPromptEnabled() && !hasExplicitRoleAssignments(_ccvInstance);
     // 最高优先级硬判据（review 第二轮二次验证 P1-1 残余，与 contentFilter.js:158 同构）：
     // 请求头 x-claude-code-agent-id 是 SDK 命名队友（name@…）/ 匿名子代理（hex）的判别信号，
     // 不依赖 system 文本 —— body 正则（TEAMMATE_SYSTEM_RE / cc_is_subagent）对「SDK 身份行 +
@@ -1282,7 +1324,7 @@ export function setupInterceptor() {
           isHeartbeat: !!requestEntry?.isHeartbeat,
         });
     }
-    const _effProfile = _effectiveRoleProfile(_proxyRole);
+    const _effProfile = _effectiveRoleProfile(_proxyRole, _ccvInstance);
     // 生效模型解析提到块外：live system 改写（步骤 3.5）需要在无 baseURL 的纯模型
     // profile 下也能拿到目标模型；_targetModel 为 null 时回落到请求自身的 model。
     const _rb0 = requestEntry?.body;

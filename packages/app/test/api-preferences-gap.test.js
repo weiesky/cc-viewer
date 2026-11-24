@@ -434,7 +434,13 @@ describe('POST /api/proxy-profiles', () => {
     assert.ok(frame, 'proxy_profile event broadcast to clients');
     assert.match(frame, /\*\*\*\*/, 'broadcast apiKey is masked');
     assert.match(frame, /"roles"/, '广播帧携带角色分配（workspace 模式下为空默认 follow/follow）');
-    assert.deepEqual(JSON.parse(res.body), { ok: true });
+    // 响应新增 scope/globalActive/active 字段（per-session proxy 改造）：pin 这些字段的存在
+    // 与语义，而非整体相等 —— legacy（无 scope）调用按全局默认作用域上报。
+    const bodyJson = JSON.parse(res.body);
+    assert.equal(bodyJson.ok, true);
+    assert.equal(bodyJson.scope, 'global');
+    assert.equal(bodyJson.active, 'custom');
+    assert.equal(typeof bodyJson.globalActive, 'string');
     const onDisk = JSON.parse(readFileSync(profilePath, 'utf-8'));
     // max profile 自动注入到列表首位
     assert.ok(onDisk.profiles.some((p) => p.id === 'max'), 'max profile ensured');

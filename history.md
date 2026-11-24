@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(server+web): **代理热切换改为按会话隔离** — 此前改代理是进程级全局：所有会话与所有 tab 的下一次请求都会跟随，因为上游选路与出站改写都读同一个全局 `_activeProfile`，且 `proxy_profile` 广播不按视图过滤。现在每个 SDK 会话持有自己的绑定（进程内 `instanceKey → { main, roles }` 映射，激活时以当时 workspace 生效值 + 既有角色分配 seed、不落盘），proxy 与 fetch hook 按请求自带的 `x-ccv-instance` 头逐请求解析生效 profile；改代理默认 `scope:'session'` 只影响当前会话。绑定视图经服务端 `currentInstanceKey` 无条件解析到当前实例（无 key 时服务端再按绑定 cwd 兜底），不会静默降级为全局。仍保留「设为全局默认」入口（仅影响之后新建的会话）；PTY 与旧版（无 scope）客户端维持原 workspace/全局行为。Coverage: `proxy-session-registry.test.js`, `proxy-session-override.test.js`, `sdk-session-proxy-binding.test.js`, `api-proxy-profiles-scope.test.js`, `proxy-session-scope.test.js`, `api-preferences-gap.test.js`, `new-ui-i18n.test.js`。
+
 - feat(web): **重启更新期间提供全屏等待感知** — 点击「立即重启并更新」后服务需经历旧进程退出、helper 安装新版本、重新监听的不可达窗口，此前页面看似正常却会整体挂起。新增固定全屏遮罩：先告知「重启约需 2 分钟、完成后页面自动刷新」，超过该窗口仍未就绪则切换为「仍在等待服务恢复（最长约 15 分钟）」；重启期间「版本信息」弹窗不可再被关闭（遮罩点击、Esc、关闭按钮均已禁用）。就绪检测沿用现有 `/api/version-info` 的 processId 轮询，无需新增服务端端点。Coverage: `restart-overlay.test.js`, `update-modal.test.js`。
 
 - fix(server+web): **检测到其它 cc-viewer 实例时更新流程不再卡死** — 「版本信息」弹窗的 `another_instance` 错误改为警告提示，新增「仍要继续更新」按钮（danger + 二次确认），确认后经 `POST /api/update/start { force: true }` 绕过多实例端口扫描继续下载/重启；文案明确说明服务重启将中断当前会话与其它实例的连接。Coverage: `update-job.test.js`, `update-routes.test.js`, `update-modal.test.js`。
