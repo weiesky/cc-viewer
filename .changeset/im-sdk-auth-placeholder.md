@@ -1,5 +1,0 @@
----
-"cc-viewer": patch
----
-
-fix(server): inject a placeholder ANTHROPIC_API_KEY into spawned claude children so the SDK/CLI startup "unauthenticated connectivity check" no longer reports "Not logged in / Please run /login" (or exits) when the process carries no credential of its own. In cc-viewer the real credential is injected by the proxy layer at forward time (the active profile's apiKey is decrypted from the credential vault), so the child holds none and the check always fired. New `server/lib/anthropic-auth-placeholder.js`: `ensurePlaceholderApiKey(env)` injects the placeholder only when no `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY` is set (never overwriting a user credential, and never creating a double-source), and `ensureApiKeyApproved(...)` records the effective key's tail in `~/.claude.json`'s `customApiKeyResponses.approved` so interactive TUI mode accepts it without a confirmation dialog. Wired into the SDK IM worker's childEnv; the proxy layer overwrites the placeholder with the real credential on outbound requests.
