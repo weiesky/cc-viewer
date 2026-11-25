@@ -1,0 +1,69 @@
+apps/web/test/new-ui-i18n.test.js
+  s_8808f324f893b6::t_51d25b255dee2d 156-160
+history.md
+  s_8808f324f893b6::t_437428ec09936a 5
+  s_8808f324f893b6::t_7fbc74c4ef486a 6
+apps/web/test/workspace-manager-modal.test.js
+  s_8808f324f893b6::t_73cc543194d411 1-2,8,14-26,37,45-46,66-67,74-75,79-80,82-84,86-99,101,104-106,126-133
+  s_8808f324f893b6::t_0743d4e4d8e85d 114-115
+  s_8808f324f893b6::t_7d10f0ee8d3043 41-42
+  s_8808f324f893b6::t_15514131db91c4 38,40,43-44,47-54,60-65,81,85
+  s_8808f324f893b6::t_88679f180e36c2 3-7,9-13,27-36,39,55-59,68-73,76-78,100,102-103,107-113,116-125
+apps/web/src/components/mobile/WorkspaceManagerModal.module.css
+  s_8808f324f893b6::t_0fb5b64e4f4186 1-60,65,72-105
+  s_8808f324f893b6::t_c2502848a8dfc6 61-64,66-71
+apps/web/src/components/mobile/WorkspaceManagerModal.jsx
+  s_8808f324f893b6::t_47ad31303d4b2b 2-5,7-16,24-29,31-34,36,47-61,73-77,80-81,83-94,96-101,104-114,116-133,135,137-151
+  s_8808f324f893b6::t_73b4f671ff35c3 6,17-23,30,35,62-72,78-79,82,95,102-103,136
+  s_8808f324f893b6::t_0d73d30c056a0e 134
+  s_8808f324f893b6::t_9947e5effcef1f 115
+  s_8808f324f893b6::t_4400360f9bc7eb 37-46
+  s_8808f324f893b6::t_6d1293a957b866 1
+apps/web/src/utils/resumeSessions.js
+  s_8808f324f893b6::t_5eca30a7f2204b 308-309,313-318
+  s_8808f324f893b6::t_7372799bac5479 351
+  s_8808f324f893b6::t_6fce9ddd1a3990 292-307,310-312,319-350,352-353
+  s_8808f324f893b6::t_dba0add5639010 291
+apps/web/src/i18n.js
+  s_8808f324f893b6::t_2656baa897e256 12035-12037
+  s_8808f324f893b6::t_22edc700ac9be2 12015-12024,12026-12034,12038-12046
+  s_8808f324f893b6::t_67e38f5924d7ec 12025
+.changeset/mobile-workspace-manager.md
+  s_8808f324f893b6::t_a9ad144c46384e 1-4
+  s_8808f324f893b6::t_74ef21e8a41edb 5
+apps/web/src/Mobile.jsx
+  s_8808f324f893b6::t_5702ed8048b412 24
+  s_8808f324f893b6::t_1c9d11536a368c 844,847-849,851
+  s_8808f324f893b6::t_dd04b62016f24a 426-427
+  s_8808f324f893b6::t_99bb5c0301d5f2 428
+  s_8808f324f893b6::t_0e587e838d7dca 836-840
+  s_8808f324f893b6::t_da673759b23891 93
+  s_8808f324f893b6::t_85b3a55ff9d517 1160
+  s_8808f324f893b6::t_3df854f3c0de8e 744
+  s_8808f324f893b6::t_c40e6e4301fb65 163
+  s_8808f324f893b6::t_eec31110aa55f5 1153-1159,1161-1165
+apps/web/test/resume-sessions-map.test.js
+  s_8808f324f893b6::t_67db0db440ef1f 670,676,678-684
+  s_8808f324f893b6::t_e785d39ef3e993 636
+  s_8808f324f893b6::t_09ae903d32b8f4 553-565,567-604,606-635,637-652
+  s_8808f324f893b6::t_308ce5da14f4c3 566
+  s_8808f324f893b6::t_5d1abce1372b22 7
+  s_8808f324f893b6::t_e52b19f21c2425 653-669,671-675,677,685-692
+  s_8808f324f893b6::t_f57be0f4a1da80 605
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1ff192b54f559e9392dd027092a6c9579a750cfd",
+  "prompts": {},
+  "sessions": {
+    "s_8808f324f893b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f40833a-f309-4c84-9bcd-215a65169b08",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
