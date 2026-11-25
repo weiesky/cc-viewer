@@ -421,6 +421,23 @@
   font-size: 12px;
 }
 
+/* Per-turn timestamp appended to the thinking label inside merged run
+   members; matches the label's own antd secondary-text color
+   (rgba(0,0,0,.45) light / rgba(255,255,255,.45) dark — antd resolves it
+   statically, not via our --text-* vars). Only the size/family mirror the
+   pill popover's run time styling. */
+.thinkingTurnTime {
+  margin-left: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* global.css scopes the dark theme to <html data-theme="dark">. */
+:global([data-theme='dark']) .thinkingTurnTime {
+  color: rgba(255, 255, 255, 0.45);
+}
+
 .thinkingEmptyHint {
   display: flex;
   align-items: center;
@@ -463,20 +480,23 @@
   color: var(--color-code-purple);
 }
 
-.simplifiedToolLabel {
-  display: inline-block;
-  font-size: 12px;
-  color: var(--text-disabled-faint);
-  margin-right: 4px;
-  line-height: 24px;
-  vertical-align: middle;
-}
-
-/* 弱化版工具标签:去掉边框、保留淡底(--bg-code:白底 #F5F5F5 / 暗底 #14141F),
-   文字用极淡 --text-disabled-faint(白底 rgba(0,0,0,.35) / 暗底 rgba(255,255,255,.45)),
-   两套主题自动适配。hover 仅把文字提亮一档给出可点击反馈。 */
+/* De-emphasized tool pill: no border, faint background (--bg-code) and faint
+   text (--text-disabled-faint); both themes adapt automatically. Hover only
+   brightens the text as click feedback. The inline summary (Name: summary) can
+   be long: clamp with max-width + ellipsis. Pills stack one per line
+   (display: block) so consecutive calls scan like a list; width: fit-content
+   keeps the capsule hugging its text. display: block also removes the
+   inline-block baseline quirk, so no vertical-align is needed. box-sizing:
+   border-box keeps the padding inside max-width so narrow bubbles don't
+   overflow. */
 .simplifiedToolTag {
-  display: inline-block;
+  display: block;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: min(420px, 100%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0 10px;
   margin: 2px 4px 2px 0;
   font-size: 12px;
@@ -491,6 +511,16 @@
 .simplifiedToolTag:hover {
   background: var(--bg-code-hover);
   color: var(--text-secondary);
+}
+
+/* The inline summary sits one shade fainter than the tool name (both themes);
+   on hover it brightens along with the rest of the pill. */
+.simplifiedToolSummary {
+  color: var(--text-summary-faint);
+}
+
+.simplifiedToolTag:hover .simplifiedToolSummary {
+  color: inherit;
 }
 
 .simplifiedToolPopoverContent {

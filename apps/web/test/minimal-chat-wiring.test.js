@@ -79,14 +79,47 @@ describe('minimal chat — ChatMessage wiring', () => {
     assert.ok(m, 'run dispatch precedes role dispatch');
   });
 
-  it('run members suppress the "tools used" label in both renderers', () => {
-    assert.equal((chatMessage.match(/let simplifiedLabelAdded = !!this\.props\.runMember;/g) || []).length, 2);
+  it('the "tools used" label is gone; pills carry inline summaries in both renderers', () => {
+    // The per-tool summary registry (utils/toolSummary.js, unit-tested in
+    // tool-summary.test.js) makes the group prefix redundant — the label, its
+    // once-per-run bookkeeping, its CSS and the i18n key were all removed.
+    // (The same removal negatives are pinned in tool-summary.test.js.)
+    assert.ok(!chatMessage.includes('simplifiedLabelAdded'));
+    assert.ok(!chatMessage.includes("t('ui.toolsUsed')"));
+    assert.ok(!chatMessage.includes('simplifiedToolLabel'));
+    assert.ok(!chatMessageCss.includes('.simplifiedToolLabel'));
+    assert.equal((chatMessage.match(/this\._renderSimplifiedToolPill\(tu, tr\)/g) || []).length, 2, 'legacy + in-order pill call sites');
     assert.ok((chatView.match(/minimalChat=\{this\.props\.minimalChat\}/g) || []).length >= 4, 'ChatView passes minimalChat to bubbles');
   });
 
   it('run members surface their own call time in the pill popover', () => {
     assert.ok(chatMessage.includes('const runTime = this.props.runMember ? this.formatTime(this.props.timestamp) : null;'));
     assert.ok(chatMessage.includes('{runTime && <div className={styles.toolRunPopoverTime}>{runTime}</div>}'));
+  });
+
+  it('run members stamp their own turn time onto the thinking label', () => {
+    // Every turn inside a merged run renders an identical thinking strip; the
+    // member's own formatTime(timestamp) distinguishes them. Standalone
+    // bubbles (runMember undefined) keep the bare label.
+    const start = chatMessage.indexOf('_renderThinkingEntry(thinkingText');
+    const end = chatMessage.indexOf('_renderToolResultTrailing(tu, tr) {', start);
+    assert.ok(start > 0 && end > start, 'thinking entry method located');
+    const body = chatMessage.slice(start, end);
+    assert.ok(body.includes('const turnTime = this.props.runMember ? this.formatTime(this.props.timestamp) : null;'));
+    assert.ok(body.includes('{turnTime && <span className={styles.thinkingTurnTime}>{turnTime}</span>}'));
+    // Structure, not just presence: the stamp sits in the collapse label,
+    // right after the "thinking" text.
+    assert.ok(/label: \(\s*<>\s*<Text type="secondary" className=\{styles\.thinkingLabel\}>\{t\('ui\.thinking'\)\}<\/Text>\s*\{turnTime && <span className=\{styles\.thinkingTurnTime\}>\{turnTime\}<\/span>\}\s*<\/>/.test(body), 'label composition pinned');
+    const timeCssStart = chatMessageCss.indexOf('.thinkingTurnTime {');
+    assert.ok(timeCssStart > 0, 'turn time style exists');
+    const timeCssBlock = chatMessageCss.slice(timeCssStart, chatMessageCss.indexOf('}', timeCssStart));
+    assert.ok(timeCssBlock.includes('color: rgba(0, 0, 0, 0.45);'), 'turn time matches the antd secondary text color (light)');
+    assert.ok(chatMessageCss.includes(":global([data-theme='dark']) .thinkingTurnTime"), 'a dark-theme override exists');
+    const darkStart = chatMessageCss.indexOf(":global([data-theme='dark']) .thinkingTurnTime");
+    const darkBlock = chatMessageCss.slice(chatMessageCss.indexOf('{', darkStart), chatMessageCss.indexOf('}', darkStart));
+    assert.ok(darkBlock.includes('color: rgba(255, 255, 255, 0.45);'), 'dark theme matches the antd secondary text color');
+    assert.ok(!/!important/.test(timeCssBlock), 'no !important in the turn time block');
+    assert.equal((chatMessage.match(/this\._renderThinkingEntry\(/g) || []).length, 2, 'legacy + in-order call sites unchanged');
   });
 
   it('absorbed system prompts render as the grey starburst with an accessible label', () => {

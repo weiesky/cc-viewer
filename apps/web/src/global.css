@@ -42,6 +42,8 @@
   --text-muted: #666;
   --text-disabled: #555;
   --text-disabled-faint: rgba(255, 255, 255, 0.45);
+  /* One shade below --text-disabled-faint; used by the pill's inline tool summary. */
+  --text-summary-faint: rgba(255, 255, 255, 0.36);
   --text-white: #fff;
   --text-gray: #6b7280;
   --text-light: #aaa;
@@ -225,6 +227,8 @@
   --text-muted: #888;
   --text-disabled: #AAA;
   --text-disabled-faint: rgba(0, 0, 0, 0.35);
+  /* One shade below --text-disabled-faint; used by the pill's inline tool summary. */
+  --text-summary-faint: rgba(0, 0, 0, 0.28);
   --text-white: #1a1a1a;
   --text-gray: #6b7280;
   --text-light: #555;

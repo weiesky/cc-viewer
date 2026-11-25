@@ -7788,26 +7788,6 @@ const i18nData = {
     "tr": "Aynı ajanın art arda gelen yalnızca araç çağrısı içeren turlarını tek bir balonda birleştirir: eklenen sistem istemleri gri bir simgeye katlanır (okumak için üzerine gelin), araç etiketleri üzerine gelindiğinde çağrı zamanını gösterir. Yalnızca \"Tüm içeriği tam olarak göster\" kapalıyken geçerlidir.",
     "uk": "Об'єднує послідовні ходи одного агента, що містять лише виклики інструментів, в одну бульбашку: додані системні підказки згортаються в сіру іконку (наведіть, щоб прочитати), мітки інструментів показують час виклику при наведенні. Діє лише коли «Показати весь вміст повністю» вимкнено."
   },
-  "ui.toolsUsed": {
-    "zh": "调用工具: ",
-    "en": "Tools used: ",
-    "zh-TW": "調用工具: ",
-    "ko": "사용한 도구: ",
-    "ja": "使用ツール: ",
-    "de": "Verwendete Tools: ",
-    "es": "Herramientas usadas: ",
-    "fr": "Outils utilisés : ",
-    "it": "Strumenti usati: ",
-    "da": "Brugte værktøjer: ",
-    "pl": "Użyte narzędzia: ",
-    "ru": "Инструменты: ",
-    "ar": "الأدوات المستخدمة: ",
-    "no": "Brukte verktøy: ",
-    "pt-BR": "Ferramentas usadas: ",
-    "th": "เครื่องมือที่ใช้: ",
-    "tr": "Kullanılan araçlar: ",
-    "uk": "Використані інструменти: "
-  },
   "ui.diffSummary": {
     "zh": "+{added} -{removed}",
     "en": "+{added} -{removed}",

@@ -2,12 +2,13 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { Collapse, Typography, Radio, Checkbox, Input, Button, Tooltip, Popover, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import { escapeHtml, truncateText, getSvgAvatar } from '../../utils/helpers';
+import { getSvgAvatar } from '../../utils/helpers';
 import { formatHms, formatMonthDayTime } from '../../utils/formatters';
 import { compactResultPreview, shouldInlineToolImages, formatOversizedImagePlaceholder } from '../../utils/toolResultCore.js';
 import { extractWebSearchGroups } from '../../utils/webSearchGrouping';
 import { mergeThinkingBlocks } from '../../utils/thinkingMerge';
 import { isFullDisplayTool } from '../../utils/toolDisplayPolicy';
+import { getToolSummary } from '../../utils/toolSummary';
 import WebSearchResultsView from '../viewers/WebSearchResultsView';
 import MarkdownBlock from '../viewers/MarkdownBlock';
 import { IM_SOURCE_ICONS } from '../settings/imPlatforms';
@@ -1201,6 +1202,9 @@ class ChatMessage extends React.Component {
       );
     };
     const inlineImages = shouldInlineToolImages(tr) ? tr.images : null;
+    // Inline the call summary (Bash description, Read path, ...) via the
+    // per-tool registry in toolSummary.js; null degrades to the bare name.
+    const summary = getToolSummary(tu.name, tu.input);
     return (
       <React.Fragment key={`stag-wrap-${tu.id}`}>
         <Popover
@@ -1213,7 +1217,7 @@ class ChatMessage extends React.Component {
           mouseEnterDelay={0.5}
           {...((isMobile && !isPad) ? { trigger: 'click', ...(!isIOS && { getPopupContainer: (node) => node.parentElement }) } : {})}
         >
-          <span className={styles.simplifiedToolTag}>{tu.name}</span>
+          <span className={styles.simplifiedToolTag}>{tu.name}{summary ? <span className={styles.simplifiedToolSummary}>: {summary}</span> : ''}</span>
         </Popover>
         {inlineImages && <SimplifiedToolImages key={`stag-img-${tu.id}`} images={inlineImages} />}
       </React.Fragment>
@@ -1248,6 +1252,10 @@ class ChatMessage extends React.Component {
     const collapseProps = showTC
       ? { key: `think-stream-${tIdx}`, activeKey: streamThinkingExpanded ? ['1'] : [] }
       : { key: `think-${tIdx}-${this.props.expandThinking ? 'e' : 'c'}`, defaultActiveKey: this.props.expandThinking ? ['1'] : [] };
+    // Merged run members all render an identical "thinking" strip per turn;
+    // append the turn's own time so consecutive turns are distinguishable.
+    // Standalone bubbles keep the bare label.
+    const turnTime = this.props.runMember ? this.formatTime(this.props.timestamp) : null;
     return (
       <Collapse
         {...collapseProps}
@@ -1255,7 +1263,12 @@ class ChatMessage extends React.Component {
         size="small"
         items={[{
           key: '1',
-          label: <Text type="secondary" className={styles.thinkingLabel}>{t('ui.thinking')}</Text>,
+          label: (
+            <>
+              <Text type="secondary" className={styles.thinkingLabel}>{t('ui.thinking')}</Text>
+              {turnTime && <span className={styles.thinkingTurnTime}>{turnTime}</span>}
+            </>
+          ),
           children: isEmpty ? (
             <div className={styles.thinkingEmptyHint}>
               <Text type="secondary" className={styles.thinkingEmptyText}>{t('ui.thinkingEmpty')}</Text>
@@ -1366,25 +1379,14 @@ class ChatMessage extends React.Component {
     });
 
     const simplify = !this.props.showFullToolContent;
-    // Merged run members drop the "tools used:" prefix — pills speak for
-    // themselves; standalone bubbles keep it so a single tool call stays
-    // visually distinct from a merged run.
-    let simplifiedLabelAdded = !!this.props.runMember;
     toolUseBlocks.forEach((tu, tuIdx) => {
       const fullDisplay = isFullDisplayTool(tu.name);
       const tr = toolResultMap[tu.id];
       if (simplify && !fullDisplay) {
-        // 简化模式：首个标签前加 "使用工具: " 标签
-        if (!simplifiedLabelAdded) {
-          simplifiedLabelAdded = true;
-          innerContent.push(
-            <span key={`stag-label-${tuIdx}`} className={styles.simplifiedToolLabel}>{t('ui.toolsUsed')}</span>
-          );
-        }
-        // 简化模式：非 Edit/Write 工具只显示标签，hover/click 显示完整内容
+        // Simplified mode: non-full-display tools render as a pill (with the
+        // inline summary); hover/click reveals the full card.
         innerContent.push(this._renderSimplifiedToolPill(tu, tr));
       } else {
-        simplifiedLabelAdded = false; // 遇到完整展示工具后重置，下一组简化标签前重新显示 label
         innerContent.push(this.renderToolCall(tu));
       }
 
@@ -1435,7 +1437,6 @@ class ChatMessage extends React.Component {
       }
     }
     const simplify = !this.props.showFullToolContent;
-    let simplifiedLabelAdded = !!this.props.runMember; // see _renderAssistantContentLegacy
 
     // 3. groups 索引：globalIndex → group object（按 serverToolUseIndex 或 webSearchResultIndex）
     const groupStartMap = new Map();
@@ -1478,15 +1479,8 @@ class ChatMessage extends React.Component {
         const fullDisplay = isFullDisplayTool(tu.name);
         const tr = toolResultMap[tu.id];
         if (simplify && !fullDisplay) {
-          if (!simplifiedLabelAdded) {
-            simplifiedLabelAdded = true;
-            innerContent.push(
-              <span key={`stag-label-${i}`} className={styles.simplifiedToolLabel}>{t('ui.toolsUsed')}</span>
-            );
-          }
           innerContent.push(this._renderSimplifiedToolPill(tu, tr));
         } else {
-          simplifiedLabelAdded = false;
           innerContent.push(this.renderToolCall(tu));
         }
         const isFirstPendingTool = !tr && tuIdxInList >= 0 && !toolUseGlobalIndices.slice(0, tuIdxInList).some(gi => !toolResultMap[content[gi].id]);

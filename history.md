@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web): **折叠工具胶囊内联展示调用摘要** — pill 模式下工具胶囊从「调用工具: Bash」变为「Bash: Run sudo true to refresh sudo credentials」，摘要由新增的按工具注册表 `apps/web/src/utils/toolSummary.js` 从 input 提取（Bash 取 description/命令首行、Read 取路径末 3 段、TaskUpdate 取 subject 等，新工具只需加一条注册项）；摘要文本比工具名再浅一档（新变量 `--text-summary-faint`），「调用工具:」前缀及 `ui.toolsUsed` 键删除；胶囊改为每行一个纵向排列，420px 省略号截断。Coverage: `tool-summary.test.js`, `minimal-chat-wiring.test.js`。
+
+- feat(web): **合并连续输出的「思考过程」标注各 turn 时间** — minimal chat 合并气泡里每个 turn 的思考折叠条标题后追加该 turn 的调用时刻（复用 formatTime，与工具胶囊 Popover 的调用时刻同源），便于区分连续执行的不同 turn；非合并气泡不显示。Coverage: `minimal-chat-wiring.test.js`。
+
 - fix(server): **修复 SDK/CLI worker「Not logged in · Please run /login」** — cc-viewer 场景真实鉴权由 proxy 层注入（激活 profile 的 apiKey 从 credential vault 解密后写入出站头），spawn 出的 claude 子进程本身无凭据，其启动「未认证连通检查」会报未登录。新增 `server/lib/anthropic-auth-placeholder.js`：无 `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY` 时注入占位 ANTHROPIC_API_KEY 让 claude 跳过该检查（不覆盖用户凭据、避免双源告警），并把生效 key 的 tail 写进 `.claude.json` 的 `customApiKeyResponses.approved` 使交互 TUI 静默采纳。已接入 SDK IM worker 的 childEnv。Coverage: `anthropic-auth-placeholder.test.js`。
 
 - feat(server): **IM worker（钉钉/飞书/企微/Discord）改用 Claude Agent SDK 启动（去 PTY）** — worker 入口改为 `ccv --im-sdk <id>`（裸 `--im` 为别名，`--im-pty` 保留为隐藏排障口），以 SDK query 替代 node-pty 拉起的 claude CLI，规避无人值守时卡在首次运行信任/旁路确认框。锁、`IM_<id>/` 工作目录、CC_APPEND_SYSTEM.md 人格、内置技能、7050-7099 端口段与 `CCV_IM_DENY=1` 全部保留；桥接新增 headless deps（sendPrompt/interrupt/isSessionAvailable/getReplyText），出站文本优先取 interceptor 实时文本、回退 SDK result。权限安全：bypass 下 CLI 不调 canUseTool（CLAUDE_SDK_CAN_USE_TOOL_SHADOWED），IM worker 的权威拦截层改为 sdk-manager 挂载的 in-process PreToolUse hook——硬拦 IM 规则（含 Grep/Glob/NotebookRead 凭证读取、外泄/提权 Bash），无人值守时再拦交互工具（AskUserQuestion/ExitPlanMode）与 publish，不挂起等人工。Coverage: `im-sdk-bridge.test.js`, `sdk-unattended.test.js`, `server-im-worker-sdk.test.js`, `im-permissions.test.js`, `im-deny.test.js`, `im-process-manager.test.js`, `im-spawn-test-guard.test.js`, `cli-extra.test.js`, `cli-modes.test.js`, `cli-deep.test.js`, `cli.test.js`, `branch-cli.test.js`。
