@@ -17,10 +17,13 @@ process.env.CLAUDE_CONFIG_DIR = tmpDir;
 
 let sdk;
 let registry;
+let projectKeyForCwd;
 
 before(async () => {
   sdk = await import('../server/lib/sdk-manager.js');
   registry = await import('../server/lib/proxy-session-registry.js');
+  // projectKeyForCwd mirrors the workspace tag sdk-manager attaches to a seed binding.
+  ({ projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js'));
 });
 
 after(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
@@ -47,13 +50,16 @@ function keyFor(cwd) {
 }
 
 describe('sdk session → proxy binding lifecycle', () => {
-  it('initSdkSession seeds the binding from the global default', () => {
+  it('initSdkSession seeds the binding from the global default, tagged seed+workspace', () => {
     writeFileSync(join(tmpDir, 'profile.json'), JSON.stringify({ active: 'globX', profiles: [] }));
     sdk.__setQueryForTests(makeQuery());
     sdk.initSdkSession('/wa', 'wa', deps);
     const key = keyFor('/wa');
     assert.ok(key, 'session registered');
-    assert.equal(registry.getSessionProxy(key)?.main, 'globX');
+    const binding = registry.getSessionProxy(key);
+    assert.equal(binding?.main, 'globX');
+    assert.equal(binding?.origin, 'seed');
+    assert.equal(binding?.workspace, projectKeyForCwd('/wa'));
   });
 
   it('a re-init / attach never clobbers an existing user choice', () => {
@@ -63,11 +69,13 @@ describe('sdk session → proxy binding lifecycle', () => {
     registry.setSessionProxyProfile(key, { main: 'userPicked' });
     sdk.initSdkSession('/wa', 'wa', deps); // re-init same cwd
     assert.equal(registry.getSessionProxy(key)?.main, 'userPicked', 're-init must not reseed');
+    assert.equal(registry.getSessionProxy(key)?.origin, 'user');
     sdk.attachSdkSession({ instanceKey: key });
     assert.equal(registry.getSessionProxy(key)?.main, 'userPicked', 'attach must not reseed');
+    assert.equal(registry.getSessionProxy(key)?.origin, 'user');
   });
 
-  it('attachSdkSession seeds a session that has no binding yet', () => {
+  it('attachSdkSession seeds a session that has no binding yet, with its own workspace', () => {
     writeFileSync(join(tmpDir, 'profile.json'), JSON.stringify({ active: 'globY', profiles: [] }));
     sdk.__setQueryForTests(makeQuery());
     sdk.initSdkSession('/wa', 'wa', deps);
@@ -75,7 +83,10 @@ describe('sdk session → proxy binding lifecycle', () => {
     registry.clearSessionProxyProfile(key); // simulate a binding that predates the mapping
     assert.equal(registry.getSessionProxy(key), undefined);
     sdk.attachSdkSession({ instanceKey: key });
-    assert.equal(registry.getSessionProxy(key)?.main, 'globY', 'activation seeds from the current global default');
+    const binding = registry.getSessionProxy(key);
+    assert.equal(binding?.main, 'globY', 'activation seeds from the current global default');
+    assert.equal(binding?.origin, 'seed');
+    assert.equal(binding?.workspace, projectKeyForCwd('/wa'));
   });
 
   it('a same-cwd sibling gets its OWN binding, seeded from the global default', () => {
@@ -86,7 +97,10 @@ describe('sdk session → proxy binding lifecycle', () => {
     registry.setSessionProxyProfile(primaryKey, { main: 'primaryChoice' });
     const created = sdk.createSdkSession('/wa');
     assert.ok(created?.instanceKey && created.instanceKey !== primaryKey, 'sibling has a fresh key');
-    assert.equal(registry.getSessionProxy(created.instanceKey)?.main, 'globZ', 'sibling seeds from global default');
+    const sibling = registry.getSessionProxy(created.instanceKey);
+    assert.equal(sibling?.main, 'globZ', 'sibling seeds from global default');
+    assert.equal(sibling?.origin, 'seed');
+    assert.equal(sibling?.workspace, projectKeyForCwd('/wa'), 'same-cwd sibling shares the workspace tag');
     assert.equal(registry.getSessionProxy(primaryKey)?.main, 'primaryChoice', 'primary binding untouched');
   });
 

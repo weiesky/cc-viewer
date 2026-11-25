@@ -3172,6 +3172,19 @@ export function __isEphemeralHostForTests(cwd) {
   return false;
 }
 
+// Seed the per-session proxy binding for a session (no-op when already bound, so a
+// re-init/attach never clobbers a user's choice). The seed VALUE comes from the registry's
+// provider (the currently-bound workspace's effective active/roles); the WORKSPACE tag comes
+// from the session's own cwd, so a later change to that workspace can re-align the binding.
+// Known limitation: when a session whose cwd ≠ the currently-bound workspace is seeded
+// (e.g. attaching a session from another workspace, or IM-SDK mode where cwd is LOG_DIR/IM_*),
+// the value reflects the bound workspace while the tag is the session's own — it self-heals
+// the next time that workspace is activated (initForWorkspace → reconcile).
+function _seedProxyBindingForSession(sess) {
+  if (!sess || !sess.instanceKey) return;
+  seedSessionProxyProfile(sess.instanceKey, projectKeyForCwd(sess.cwd));
+}
+
 /**
  * Initialize (or re-initialize) a workspace's SDK session.
  * Does NOT start a query — waits for the first user message via sendUserMessage().
@@ -3222,9 +3235,7 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
   const sess = _getOrCreateSession(cwd);
   sess.init({ permissionMode, env, settings, model, launchResume, userArgs, claudeExecutable, unattended, insideLogDir });
   _activeKey = sess.instanceKey;
-  // Seed the per-session proxy binding from the global default (no-op when the
-  // session is already bound, so a re-init never clobbers a user's choice).
-  seedSessionProxyProfile(sess.instanceKey);
+  _seedProxyBindingForSession(sess);
 }
 
 /**
@@ -3268,7 +3279,7 @@ export function createSdkSession(cwd, cfg) {
   sess._markFreshLaunch();
   _adoptProcessWiring();
   _activeKey = sess.instanceKey;
-  seedSessionProxyProfile(sess.instanceKey);
+  _seedProxyBindingForSession(sess);
   return { instanceKey: sess.instanceKey };
 }
 
@@ -3496,7 +3507,7 @@ export function attachSdkSession(anchor) {
   _activeKey = sess.instanceKey;
   // Activating a session binds its proxy (seeded from the global default when the
   // session predates the mapping or its binding was cleared).
-  seedSessionProxyProfile(sess.instanceKey);
+  _seedProxyBindingForSession(sess);
   return { ok: true, key: sess.instanceKey, instanceKey: sess.instanceKey, cwd: sess.cwd, switched };
 }
 

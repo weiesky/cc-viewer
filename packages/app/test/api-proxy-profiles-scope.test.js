@@ -128,6 +128,7 @@ describe('POST /api/proxy-profiles scope', () => {
     await new Promise((r) => setImmediate(r));
     assert.equal(res.statusCode, 200);
     assert.equal(registry.getSessionProxy(KEY_A)?.main, 'sB');
+    assert.equal(registry.getSessionProxy(KEY_A)?.origin, 'user', 'session-scope write pins provenance as user');
     assert.equal(profileFileActive(), 'gA', 'session scope must NOT touch the global default');
   });
 
@@ -156,6 +157,20 @@ describe('POST /api/proxy-profiles scope', () => {
     assert.equal(b.roles.teammate, 'follow', 'unsubmitted role preserved');
   });
 
+  it("scope:'session' (even a roles-only edit) pins the whole binding to origin 'user'", async () => {
+    // Product decision (reviewed): ANY session-scope write — including a roles-only change or a
+    // profile-delete confirmation — freezes the entire binding as an explicit user choice, so its
+    // `main` stops following the workspace. This guards the user's per-session role picks from
+    // being overwritten by a later reseed. There is no per-field provenance.
+    registry.seedSessionProxyProfile(KEY_A, 'wsA'); // a seed binding that would otherwise follow
+    assert.equal(registry.getSessionProxy(KEY_A)?.origin, 'seed');
+    const res = mkRes();
+    postRoute(mkReq(JSON.stringify({ scope: 'session', instanceKey: KEY_A, profiles: PROFILES, roles: { subagent: 'sB' } })), res, parsedUrl(), true, mkDeps());
+    await new Promise((r) => setImmediate(r));
+    assert.equal(res.statusCode, 200);
+    assert.equal(registry.getSessionProxy(KEY_A)?.origin, 'user', 'roles-only session write pins the binding as user');
+  });
+
   it("scope:'global' sets the global default without touching session bindings", async () => {
     registry.setSessionProxyProfile(KEY_A, { main: 'sB' });
     const res = mkRes();
@@ -163,6 +178,7 @@ describe('POST /api/proxy-profiles scope', () => {
     await new Promise((r) => setImmediate(r));
     assert.equal(res.statusCode, 200);
     assert.equal(registry.getSessionProxy(KEY_A)?.main, 'sB', 'global write must not clobber the session binding');
+    assert.equal(registry.getSessionProxy(KEY_A)?.origin, 'user', 'a user binding keeps its provenance through a global write');
   });
 
   it('legacy POST (no scope) behaves as before (workspace/global write, no session binding)', async () => {

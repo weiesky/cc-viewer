@@ -1,6 +1,6 @@
 // Per-session (per SDK instance) proxy binding. Maps an SDK instanceKey to the
-// session's proxy choice ({ main, roles }) so one session's proxy change never
-// leaks into another session sharing the same ccv process.
+// session's proxy choice ({ main, roles, origin, workspace? }) so one session's
+// proxy change never leaks into another session sharing the same ccv process.
 //
 // This is intentionally process-local and IN-MEMORY ONLY: bindings are seeded when
 // a session is registered/activated and dropped when it closes or the process stops.
@@ -19,10 +19,20 @@ import { reportSwallowed } from './error-report.js';
 const INSTANCE_KEY_RE = /^ccv-[0-9a-f]+$/;
 const MAX_ENTRIES = 1024; // defensive cap: an unbounded map would be a slow leak
 
-// instanceKey -> { main: profileId|'max', roles: { subagent, teammate } }
+// instanceKey -> {
+//   main: profileId|'max',
+//   roles: { subagent, teammate },
+//   origin: 'seed'|'user',   // provenance: snapshotted at seed vs explicit session-scope choice
+//   workspace?: string,      // seed only: owning workspace's project key (opaque to this module)
+// }
 // 'max' is the explicit "Default" (no rewrite) value and MUST be stored verbatim —
 // an absent mapping means "not bound" (fall back to the process-global profile),
 // which is a different thing from "this session explicitly chose Default".
+//
+// `origin` exists so a workspace active/roles change can re-align ONLY the bindings that
+// were auto-seeded from the workspace ('seed') and never the ones a user explicitly picked
+// ('user'). Entries without `origin` (in-memory survivors of a hot reload) are treated as
+// 'user' — we never auto-overwrite a choice we cannot prove was seeded.
 const _byInstance = new Map();
 
 let _globalDefaultProvider = null;
@@ -93,34 +103,79 @@ export function getSessionProxy(instanceKey) {
   return _byInstance.get(instanceKey);
 }
 
-// Overwrite a session's binding (user-driven change). Unknown keys are dropped;
-// 'max' is a valid explicit Default for main and for each role.
-export function setSessionProxyProfile(instanceKey, { main, roles } = {}) {
-  if (!isValidInstanceKey(instanceKey)) return false;
-  const entry = {
+// Normalize a { main, roles } payload into the stored shape. 'max' is a valid explicit
+// Default for main and for each role; unknown/invalid values fall back to the global
+// default main and follow/follow roles.
+function _normalizeBinding({ main, roles } = {}) {
+  return {
     main: typeof main === 'string' && main ? main : getGlobalDefaultProfileId(),
     roles: {
       subagent: typeof roles?.subagent === 'string' && roles.subagent ? roles.subagent : 'follow',
       teammate: typeof roles?.teammate === 'string' && roles.teammate ? roles.teammate : 'follow',
     },
   };
+}
+
+// Validate + FIFO-evict + write. `origin` records the caller's intent ('user' vs 'seed');
+// `workspace` is stored only for seed bindings so a later workspace change can be scoped
+// to the sessions that belong to it.
+function _writeBinding(instanceKey, value, origin, workspace) {
+  if (!isValidInstanceKey(instanceKey)) return false;
+  const binding = { ..._normalizeBinding(value), origin };
+  if (origin === 'seed' && typeof workspace === 'string' && workspace) binding.workspace = workspace;
   if (_byInstance.size >= MAX_ENTRIES && !_byInstance.has(instanceKey)) {
     // Evict the oldest entry (Map preserves insertion order).
     const oldest = _byInstance.keys().next().value;
     _byInstance.delete(oldest);
   }
-  _byInstance.set(instanceKey, entry);
+  _byInstance.set(instanceKey, binding);
   return true;
+}
+
+// Overwrite a session's binding (user-driven change). Once a user has explicitly chosen,
+// the binding is pinned as 'user' and is never auto-overwritten by a workspace change for
+// the life of the session (it is only dropped when the session closes or the process stops).
+export function setSessionProxyProfile(instanceKey, value = {}) {
+  return _writeBinding(instanceKey, value, 'user');
 }
 
 // Seed a session's binding ONLY when none exists yet (a returning/reattached session
 // must never lose the choice the user already made). Seeds from the workspace-effective
 // main + stored roles (via the seed provider) so a fresh session matches legacy behavior.
-export function seedSessionProxyProfile(instanceKey) {
+// `workspace` marks the binding as belonging to that workspace so it can be re-aligned
+// when that workspace's active/roles change.
+export function seedSessionProxyProfile(instanceKey, workspace) {
   if (!isValidInstanceKey(instanceKey)) return false;
   if (_byInstance.has(instanceKey)) return false;
-  const seed = _seedValue();
-  return setSessionProxyProfile(instanceKey, { main: seed.main, roles: seed.roles });
+  return _writeBinding(instanceKey, _seedValue(), 'seed', workspace);
+}
+
+export function isSeedOriginBinding(entry) {
+  return !!entry && entry.origin === 'seed';
+}
+
+// Re-align seed-origin bindings to the workspace's current { main, roles }. Only entries
+// seeded from a workspace are updated; explicit 'user' choices and provenance-less entries
+// are left untouched. When `workspace` is given, only bindings belonging to it change.
+// `nextSeed.main` is required — a missing/empty main is a no-op (returns 0). Returns the
+// number of bindings updated (for tests/diagnostics). Uses Map.set on an existing key so
+// FIFO insertion order is preserved. Each updated entry gets its own roles copy so a later
+// in-place role edit (pruneSessionProxyProfiles) can never bleed across sibling bindings.
+export function reseedSeedOriginBindings(nextSeed, { workspace } = {}) {
+  if (!nextSeed || typeof nextSeed.main !== 'string' || !nextSeed.main) return 0;
+  const n = _normalizeBinding(nextSeed);
+  let updated = 0;
+  for (const [key, entry] of _byInstance) {
+    if (!isSeedOriginBinding(entry)) continue;
+    if (workspace !== undefined && entry.workspace !== workspace) continue;
+    const roles = entry.roles || {};
+    if (entry.main === n.main
+      && roles.subagent === n.roles.subagent
+      && roles.teammate === n.roles.teammate) continue;
+    _byInstance.set(key, { ...entry, main: n.main, roles: { ...n.roles } });
+    updated++;
+  }
+  return updated;
 }
 
 export function clearSessionProxyProfile(instanceKey) {
@@ -153,4 +208,12 @@ export function __resetSessionProxyProfilesForTests() {
   // NOTE: providers (_globalDefaultProvider / _seedProvider) are owned by the registrar
   // (interceptor) and intentionally NOT cleared here — clearing them would silently
   // degrade later seeds to the disk fallback within the same process.
+}
+
+// Insert a raw entry verbatim (e.g. one with no `origin`) to lock down the migration
+// behavior for pre-provenance in-memory bindings.
+export function __putRawEntryForTests(instanceKey, entry) {
+  if (!isValidInstanceKey(instanceKey)) return false;
+  _byInstance.set(instanceKey, entry);
+  return true;
 }

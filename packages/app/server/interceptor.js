@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 import { LOG_DIR } from '../findcc.js';
 import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, replaceTopLevelSystem, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, resolveSessionMainProfile, resolveSessionRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
-import { registerGlobalDefaultProvider, registerSeedProvider, getSessionProxy } from './lib/proxy-session-registry.js';
+import { registerGlobalDefaultProvider, registerSeedProvider, getSessionProxy, reseedSeedOriginBindings } from './lib/proxy-session-registry.js';
 import { V2Writer } from './lib/v2/v2-writer.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { latestMainSessionDir, sessionHasMainTurn, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
@@ -289,7 +289,7 @@ function _getActiveProfileFilePath() {
 
 function _readWorkspaceActive() {
   const p = _getActiveProfileFilePath();
-  const empty = { activeId: null, roles: normalizeRoles(undefined) };
+  const empty = { activeId: null, roles: normalizeRoles(undefined), unreadable: false };
   if (!p) return empty;
   try {
     if (existsSync(p)) {
@@ -297,11 +297,14 @@ function _readWorkspaceActive() {
       return {
         activeId: typeof data?.activeId === 'string' ? data.activeId : null,
         roles: normalizeRoles(data?.roles),
+        unreadable: false,
       };
     }
   } catch (err) {
-    // 损坏的工作区文件会把 active/roles 静默回落默认 —— 属"丢数据"级，必须记账（有节流）
+    // 损坏的工作区文件会把 active/roles 静默回落默认 —— 属"丢数据"级，必须记账（有节流）。
+    // 标记 unreadable=true 让重算跳过（避免把 seed 绑定误降级为全局默认后又 flap 回来）。
     reportSwallowed('proxy-profile.workspace-read', err);
+    return { ...empty, unreadable: true };
   }
   return empty;
 }
@@ -409,6 +412,13 @@ function _loadProxyProfile() {
     const activeId = ws.activeId || data.active;
     const active = profiles.find(p => p.id === activeId);
     _activeProfile = (active && active.id !== 'max') ? active : null;
+    // Re-align seed-origin session bindings with the workspace's just-loaded active/roles.
+    // Runs on every successful load — setActiveProfileForWorkspace, both watchFile callbacks,
+    // and initForWorkspace/resetWorkspace re-arms all converge here, so no separate trigger is
+    // needed. Skip on the catch path (a corrupt profile.json is fail-closed) and when the
+    // workspace file itself is unreadable — re-seeding to the global default in either case
+    // would just downgrade the bindings and flap back once the file recovers.
+    if (!ws.unreadable) _reconcileSeedBindings(activeId);
   } catch (err) {
     _activeProfile = null;
     _globalDefaultId = 'max';
@@ -417,6 +427,25 @@ function _loadProxyProfile() {
     if (process.env.CCV_DEBUG_HOTSWITCH) {
       console.error('[ccv hotswitch] _loadProxyProfile failed:', err && err.message);
     }
+  }
+}
+
+// Re-align seed-origin session bindings with the current workspace's active/roles after a
+// successful (re)load. Only bindings auto-seeded from THIS workspace are updated — explicit
+// user choices (origin 'user') are never overwritten. Scoped by _projectName so a workspace
+// switch never rewrites sessions that belong to a different workspace; skipped entirely when
+// no workspace is bound (resetWorkspace / pre-selection). By design (reviewed), only the
+// currently-bound workspace reconciles in real time — a seed binding for another live
+// workspace converges when that workspace is next activated (initForWorkspace → this path).
+function _reconcileSeedBindings(activeId) {
+  if (!_projectName) return;
+  try {
+    reseedSeedOriginBindings(
+      { main: (typeof activeId === 'string' && activeId) ? activeId : 'max', roles: _roleIds },
+      { workspace: _projectName },
+    );
+  } catch (err) {
+    reportSwallowed('proxy-profile.reseed-session-bindings', err);
   }
 }
 
