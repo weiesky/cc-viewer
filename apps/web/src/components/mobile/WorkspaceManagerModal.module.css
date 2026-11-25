@@ -1,0 +1,105 @@
+/* WorkspaceManagerModal (mobile): two-section manager — switch between live
+   workspaces, or open the shared new-workspace picker. Mobile-native density
+   (no zoom 0.6; that trick is only for reused desktop-density bodies). */
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #999);
+  margin: 0 0 8px;
+  text-transform: none;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 45vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary, #e5e5e5);
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+  color: var(--text-primary, #1a1a1a);
+  cursor: pointer;
+}
+
+.row:active:not(:disabled) {
+  background: var(--bg-base-alt, #f5f5f5);
+}
+
+.row:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.rowViewing {
+  border-color: var(--text-primary, #1a1a1a);
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowLabel {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  font-weight: 600;
+}
+
+/* The project name ellipsizes; the same-name discriminator suffix never does —
+   the split mirrors AppHeader's project tabs, where clipping the [n] suffix made
+   twin rows indistinguishable. */
+.rowName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowSuffix {
+  font-weight: 400;
+  color: var(--text-muted, #999);
+  flex-shrink: 0;
+}
+
+.rowCwd {
+  font-size: 12px;
+  color: var(--text-muted, #999);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.center {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-primary, #e5e5e5);
+  margin: 16px 0;
+}
+
+.createRow {
+  width: 100%;
+}

@@ -153,6 +153,11 @@ const KEYS = [
   'ui.workspaces.help',
   'ui.workspaces.helpTitle',
   'ui.workspaces.helpBody',
+  // Mobile workspace manager modal (WorkspaceManagerModal.jsx):
+  'ui.workspaceManager.title',
+  'ui.workspaceManager.switchTitle',
+  'ui.workspaceManager.currentTag',
+  'ui.workspaceManager.emptyLive',
   // SDK resilience + 502 inline retry (sdk-error rows / retry bar, ChatView.jsx):
   'ui.sdkErrorCode.turn-stuck',
   'ui.sdkErrorCode.session-ended',

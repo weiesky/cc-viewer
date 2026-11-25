@@ -289,6 +289,69 @@ export function resolveBoundInstance(tabs, currentProject, currentInstanceKey) {
 }
 
 /**
+ * Mobile workspace-manager row model (2026-11): the row classification the mobile
+ * WorkspaceManagerModal renders from a /api/live-processes snapshot, split out as a
+ * pure function so the same-basename/detach logic is unit-testable without React
+ * (this file exists for exactly that reason). Invariants mirror
+ * HeaderProjectTabs.onTabClick (AppHeader.jsx):
+ *   1. The BOUND project's row routes to detachView(), never activate — activating
+ *      the bound project leaves a pseudo-bound pinned view (cold channel, wrong
+ *      viewedWorkspace persistence) instead of returning to the bound channel.
+ *   2. Mobile-only: the bound project is ALWAYS listed, synthesized from
+ *      `currentProject` when it has no live row (bound PTY exited) — mobile has no
+ *      header tab strip / always-on poll, so without it there is no way back.
+ * @param {object} input
+ * @param {Array} input.processes - raw /api/live-processes `processes` rows.
+ * @param {string} input.currentProject - bound project name (client prop wins; the
+ *   poll's `currentProject` field lags a rebind by up to one poll interval).
+ * @param {string|null} input.currentInstanceKey - /api/live-processes top-level field.
+ * @param {string|null} input.viewedProject - attached parallel view's project, if any.
+ * @param {string|null} input.viewedInstance - attached view's instanceKey, if any.
+ * @param {boolean} input.resumeSwitch - a cold view switch is in flight: suppress the
+ *   dead-view heal (a snapshot that predates the target must not yank the rug out —
+ *   the desktop detector handleLiveProjectsChange skips for the same reason).
+ * @returns {{ rows: Array<object>, isViewing: (row: object) => boolean,
+ *   isBoundRow: (row: object) => boolean, healNeeded: boolean }}
+ *   Rows are deriveProjectTabs entries; when the bound project has no live row a
+ *   synthetic `{ key: 'bound:<name>', project, label, suffix: null, cwd: null,
+ *   instanceKey: currentInstanceKey }` row is prepended (display metadata only — the
+ *   row always classifies as a bound/detach row).
+ */
+export function buildWorkspaceListModel({ processes, currentProject, currentInstanceKey, viewedProject, viewedInstance, resumeSwitch } = {}) {
+  const tabs = deriveProjectTabs(processes);
+  const cur = (typeof currentProject === 'string' && currentProject) || '';
+  const curKey = (typeof currentInstanceKey === 'string' && currentInstanceKey) || null;
+  const viewing = viewedProject || cur;
+  const viewingInstance = viewedProject ? (viewedInstance || null) : null;
+  // Same-basename tiebreak, bound view only: when two live rows share the bound
+  // basename, only the bound INSTANCE is the viewing/detach target — the sibling
+  // must stay clickable to activate its own view.
+  const boundViewInstance = viewedProject ? null : resolveBoundInstance(tabs, cur, curKey);
+
+  const instanceOf = (row) => (row && row.instanceKey) || null;
+  const isBoundRow = (row) => !!row && row.project === cur
+    && (!boundViewInstance || instanceOf(row) === boundViewInstance);
+  const isViewing = (row) => !!row && row.project === viewing && (viewedProject
+    ? instanceOf(row) === viewingInstance
+    : (boundViewInstance ? instanceOf(row) === boundViewInstance : true));
+
+  // The bound row needs no live process: detach rebinds the bound SSE scope, which
+  // reads the project's logs from disk.
+  const hasBoundRow = !!cur && tabs.some(isBoundRow);
+  const rows = (cur && !hasBoundRow)
+    ? [{ key: `bound:${cur}`, project: cur, label: cur, suffix: null, cwd: null, instanceKey: curKey }, ...tabs]
+    : tabs;
+
+  // Dead-view heal: the viewed parallel instance vanished from the live list. With no
+  // viewedInstance pin, a same-name view is satisfied by any live same-name row.
+  const healNeeded = !resumeSwitch && !!viewedProject
+    && !tabs.some((row) => row.project === viewedProject
+      && (!viewingInstance || instanceOf(row) === viewingInstance));
+
+  return { rows, isViewing, isBoundRow, healNeeded };
+}
+
+/**
  * Attach the server's main PTY stream to a project (multi-PTY view switch,
  * 2026-10). Fire-and-forget: the terminal stays on the old project if the
  * attach fails (e.g. no live record yet), which is the pre-fix behavior — the

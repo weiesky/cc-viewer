@@ -21,6 +21,7 @@ import ApprovalModal from './components/approval/ApprovalModal';
 import MobileGitDiff from './components/mobile/MobileGitDiff';
 import MobileFileExplorer from './components/mobile/MobileFileExplorer';
 import MobileStats from './components/mobile/MobileStats';
+import WorkspaceManagerModal from './components/mobile/WorkspaceManagerModal';
 import VoicePackSettings from './components/settings/VoicePackSettings';
 import CachePopoverContent from './components/dashboard/CachePopoverContent';
 import MemoryDetailModal from './components/common/MemoryDetailModal';
@@ -89,6 +90,7 @@ class Mobile extends AppBase {
       mobileFileExplorerVisible: false,
       mobileCachePanelVisible: false,  // 手机模式：点击血条划出的侧边抽屉
       mobileResumeVisible: false,      // /resume global session switcher modal
+      workspaceManagerVisible: false,  // workspace manager modal (switch live + new workspace)
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       // SDK plan 审批复用 ApprovalModal 的 planModeBox 卡片（onPendingPtyPlan 通道），
       // 不再有独立的计划审批浮层。
@@ -158,6 +160,7 @@ class Mobile extends AppBase {
       mobileFileExplorerVisible: false,
       mobileCachePanelVisible: false,
       mobileResumeVisible: false,
+      workspaceManagerVisible: false,
       // PC-aligned modals: 也纳入互斥关闭, 避免点击其他菜单项时这 3 个仍残留
       pluginModalVisible: false,
       processModalVisible: false,
@@ -420,6 +423,9 @@ class Mobile extends AppBase {
       this._memorySeq++;
       this._claudeMdSeq++;
       this._claudeMdDetailSeq++;
+      // After a view switch the context bar belongs to the new project: never
+      // backfill the departed project's last percent when the new view reads 0%.
+      this._lastContextPercent = 0;
       this.setState({
         _fsSkills: null,
         _memory: null,
@@ -735,7 +741,7 @@ class Mobile extends AppBase {
             {!mobileIsLocalLog ? (() => {
               return (
                 <MobileContextTag
-                  projectName={this.state.projectName}
+                  projectName={this.state.viewedProject || this.state.projectName}
                   fallbackPercent={mobileContextPercent}
                   onToggle={() => this.setState(prev => ({
                     ...this._closeAllMobileOverlays(),
@@ -827,19 +833,22 @@ class Mobile extends AppBase {
                   {t('ui.resume.navTitle')}
                 </button>
                 )}
-                {/* [+] new parallel project (mirrors the PC header [+] button).
-                    Hidden in the Electron chat tab (window.tabBridge) where the
-                    picker is a dead control. */}
+                {/* Workspace manager: switch between live workspaces or launch a new
+                    one (opens WorkspaceManagerModal; the new-project handoff reuses the
+                    PC header [+] picker). Hidden in the Electron chat tab
+                    (window.tabBridge), where the native tab bar already switches
+                    workspaces and the new-workspace picker is a dead control. */}
                 {!mobileIsLocalLog && (typeof window === 'undefined' || !window.tabBridge) && (
                 <button
                   className={styles.mobileMenuItem}
-                  onClick={() => { this.setState({ ...this._closeAllMobileOverlays(), newProjectOpen: true }); }}
+                  onClick={() => { this.setState({ ...this._closeAllMobileOverlays(), workspaceManagerVisible: true }); }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
+                    <rect x="3" y="4" width="14" height="14" rx="2" />
+                    <line x1="3" y1="9" x2="17" y2="9" />
+                    <path d="M21 8v10a2 2 0 0 1-2 2H7" />
                   </svg>
-                  {t('ui.resume.newProject')}
+                  {t('ui.workspaceManager.title')}
                 </button>
                 )}
                 {/* 3. 用户 Prompt — 对应 PC 「查看用户 Prompt」 */}
@@ -1141,6 +1150,19 @@ class Mobile extends AppBase {
             )}
           </Modal>
           {(typeof window === 'undefined' || !window.tabBridge) && this.renderNewProjectModal()}
+          {(typeof window === 'undefined' || !window.tabBridge) && (
+            <WorkspaceManagerModal
+              open={this.state.workspaceManagerVisible}
+              onClose={() => this.setState({ workspaceManagerVisible: false })}
+              currentProject={this.state.projectName}
+              viewedProject={this.state.viewedProject}
+              viewedInstance={this.state.viewedInstance}
+              resumeSwitch={this.state.resumeSwitch}
+              onActivateChip={this.handleActivateChip}
+              onDetachView={this.handleDetachView}
+              onOpenNewProject={() => this.setState({ workspaceManagerVisible: false, newProjectOpen: true })}
+            />
+          )}
           <MemoryDetailModal
             detail={this.state._claudeMdDetail}
             onClose={() => this.setState({ _claudeMdDetail: null })}

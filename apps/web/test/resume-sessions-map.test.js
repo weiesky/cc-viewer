@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapResumeRow, formatRelativeTime, deriveActiveProcessChips, deriveProjectTabs, resolveBoundInstance, attachMainPty, closeProjectPty, resumeSession } from '../src/utils/resumeSessions.js';
+import { mapResumeRow, formatRelativeTime, deriveActiveProcessChips, deriveProjectTabs, resolveBoundInstance, attachMainPty, closeProjectPty, resumeSession, buildWorkspaceListModel } from '../src/utils/resumeSessions.js';
 
 describe('mapResumeRow', () => {
   const base = {
@@ -548,5 +548,145 @@ describe('resumeSession (true /resume, 2026-10-06)', () => {
     });
     assert.deepEqual(out, { ok: false, reason: 'network' });
     assert.deepEqual(reports, [{ tag: 'pty.resume', msg: 'net down' }]);
+  });
+});
+
+describe('buildWorkspaceListModel', () => {
+  // Two live projects: projA (bound, instance K1) and projB (K2).
+  const PROC = [
+    { kind: 'main', project: 'projA', cwd: '/a/projA', pid: 11, active: true, instanceKey: 'K1' },
+    { kind: 'main', project: 'projB', cwd: '/b/projB', pid: 22, active: false, instanceKey: 'K2' },
+  ];
+  const base = { processes: PROC, currentProject: 'projA', currentInstanceKey: 'K1', viewedProject: null, viewedInstance: null, resumeSwitch: false };
+
+  it('bound view: bound row is viewing, other rows are not bound', () => {
+    const m = buildWorkspaceListModel(base);
+    const a = m.rows.find(r => r.project === 'projA');
+    const b = m.rows.find(r => r.project === 'projB');
+    assert.ok(a && b, 'both live projects must appear as rows');
+    assert.equal(m.isViewing(a), true);
+    assert.equal(m.isBoundRow(a), true);
+    assert.equal(m.isViewing(b), false);
+    assert.equal(m.isBoundRow(b), false);
+    assert.equal(m.healNeeded, false);
+  });
+
+  it('parallel view: viewed row is viewing; bound row is clickable (not viewing)', () => {
+    const m = buildWorkspaceListModel({ ...base, viewedProject: 'projB', viewedInstance: 'K2' });
+    const a = m.rows.find(r => r.project === 'projA');
+    const b = m.rows.find(r => r.project === 'projB');
+    assert.equal(m.isViewing(b), true);
+    assert.equal(m.isBoundRow(b), false);
+    assert.equal(m.isViewing(a), false);
+    assert.equal(m.isBoundRow(a), true);
+    assert.equal(m.healNeeded, false);
+  });
+
+  it('synthesizes the bound row when the bound project has no live row', () => {
+    const m = buildWorkspaceListModel({ ...base, processes: [PROC[1]] });
+    assert.equal(m.rows[0].key, 'bound:projA');
+    assert.equal(m.rows[0].project, 'projA');
+    assert.equal(m.rows[0].instanceKey, 'K1');
+    assert.equal(m.isBoundRow(m.rows[0]), true);
+    assert.equal(m.isViewing(m.rows[0]), true); // bound view, no parallel attached
+  });
+
+  it('no synthetic row when the bound project already has a live row', () => {
+    const m = buildWorkspaceListModel(base);
+    assert.equal(m.rows.filter(r => r.project === 'projA').length, 1);
+    assert.ok(!m.rows.some(r => r.key === 'bound:projA'));
+  });
+
+  it('same-basename twins: bound view singles out the bound instance, sibling stays clickable', () => {
+    const twin = { kind: 'main', project: 'projA', cwd: '/c/projA', pid: 33, active: false, instanceKey: 'K3' };
+    const m = buildWorkspaceListModel({ ...base, processes: [...PROC, twin] });
+    const bound = m.rows.find(r => r.instanceKey === 'K1');
+    const sibling = m.rows.find(r => r.instanceKey === 'K3');
+    assert.ok(bound && sibling, 'both twin rows must exist');
+    assert.equal(m.isViewing(bound), true);
+    assert.equal(m.isBoundRow(bound), true);
+    assert.equal(m.isViewing(sibling), false);
+    assert.equal(m.isBoundRow(sibling), false); // sibling ACTIVATES its own view
+  });
+
+  it('same-basename twins: viewing the sibling; bound row stays detach-target; heal watches the twin instance', () => {
+    const twin = { kind: 'main', project: 'projA', cwd: '/c/projA', pid: 33, active: false, instanceKey: 'K3' };
+    const procs = [...PROC, twin];
+    const viewing = { ...base, processes: procs, viewedProject: 'projA', viewedInstance: 'K3' };
+    const m = buildWorkspaceListModel(viewing);
+    assert.equal(m.isViewing(m.rows.find(r => r.instanceKey === 'K3')), true);
+    assert.equal(m.isBoundRow(m.rows.find(r => r.instanceKey === 'K1')), true);
+    assert.equal(m.healNeeded, false);
+    // The viewed twin dies → heal fires even though the bound project shares the name.
+    const dead = buildWorkspaceListModel({ ...viewing, processes: PROC });
+    assert.equal(dead.healNeeded, true);
+  });
+
+  it('dead viewed parallel project → healNeeded; resumeSwitch suppresses the heal', () => {
+    const viewing = { ...base, viewedProject: 'projB', viewedInstance: 'K2' };
+    assert.equal(buildWorkspaceListModel(viewing).healNeeded, false);
+    assert.equal(buildWorkspaceListModel({ ...viewing, processes: [PROC[0]] }).healNeeded, true);
+    assert.equal(buildWorkspaceListModel({ ...viewing, processes: [PROC[0]], resumeSwitch: true }).healNeeded, false);
+  });
+
+  it('legacy rows without instanceKey fall back to name matching', () => {
+    const legacy = [{ kind: 'main', project: 'projA', cwd: '/a/projA', pid: 11, active: true }];
+    const m = buildWorkspaceListModel({ ...base, processes: legacy, currentInstanceKey: null });
+    const row = m.rows.find(r => r.project === 'projA');
+    assert.ok(row, 'the legacy bound row must exist');
+    assert.equal(m.isViewing(row), true);
+    assert.equal(m.isBoundRow(row), true);
+  });
+
+  it('empty currentProject yields no synthetic row and no viewing match', () => {
+    const m = buildWorkspaceListModel({ ...base, currentProject: '', processes: [] });
+    assert.equal(m.rows.length, 0);
+    assert.equal(m.healNeeded, false);
+  });
+
+  it('viewed project without an instance pin is satisfied by any live same-name row', () => {
+    const viewing = { ...base, viewedProject: 'projB', viewedInstance: null };
+    assert.equal(buildWorkspaceListModel(viewing).healNeeded, false);
+    assert.equal(buildWorkspaceListModel({ ...viewing, processes: [PROC[0]] }).healNeeded, true);
+  });
+});
+
+describe('buildWorkspaceListModel — recovery paths', () => {
+  const PROC = [
+    { kind: 'main', project: 'projA', cwd: '/a/projA', pid: 11, active: true, instanceKey: 'K1' },
+    { kind: 'main', project: 'projB', cwd: '/b/projB', pid: 22, active: false, instanceKey: 'K2' },
+  ];
+  const base = { processes: PROC, currentProject: 'projA', currentInstanceKey: 'K1', viewedProject: null, viewedInstance: null, resumeSwitch: false };
+
+  it('bound PTY dead + parallel view active: synthetic bound row is the clickable way back', () => {
+    const m = buildWorkspaceListModel({ ...base, processes: [PROC[1]], viewedProject: 'projB', viewedInstance: 'K2' });
+    const synth = m.rows[0];
+    assert.equal(synth.key, 'bound:projA');
+    assert.equal(m.isBoundRow(synth), true);   // click → detach → back to the bound view
+    assert.equal(m.isViewing(synth), false);   // …and it must stay clickable
+    assert.equal(m.isViewing(m.rows.find(r => r.project === 'projB')), true);
+  });
+
+  it('viewing a same-basename sibling: instance-precise viewing mark, name-based bound routing (PC parity)', () => {
+    const twin = { kind: 'main', project: 'projA', cwd: '/c/projA', pid: 33, active: false, instanceKey: 'K3' };
+    const m = buildWorkspaceListModel({ ...base, processes: [...PROC, twin], viewedProject: 'projA', viewedInstance: 'K3' });
+    const bound = m.rows.find(r => r.instanceKey === 'K1');
+    const sibling = m.rows.find(r => r.instanceKey === 'K3');
+    assert.ok(bound && sibling, 'both twin rows must exist');
+    // Viewing mark is instance-precise: only the viewed sibling lights up.
+    assert.equal(m.isViewing(sibling), true);
+    assert.equal(m.isViewing(bound), false);
+    // Bound routing drops the instance tiebreak while a parallel view is attached
+    // (boundViewInstance = null — the documented AppHeader.jsx:260/319-321 rule), so
+    // BOTH same-name rows classify as bound/detach targets. The bound twin is the
+    // clickable way back; the sibling's own row is disabled as the viewing row.
+    assert.equal(m.isBoundRow(bound), true);
+    assert.equal(m.isBoundRow(sibling), true);
+  });
+
+  it('unpinned view of a live same-name project: live, but no row is marked viewing (desktop parity)', () => {
+    const m = buildWorkspaceListModel({ ...base, viewedProject: 'projB', viewedInstance: null });
+    assert.equal(m.healNeeded, false);                       // any live same-name row satisfies the view
+    assert.equal(m.isViewing(m.rows.find(r => r.project === 'projB')), false); // no instance pin → no single viewing row
   });
 });

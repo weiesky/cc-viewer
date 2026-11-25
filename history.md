@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **移动端「新建工作区」升级为「工作区管理」** — 汉堡菜单原「新建工作区」入口改为「工作区管理」二级弹窗：上半列出活动中的工作区（轮询 `/api/live-processes`）可直接切换视图，绑定项目永远置顶、无 live 进程时合成兜底行保证随时可切回；下半「新建工作区」复用原选择器。切换后移动端 header 项目名跟随当前查看的工作区，血条在切换瞬间清零、不再回填上一个项目的残留百分比。Coverage: `workspace-manager-modal.test.js`, `resume-sessions-map.test.js`, `new-ui-i18n.test.js`。
+
 - feat(web): **折叠工具胶囊内联展示调用摘要** — pill 模式下工具胶囊从「调用工具: Bash」变为「Bash: Run sudo true to refresh sudo credentials」，摘要由新增的按工具注册表 `apps/web/src/utils/toolSummary.js` 从 input 提取（Bash 取 description/命令首行、Read 取路径末 3 段、TaskUpdate 取 subject 等，新工具只需加一条注册项）；摘要文本比工具名再浅一档（新变量 `--text-summary-faint`），「调用工具:」前缀及 `ui.toolsUsed` 键删除；胶囊改为每行一个纵向排列，420px 省略号截断。Coverage: `tool-summary.test.js`, `minimal-chat-wiring.test.js`。
 
 - feat(web): **合并连续输出的「思考过程」标注各 turn 时间** — minimal chat 合并气泡里每个 turn 的思考折叠条标题后追加该 turn 的调用时刻（复用 formatTime，与工具胶囊 Popover 的调用时刻同源），便于区分连续执行的不同 turn；非合并气泡不显示。Coverage: `minimal-chat-wiring.test.js`。

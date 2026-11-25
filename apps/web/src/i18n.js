@@ -12012,6 +12012,38 @@ const i18nData = {
     "ar": "النص الأصلي", "no": "Rå", "pt-BR": "Bruto",
     "th": "ต้นฉบับ", "tr": "Ham", "uk": "Вихідний"
   },
+  "ui.workspaceManager.title": {
+    "zh": "工作区管理", "en": "Workspace manager", "zh-TW": "工作區管理",
+    "ko": "워크스페이스 관리", "ja": "ワークスペース管理", "de": "Arbeitsbereichsverwaltung",
+    "es": "Gestión de espacios de trabajo", "fr": "Gestion des espaces de travail", "it": "Gestione aree di lavoro",
+    "da": "Arbejdsområdeadministration", "pl": "Zarządzanie obszarami roboczymi", "ru": "Управление рабочими пространствами",
+    "ar": "إدارة مساحات العمل", "no": "Arbeidsområdeadministrasjon", "pt-BR": "Gerenciar áreas de trabalho",
+    "th": "จัดการเวิร์กสเปซ", "tr": "Çalışma alanı yönetimi", "uk": "Керування робочими просторами"
+  },
+  "ui.workspaceManager.switchTitle": {
+    "zh": "切换工作区", "en": "Switch workspace", "zh-TW": "切換工作區",
+    "ko": "워크스페이스 전환", "ja": "ワークスペースの切り替え", "de": "Arbeitsbereich wechseln",
+    "es": "Cambiar de espacio de trabajo", "fr": "Changer d'espace de travail", "it": "Cambia area di lavoro",
+    "da": "Skift arbejdsområde", "pl": "Przełącz obszar roboczy", "ru": "Переключить рабочее пространство",
+    "ar": "تبديل مساحة العمل", "no": "Bytt arbeidsområde", "pt-BR": "Trocar de área de trabalho",
+    "th": "สลับเวิร์กสเปซ", "tr": "Çalışma alanı değiştir", "uk": "Перемкнути робочий простір"
+  },
+  "ui.workspaceManager.currentTag": {
+    "zh": "当前", "en": "Current", "zh-TW": "目前",
+    "ko": "현재", "ja": "現在", "de": "Aktuell",
+    "es": "Actual", "fr": "Actuel", "it": "Corrente",
+    "da": "Aktuel", "pl": "Bieżący", "ru": "Текущий",
+    "ar": "الحالي", "no": "Gjeldende", "pt-BR": "Atual",
+    "th": "ปัจจุบัน", "tr": "Mevcut", "uk": "Поточний"
+  },
+  "ui.workspaceManager.emptyLive": {
+    "zh": "暂无活动中的工作区", "en": "No live workspaces", "zh-TW": "目前沒有活動中的工作區",
+    "ko": "활성 워크스페이스가 없습니다", "ja": "アクティブなワークスペースはありません", "de": "Keine aktiven Arbeitsbereiche",
+    "es": "No hay espacios de trabajo activos", "fr": "Aucun espace de travail actif", "it": "Nessuna area di lavoro attiva",
+    "da": "Ingen aktive arbejdsområder", "pl": "Brak aktywnych obszarów roboczych", "ru": "Нет активных рабочих пространств",
+    "ar": "لا توجد مساحات عمل نشطة", "no": "Ingen aktive arbeidsområder", "pt-BR": "Nenhuma área de trabalho ativa",
+    "th": "ไม่มีเวิร์กสเปซที่ใช้งานอยู่", "tr": "Aktif çalışma alanı yok", "uk": "Немає активних робочих просторів"
+  },
   "ui.workspaces.title": {
     "zh": "工作区", "en": "Workspaces", "zh-TW": "工作區",
     "ko": "워크스페이스", "ja": "ワークスペース", "de": "Arbeitsbereiche",
