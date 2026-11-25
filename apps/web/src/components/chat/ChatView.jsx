@@ -292,6 +292,9 @@ class ChatView extends React.Component {
       highlightVisibleIdx: -1,
       // SDK-mode session surface (broadcast via terminal WS — sdk-init / sdk-compact)
       sdkCompactNotices: [],
+      // ts keys of compact notices the user dismissed (or that auto-hid when a new turn
+      // started). A notice stays dismissed even though the underlying array is kept.
+      dismissedSdkCompactTs: [],
       // SDK turn/query failures pinned in the dialogue tail (sdk-error WS frame) —
       // merged by message with a recurrence count; cleared on the next explicit send.
       sdkErrors: [],
@@ -846,6 +849,18 @@ class ChatView extends React.Component {
     if (!prevProps.sdkMode && this.props.sdkMode) {
       restoreSdkTaskTrackerFromStorage(this._lastSdkSessionStateSid);
     }
+    // Auto-hide the compact notice when a new turn starts (turnActive rising edge): mark the
+    // currently-visible notices as dismissed so the banner clears itself once the new reply
+    // begins, without needing a manual close. A compaction during/after this turn gets a fresh
+    // ts and re-surfaces.
+    if (!prevProps.turnActive && this.props.turnActive) {
+      const notices = this.state.sdkCompactNotices || [];
+      const dismissed = this.state.dismissedSdkCompactTs || [];
+      const pending = notices.filter(n => !dismissed.includes(n.ts));
+      if (pending.length > 0) {
+        this.setState({ dismissedSdkCompactTs: [...dismissed, ...pending.map(n => n.ts)] });
+      }
+    }
     // Sharding (2026-11): a "load earlier history" prepend landed — expand the
     // render window by the number of items it added and anchor the viewport, or
     // the older history lands above the visible tail and the click looks like a
@@ -896,7 +911,7 @@ class ChatView extends React.Component {
       this._fileScrollSnapshot = null;
       // Clear SDK session surface on workspace switch to prevent stale data.
       if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
-      this.setState({ sdkCompactNotices: [], sdkErrors: [], sdkRetry: null });
+      this.setState({ sdkCompactNotices: [], dismissedSdkCompactTs: [], sdkErrors: [], sdkRetry: null });
       // `'' → 真实名` 是延迟初始化（/api/project-name 异步到达），不是真切换：跳过 reset，
       // 否则刷新后刚回放落地的 sdk-skills 会被立即清空、menu 永久退到 fs 回退。
       if (prevProps.projectName) this._resetSlashMenuSurface();
@@ -4202,6 +4217,14 @@ class ChatView extends React.Component {
   // Persistent sdk-error rows pinned at the dialogue tail (all three messageList
   // branches render them). One live region for the stack; rows are plain divs.
   // P2-5 a11y: a visually-hidden live region carries a one-line announcement of the
+  // Dismiss a compact notice by ts (manual × close). The notice stays in the array but is
+  // filtered out at render; a later compaction gets a fresh ts and re-surfaces.
+  _dismissSdkCompactNotice = (ts) => {
+    this.setState(prev => ({
+      dismissedSdkCompactTs: [...(prev.dismissedSdkCompactTs || []), ts],
+    }));
+  };
+
   // LATEST error (always mounted, so the first error is reliably announced; the visible
   // stack itself is not a live region, so recurrences never re-read 3 stack traces).
   _renderSdkErrorAnnouncer = () => {
@@ -5869,13 +5892,21 @@ class ChatView extends React.Component {
             <WorkflowLiveHud />
             {this._renderSdkErrorAnnouncer()}
             {this.props.sdkMode && this.state.sdkCompactNotices.length > 0 && (() => {
-              const n = this.state.sdkCompactNotices[this.state.sdkCompactNotices.length - 1];
+              const dismissed = this.state.dismissedSdkCompactTs || [];
+              const visible = this.state.sdkCompactNotices.filter(n => !dismissed.includes(n.ts));
+              if (visible.length === 0) return null;
+              const n = visible[visible.length - 1];
               const tokens = (n.preTokens != null && n.postTokens != null)
                 ? ` (${Math.round(n.preTokens / 1000)}k → ${Math.round(n.postTokens / 1000)}k)`
                 : '';
               return (
-                <div className={styles.sdkNoticeBanner} key={`sdkc-${n.ts}`}>
-                  {t('ui.sdkCompacted')}{tokens}
+                <div className={styles.sdkNoticeBanner} key={`sdkc-${n.ts}`} role="status">
+                  <span>{t('ui.sdkCompacted')}{tokens}</span>
+                  <button
+                    type="button"
+                    className={styles.sdkNoticeBannerClose}
+                    onClick={() => this._dismissSdkCompactNotice(n.ts)}
+                  >×</button>
                 </div>
               );
             })()}

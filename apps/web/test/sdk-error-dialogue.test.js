@@ -76,8 +76,8 @@ describe('sdk-error dialogue rows — state + WS branch', () => {
 describe('sdk-error dialogue rows — view/session switch clearing', () => {
   it('workspace switch clears sdkErrors together with sdkCompactNotices', () => {
     assert.ok(
-      jsx.includes('sdkCompactNotices: [], sdkErrors: [], sdkRetry: null'),
-      'projectName switch block clears both SDK surfaces and the retry state',
+      jsx.includes('sdkCompactNotices: [], dismissedSdkCompactTs: [], sdkErrors: [], sdkRetry: null'),
+      'projectName switch block clears both SDK surfaces (and the dismissed set) plus retry state',
     );
   });
 

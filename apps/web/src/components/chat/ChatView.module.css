@@ -666,13 +666,42 @@
 /* SDK-mode notice banner (compact boundary / slash-command hint) — same visual
    language as partialDataBanner, anchored above the composer. */
 .sdkNoticeBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   color: var(--text-muted);
   background: var(--bg-surface);
   border: 1px solid var(--border-secondary);
   border-radius: 6px;
   padding: 4px 12px;
-  margin: 2px 16px 6px;
+  /* Match TaskProgressHud / chatInputBar width: same 1000px-cap centered strip,
+     with a 16px-per-side floor gutter (max(16px, (100% - 1000px)/2) equivalent). */
+  width: calc(100% - 32px);
+  max-width: min(1000px, calc(100% - 32px));
+  margin: 2px auto 6px;
+  box-sizing: border-box;
+}
+.sdkNoticeBannerClose {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sdkNoticeBannerClose:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
 /* SDK turn/query failure pinned in the dialogue tail (sdk-error WS frame) — a

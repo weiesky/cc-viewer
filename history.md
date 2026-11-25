@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **「上下文已压缩」提示条可关闭并自动消失** — 新增右侧 × 关闭按钮，并在新一轮对话（turn）开始时自动隐藏（本次压缩若发生在进行中 turn 内则保留显示）；宽度从全宽改为与任务列表一致的 800px 居中对齐。Coverage: `sdk-error-dialogue.test.js`, `new-ui-i18n.test.js`。
+
 - fix(server): **工作区 active/角色变更实时对齐已 seed 的会话代理绑定** — 绑定新增 `origin`（seed/用户）与所属 workspace 标记，`_loadProxyProfile` 成功后只把当前 workspace 的 seed 来源绑定重算为最新 active/角色；用户显式 session 选择永不被覆盖，`'max'` 不回落语义不变。Coverage: `proxy-session-registry.test.js`, `proxy-session-seed-reseed.test.js`, `sdk-session-proxy-binding.test.js`, `api-proxy-profiles-scope.test.js`。
 
 - feat(web): **移动端「新建工作区」升级为「工作区管理」** — 汉堡菜单原「新建工作区」入口改为「工作区管理」二级弹窗：上半列出活动中的工作区（轮询 `/api/live-processes`）可直接切换视图，绑定项目永远置顶、无 live 进程时合成兜底行保证随时可切回；下半「新建工作区」复用原选择器。切换后移动端 header 项目名跟随当前查看的工作区，血条在切换瞬间清零、不再回填上一个项目的残留百分比。Coverage: `workspace-manager-modal.test.js`, `resume-sessions-map.test.js`, `new-ui-i18n.test.js`。
