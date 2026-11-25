@@ -1,0 +1,110 @@
+docs/README.de.md
+  s_82fb4bac6b246b::t_10978192b7f660 183
+docs/README.no.md
+  s_82fb4bac6b246b::t_5b4ef8a7a70b3f 183
+packages/app/server/lib/model-system-prompts.js
+  s_82fb4bac6b246b::t_3288617c346096 380-383
+  s_82fb4bac6b246b::t_557eeda45ea1b6 288-352,357,361-367,387-392,425-430,438-439,443-444,462,464,466-471,479,482-483,485-491
+  s_82fb4bac6b246b::t_c6f49ee23f0024 236-237,240,248-249
+  s_82fb4bac6b246b::t_161826857fd9cb 394,396,398,400
+  s_82fb4bac6b246b::t_e983ceb3e7e7a7 401
+  s_82fb4bac6b246b::t_94a3d8474cccb9 393,395,397,409,422-424
+  s_82fb4bac6b246b::t_7a58bce9b4f74d 8-10,16-19
+  s_82fb4bac6b246b::t_0ffad4fae92ed1 403-405,407
+  s_82fb4bac6b246b::t_f8182fd2476621 353-356,358-360,368-379,384-386,399,421
+  s_82fb4bac6b246b::t_c6938907b969c6 402,406,408
+  s_82fb4bac6b246b::t_a300a8e04c7753 410-420
+  s_82fb4bac6b246b::t_b445f53c1ee4c0 431-432,435,440-442
+  s_82fb4bac6b246b::t_4d05d941ea88b2 433-434,436-437,445-461,463,465
+  s_82fb4bac6b246b::t_b967c716def7c5 484
+docs/README.zh.md
+  s_82fb4bac6b246b::t_9681612a3ad7ec 211
+docs/README.es.md
+  s_82fb4bac6b246b::t_2f0c0091c151f0 183
+docs/README.zh-TW.md
+  s_82fb4bac6b246b::t_83f1e382c47312 183
+apps/web/src/i18n.js
+  s_82fb4bac6b246b::t_6862c8a9432582 725-726
+  s_82fb4bac6b246b::t_32f4b8ce6344a4 735
+  s_82fb4bac6b246b::t_962e2f23b33aa5 728
+  s_82fb4bac6b246b::t_3e1aefe11fe4d7 732
+  s_82fb4bac6b246b::t_9b44c82d0e89eb 733
+  s_82fb4bac6b246b::t_c962a04ce6905c 727
+  s_82fb4bac6b246b::t_d390483c3197b8 729
+  s_82fb4bac6b246b::t_655cd3a2c2b9f6 736
+  s_82fb4bac6b246b::t_9db6557b2c1dee 737
+  s_82fb4bac6b246b::t_15a2a37230811d 738
+  s_82fb4bac6b246b::t_bcd6332f2bd351 734
+  s_82fb4bac6b246b::t_d291f714114629 739
+  s_82fb4bac6b246b::t_db4deb188f3f4b 730
+  s_82fb4bac6b246b::t_85017c99c3a08f 740
+  s_82fb4bac6b246b::t_052f10543c73bc 741
+  s_82fb4bac6b246b::t_4f6253be75254b 742
+  s_82fb4bac6b246b::t_fb802deaed70fc 731
+docs/README.ru.md
+  s_82fb4bac6b246b::t_6e877e5cbe86f2 183
+README.md
+  s_82fb4bac6b246b::t_77efd4198b1794 225
+docs/README.it.md
+  s_82fb4bac6b246b::t_e1ae67c796f14b 183
+.changeset/model-id-segment-match.md
+  s_82fb4bac6b246b::t_ef2c45cb8b17b2 5
+  s_82fb4bac6b246b::t_38041e4b34aff0 1-4
+docs/README.pl.md
+  s_82fb4bac6b246b::t_b04178c46d6888 183
+packages/app/server/lib/builtin-model-prompts.js
+  s_82fb4bac6b246b::t_3d402e88a27580 76,88
+  s_82fb4bac6b246b::t_30ba823e42dd9a 66-68
+  s_82fb4bac6b246b::t_ca9a0956ef749d 77-80,89-93,95
+  s_82fb4bac6b246b::t_249f49678db35e 18
+packages/app/test/builtin-model-prompts.test.js
+  s_82fb4bac6b246b::t_21e0795eb732aa 120,172,176,178
+  s_82fb4bac6b246b::t_561dfec06f3934 145-147
+  s_82fb4bac6b246b::t_75e9b18123be8f 121-144,148-149
+  s_82fb4bac6b246b::t_ee939c6404f5ef 21
+  s_82fb4bac6b246b::t_eac81fc667348d 96-119
+  s_82fb4bac6b246b::t_147afe1a424426 150-171,173-175,177
+docs/README.uk.md
+  s_82fb4bac6b246b::t_bc4c33f2b79e9c 183
+docs/README.pt-BR.md
+  s_82fb4bac6b246b::t_a1c140cbaea2c7 183
+history.md
+  s_82fb4bac6b246b::t_42d646a44c9349 5
+  s_82fb4bac6b246b::t_f1300332bf257f 6
+docs/README.da.md
+  s_82fb4bac6b246b::t_ab7991fa02a6ab 183
+docs/README.ja.md
+  s_82fb4bac6b246b::t_69b9354083b691 181
+docs/README.th.md
+  s_82fb4bac6b246b::t_aa6b6102c39bf0 183
+docs/README.fr.md
+  s_82fb4bac6b246b::t_b448ea1a0e299b 183
+docs/README.ko.md
+  s_82fb4bac6b246b::t_c194f1e66e199a 181
+docs/README.ar.md
+  s_82fb4bac6b246b::t_df30163a0db776 183
+docs/README.tr.md
+  s_82fb4bac6b246b::t_bf7dcc6932dd1a 183
+packages/app/test/model-system-prompts.test.js
+  s_82fb4bac6b246b::t_c610b9b4f6cab6 16-18
+  s_82fb4bac6b246b::t_ebfe73875fb25b 234-282,284-303
+  s_82fb4bac6b246b::t_c7ff67907e7914 304-314,318-325
+  s_82fb4bac6b246b::t_fc6c9bc5ecdbc0 315-317
+  s_82fb4bac6b246b::t_8fe975767c74e6 283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "df55d40ce412aac11e4826f2a035e08c427e8667",
+  "prompts": {},
+  "sessions": {
+    "s_82fb4bac6b246b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "12f1f4c6-58c5-46cc-8f89-a263537b631e",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
