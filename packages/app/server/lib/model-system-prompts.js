@@ -5,16 +5,18 @@ import { isNonEmptyFile } from './file-api.js';
 // 「按模型定制 system prompt」的文件夹与文件名语法。
 // 全局目录 <LOG_DIR>/system_prompt/ 与工作区目录 <workspace>/system_prompt/ 各放一套；
 // 启动时用「当前生效配置解析出的模型 id」(spawn-model-resolver.js：激活的三方 proxy profile
-// 模型映射 > env > settings.json；无配置信号则不注入)做不区分大小写的子串匹配(条目名
-// "OPUS" 命中 "claude-opus-4-8[1m]")，命中的文件整体取代工作区默认的 CC_SYSTEM.md /
-// CC_APPEND_SYSTEM.md。
+// 模型映射 > env > settings.json；无配置信号则不注入)做分层段匹配——ident 链锁定家族
+// (条目名 "OPUS" 命中 "claude-opus-4-8[1m]"，容忍厂商前缀)，版本号只排序消歧不否决；
+// 段匹配全 miss 时回退旧子串。命中的文件整体取代工作区默认的 CC_SYSTEM.md / CC_APPEND_SYSTEM.md。
 //
 // Model-specific system prompt files. Two scopes share the same folder name
 // (MODEL_PROMPT_DIR): global <LOG_DIR>/system_prompt/ and per-workspace
 // <workspace>/system_prompt/. At spawn the model id resolved from the ACTIVE
 // configuration (spawn-model-resolver.js — never from past usage records) is
-// matched case-insensitively as a substring against entry names; a match fully
-// replaces the workspace Default sentinels for that launch.
+// matched by layered segment matching: the ident chain pins the family (tolerating
+// any vendor prefix), the version only ranks candidates and never vetoes, and a
+// legacy substring predicate is the fallback. A match fully replaces the workspace
+// Default sentinels for that launch.
 //
 // Known limitations (by design):
 // - An entry named "haiku" only matches when haiku is explicitly configured as
@@ -231,10 +233,11 @@ export function deleteModelPrompt(dir, name) {
 
 /**
  * 在候选目录序列中为 modelId 匹配模型条目。
- * 匹配 = 双方都转小写后做子串包含("OPUS" 命中 "claude-opus-4-8[1m]")。
+ * 匹配 = 分层段匹配：ident 链锁定家族（"OPUS" 命中 "claude-opus-4-8[1m]"，容忍厂商前缀），
+ * 版本号只排序消歧不否决；段匹配全 miss 时回退旧子串（保住非规范命名）。
  * candidates 按「工作区在前」传入：工作区一旦有命中即短路，全局哪怕名字更长也不再看
  * (用户决策：工作区覆盖全局；名字长度只在同一 scope 内当消歧规则)。
- * 同 scope 多条命中：名字最长者胜("OPUS-4" 压过 "OPUS")，等长按字典序，确定性兜底。
+ * 同 scope 多条命中：先按版本贴近度(_score)，再段数、名字长、精确、字典序。
  * Match modelId against candidate dirs (workspace-first short-circuit).
  *
  * @param {string|null} modelId e.g. 'claude-opus-4-8[1m]'
@@ -242,8 +245,8 @@ export function deleteModelPrompt(dir, name) {
  * @returns {{ path: string, fileName: string, name: string, mode: 'override'|'append', scope: 'workspace'|'global' } | null}
  */
 // 模型 id 别名表：第三方代理常把模型名归一化成不带厂商前缀的简写（kimi profile 把
-// `k3[1m]` 剥后缀后得到裸 `k3`），而条目名通常带前缀（KIMI / KIMI-K3）。别名在子串
-// 匹配前把解析名展开成「所有等价拼写」，任一变体命中即算命中。key 与变体都是小写
+// `k3[1m]` 剥后缀后得到裸 `k3`），而条目名通常带前缀（KIMI / KIMI-K3）。别名在段匹配
+// 前把解析名展开成「所有等价拼写」，任一变体命中即算命中。key 与变体都是小写
 // 完整词（精确等值，非子串），只在解析名**恰好等于** key 时展开，避免误放大。
 // Model id aliases: third-party proxies often normalize model names to a bare
 // shorthand (the kimi profile strips `k3[1m]` → `k3`), while entry names carry the
@@ -282,6 +285,190 @@ export function expandModelIdVariants(modelId) {
   return modelIdVariants(stripped);
 }
 
+// ── 分层段匹配 ─────────────────────────────────────────────────────────────
+// 模型 id 是「分段结构化标识」，不是不透明字符串：厂商前缀 + 家族名 + 版本 + 后缀。
+// 纯子串在版本跳变（V4 → V4.1）或带厂商前缀（vendor/…）时断裂落空。这里把 id 切成
+// token → segment（ident + 版本元组）再比较：ident 链锁定家族（必须命中），版本只用于
+// 排序消歧、不否决命中——版本对不上时仍落回同家族条目，不掉兜底。
+// 单一实现，勿在别处复制（builtin-model-prompts.js 经 export 复用）。
+//
+// Layered segment matching: a model id is structured (vendor prefix + family +
+// version + suffix), not an opaque string. Tokenize → segment (ident + version
+// tuple) → compare. The ident chain pins the family (must match); the version
+// only ranks candidates, never vetoes a family hit, so an unknown version still
+// lands on its family entry instead of the fallback.
+
+const NUM_TOKEN_RE = /^[0-9]+$/;
+
+/**
+ * 把模型 id 切成小写 token 序列：版本字面量（含内部 `.` 分量）拆成独立数字，
+ * 字母串原样保留，其余一切字符（/ - : _ 等）都当分隔符、不产生 token。
+ * 白名单词法：`.` 的职责是版本分量分隔而非字段分隔；未来下划线命名自动正确。
+ * Tokenize a model id: version literals split into numeric components, letter
+ * runs kept, every other char is a separator.
+ *
+ * @param {string} id
+ * @returns {string[]} e.g. 'vendor/DeepSeek-V4.1-Flash-1017' → ['vendor','deepseek','v','4','1','flash','1017']
+ */
+export function modelIdTokens(id) {
+  if (!id || typeof id !== 'string') return [];
+  const s = id.replace(/\s*\[[^\]]*\]$/, '').toLowerCase(); // 剥 [1m] 类后缀，沿用 expandModelIdVariants 语义
+  const out = [];
+  const re = /\d+(?:\.\d+)*|[a-z]+/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const t = m[0];
+    if (NUM_TOKEN_RE.test(t[0])) {
+      for (const n of t.split('.')) out.push(n); // 版本 → 独立数字分量
+    } else {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/**
+ * 把 token 序列切段：每个字母串（ident）与其后连续数字合并为一个 segment
+ * { ident, nums[] }；前导纯数字自成一段（ident: null）。
+ * Group tokens into segments: an ident plus its trailing numeric run.
+ *
+ * @param {string[]} tokens
+ * @returns {Array<{ ident: string|null, nums: string[] }>}
+ */
+export function modelIdSegments(tokens) {
+  const out = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (NUM_TOKEN_RE.test(tokens[i])) {
+      out.push({ ident: null, nums: [tokens[i]] });
+      continue;
+    }
+    const seg = { ident: tokens[i], nums: [] };
+    while (i + 1 < tokens.length && NUM_TOKEN_RE.test(tokens[i + 1])) seg.nums.push(tokens[++i]);
+    out.push(seg);
+  }
+  return out;
+}
+
+/**
+ * 段比较：entry 首段（必须带 ident）在 id 段序列中起锚（容忍任意厂商前缀），逐段要求
+ * ident 严格相等。版本不否决命中，只累计匹配得分。厂商前缀可能与家族同名
+ * （deepseek/deepseek-v4-flash），首段 ident 在 id 里出现多次时逐处起锚、取最优，
+ * 避免锚在厂商段上静默 miss。
+ * 返回 { matched, score, exact } 或 null；exact = 版本与尾段都完全一致。
+ * Compare segment lists: anchor on every occurrence of the entry's first ident
+ * (a vendor prefix may repeat the family name), keep the best; ident equality is
+ * required per segment; the version only scores, never vetoes.
+ *
+ * @param {Array<{ ident: string|null, nums: string[] }>} entrySegs
+ * @param {Array<{ ident: string|null, nums: string[] }>} idSegs
+ * @returns {{ matched: true, score: number, exact: boolean } | null}
+ */
+export function matchSegments(entrySegs, idSegs) {
+  if (!entrySegs.length || entrySegs[0].ident === null) return null;
+  let best = null;
+  for (let start = 0; start < idSegs.length; start++) {
+    if (idSegs[start].ident !== entrySegs[0].ident) continue;
+    const r = matchSegmentsAt(entrySegs, idSegs, start);
+    if (r && (!best || r.score > best.score || (r.score === best.score && r.exact))) best = r;
+  }
+  return best;
+}
+
+// 在指定起锚位置比较一次；ident 链断裂返回 null。版本计分（排序只认 score 主键，数值刻意拉开）：
+//   精确（entry 分量与 id 前缀逐位相等且等长）                          → 4
+//   前缀（逐位相等但 id 版本更长，如 v{4} ⊑ v{4,1}）                      → 3
+//   同 major、minor 分叉（glm-5.3 vs glm-5.4）                           → 2/(1+|Δminor|)
+//     —— 同一条版本线，更接近的成员胜出：GLM-5.4 落 GLM-5.3 而非 GLM-5.2
+//   跨 major（glm-5.3 vs glm-6）                                         → 1 + major×1e-3
+//     —— 不否决，贴向最高 major 的同族条目：GLM-6 落 GLM-5.3 而非 GLM-5.2
+//   完全对不上（ident 对齐但无任何版本可比）                              → 0（仍命中，不否决）
+// 版本永不否决：ident 链已锁家族，分数再低也命中、由排序落到最贴近的同家族条目而非兜底。
+function matchSegmentsAt(entrySegs, idSegs, start) {
+  let score = 0;
+  let exact = true;
+  for (let k = 0; k < entrySegs.length; k++) {
+    const e = entrySegs[k];
+    const s = idSegs[start + k];
+    if (!s || e.ident !== s.ident) return null;
+    if (e.nums.length > 0) {
+      let allEq = true;
+      for (let n = 0; n < e.nums.length; n++) {
+        if (e.nums[n] !== s.nums[n]) { allEq = false; break; }
+      }
+      if (allEq && e.nums.length === s.nums.length) {
+        score += 4; // 逐位等长精确（allEq ⇒ major 必等，无跨 major 分支）
+      } else if (allEq) {
+        score += 3; exact = false; // 前缀（id 版本更长）
+      } else if (e.nums[0] === s.nums[0]) {
+        // 同 major、minor 分叉（相邻版本线）：按 minor 贴近度给分，越接近越高，量纲 (1,2]——
+        // 恒大于任何「跨 major」分值 (0,1)，保证 major 匹配永远压过跨 major。分量缺省按 0 计。
+        // GLM-5.4 落 GLM-5.3(1.5) 而非更旧的 GLM-5.2(≈1.33)。
+        const gap = Math.abs(Number(e.nums[1] ?? 0) - Number(s.nums[1] ?? 0));
+        score += 1 + 1 / (1 + gap);
+        exact = false;
+      } else {
+        // 跨 major（不否决）：贴向「版本最高的同族条目」——模型 id 越新，越应落到同主线
+        // 里最高的既有条目（GLM-6 → GLM-5.3 而非 GLM-5.2）；id 版本低于所有条目时同样取
+        // 最高（族内兜底，避免老 id 拿到最旧 prompt）。分数随 entry 版本单调递增，量纲
+        // (0,1)：恒小于任何「同 major」分值 (1,2]，故同 major 条目永远压过跨 major 条目。
+        let entryVal = 0;
+        let weight = 1;
+        for (let n = 0; n < e.nums.length; n++) {
+          entryVal += Number(e.nums[n] ?? 0) * weight;
+          weight /= 10;
+        }
+        score += entryVal / (entryVal + 1);
+        exact = false;
+      }
+    } else if (s.nums.length > 0) {
+      exact = false; // entry 无版本而 id 有 → 不算精确
+    }
+  }
+  if (start + entrySegs.length < idSegs.length) exact = false; // entry 后还有段
+  return { matched: true, score, exact };
+}
+
+// 段匹配消歧排序：版本贴近度(score) > 段数多 > 名字长 > 精确(exact) > 字典序。
+// score 已编码「同主线 > 跨主线精确」的权重（见 matchSegments 注释），故 score 是主键，
+// exact 退为最终 tiebreak（同分时精确版更具体）。两层共用（内置层条目 name=match 大写、
+// 长度与 matchLower 恒等，故直接读 name）。
+// Segment-match disambiguation: version proximity (score) > segment count > exact.
+// Shared by both layers; entries must carry _score/_exact/_segCount plus a name field.
+export function segmentHitRank(a, b) {
+  if (a._score !== b._score) return b._score - a._score;
+  if (a._segCount !== b._segCount) return b._segCount - a._segCount;
+  if (a.name.length !== b.name.length) return b.name.length - a.name.length;
+  if (a._exact !== b._exact) return a._exact ? -1 : 1;
+  return a.name.localeCompare(b.name);
+}
+
+// 在候选条目里为每个 variant 取最优段匹配（best-of-variants），返回带排序字段的命中数组。
+// 两层共用，消除「逐条目 × 逐变体取 best」的重复实现。
+// Collect the best segment hit per entry across every id variant. Shared by both layers.
+export function collectSegmentHits(entries, idSegsList, getEntrySegs) {
+  const hits = [];
+  for (const e of entries) {
+    const entrySegs = getEntrySegs(e);
+    let best = null;
+    for (const idSegs of idSegsList) {
+      const r = matchSegments(entrySegs, idSegs);
+      if (r && (!best || r.score > best.score || (r.score === best.score && r.exact))) best = r;
+    }
+    if (best) hits.push({ ...e, _exact: best.exact, _score: best.score, _segCount: entrySegs.length });
+  }
+  return hits;
+}
+
+// 旧子串命中谓词：段匹配全 miss 时的兜底，保住官方用户非规范命名（OPU、4-8 等）。
+// 两层共用——内置层同样回退（vendor 前缀可能与家族同名导致段匹配锚错起点时，子串仍能救回）。
+// Legacy substring predicate, kept as the fallback so non-canonical names still hit.
+export function substringHits(variants, entries) {
+  return entries.filter((e) => {
+    const key = (e.matchLower || e.name.toLowerCase());
+    return variants.some((v) => v.includes(key));
+  });
+}
+
 export function matchModelPrompt(modelId, candidates) {
   if (!modelId || typeof modelId !== 'string') return null;
   if (!Array.isArray(candidates)) return null;
@@ -289,12 +476,19 @@ export function matchModelPrompt(modelId, candidates) {
   // 若用户层不剥后缀而内置层剥（k3[1m] + 用户有 KIMI-K3_SYSTEM.md），用户文件会
   // 静默 miss、内置反客为主 —— 违反「用户文件永远优先」，两层必须同语义。
   const variants = expandModelIdVariants(modelId);
+  const idSegsList = variants.map((v) => modelIdSegments(modelIdTokens(v)));
   for (const cand of candidates) {
     if (!cand || !cand.dir) continue;
-    const hits = listModelPrompts(cand.dir).filter((e) => {
-      const entryName = e.name.toLowerCase();
-      return variants.some((v) => v.includes(entryName));
-    });
+    const entries = listModelPrompts(cand.dir);
+    // 主路径：段匹配（ident 锁家族，版本排序消歧不否决）。
+    let hits = collectSegmentHits(entries, idSegsList, (e) => modelIdSegments(modelIdTokens(e.name)));
+    if (hits.length) {
+      hits.sort(segmentHitRank);
+      const e = hits[0];
+      return { path: join(cand.dir, e.fileName), fileName: e.fileName, name: e.name, mode: e.mode, scope: cand.scope };
+    }
+    // 兜底：旧子串（保住官方用户非规范命名 OPU / 4-8 等，两层同语义）。
+    hits = substringHits(variants, entries);
     if (!hits.length) continue;
     hits.sort((a, b) => b.name.length - a.name.length || a.name.localeCompare(b.name));
     const e = hits[0];

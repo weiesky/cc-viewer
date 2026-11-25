@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(server): **模型 system prompt 匹配改为分层段匹配** — 按「家族锁定 + 版本消歧」：ident 链锁定家族（忽略大小写与厂商前缀，必须命中），版本号只在同族条目中排序、不否决——版本对不上时落最接近的同族条目而非兜底（`vendor/DeepSeek-V4.1-Flash-1017` → `deepseek-v4-flash`、`GLM-5.4`/`GLM-6` → `GLM-5.3`）。用户层与内置层均保留旧子串作兜底。Coverage: `model-system-prompts.test.js`, `builtin-model-prompts.test.js`。
+
 - fix(web): **「上下文已压缩」提示条可关闭并自动消失** — 新增右侧 × 关闭按钮，并在新一轮对话（turn）开始时自动隐藏（本次压缩若发生在进行中 turn 内则保留显示）；宽度从全宽改为与任务列表一致的 800px 居中对齐。Coverage: `sdk-error-dialogue.test.js`, `new-ui-i18n.test.js`。
 
 - fix(server): **工作区 active/角色变更实时对齐已 seed 的会话代理绑定** — 绑定新增 `origin`（seed/用户）与所属 workspace 标记，`_loadProxyProfile` 成功后只把当前 workspace 的 seed 来源绑定重算为最新 active/角色；用户显式 session 选择永不被覆盖，`'max'` 不回落语义不变。Coverage: `proxy-session-registry.test.js`, `proxy-session-seed-reseed.test.js`, `sdk-session-proxy-binding.test.js`, `api-proxy-profiles-scope.test.js`。

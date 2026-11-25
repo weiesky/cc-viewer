@@ -208,7 +208,7 @@ ccv -h
 **编辑系统提示词**模态框（汉堡菜单 → 编辑系统提示词）采用标签页设计：
 
 * **默认**标签页：将 `CC_SYSTEM.md`（覆盖）或 `CC_APPEND_SYSTEM.md`（追加）写入当前工作区，下次 ccv 启动时注入。
-* **模型标签页**：按名称添加模型（`opus`、`Gemini3`……），作用域可选**全局**（`~/.claude/cc-viewer/system_prompt/`）或**工作区**（`<project>/system_prompt/`）；每个标签页有独立的追加/覆盖开关和预览。名称按解析出的模型 ID 模糊匹配（`opus` 可匹配 `claude-opus-4-8[1m]`）；工作区优先于全局，名称最长者胜出，匹配到的条目完全取代默认文件。
+* **模型标签页**：按名称添加模型（`opus`、`Gemini3`……），作用域可选**全局**（`~/.claude/cc-viewer/system_prompt/`）或**工作区**（`<project>/system_prompt/`）；每个标签页有独立的追加/覆盖开关和预览。匹配先锁定解析出的模型 ID 中的家族（名称需与家族一致，忽略大小写与 `vendor/` 等厂商前缀），版本号只在同族条目中排序消歧、不会让匹配落空——`opus` 可匹配 `claude-opus-4-8[1m]`，`deepseek-v4-flash` 条目也可应用到 `vendor/DeepSeek-V4.1-Flash-1017`。工作区优先于全局，名称最长者胜出，匹配到的条目完全取代默认文件。
 * **内置预设**：调优 system prompt，深度适配了 Kimi、DeepSeek、Qwen、GLM 的模型——解析出的模型匹配且没有你自己的条目时自动注入（你自己的文件始终优先）。可通过标签页上的 × 禁用某个内置项。
 * system 文本在会话中途跟随热切换的主模型，按（会话，模型）固化（KV-cache 仅在切换时重建一次）。标签页保存为空即删除该条目。设置 `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` 可禁用所有自动注入，或设置 `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` 仅禁用会话中跟随。
 

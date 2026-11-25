@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expandModelIdVariants, normalizeModelName } from './model-system-prompts.js';
+import { expandModelIdVariants, normalizeModelName, modelIdTokens, modelIdSegments, matchSegments, collectSegmentHits, segmentHitRank, substringHits } from './model-system-prompts.js';
 import { listSystemPromptPresets } from './system-prompt-presets.js';
 import { renameSyncWithRetry } from './file-api.js';
 import { reportSwallowed } from '../lib/error-report.js';
@@ -63,6 +63,9 @@ export function listBuiltinModelPrompts() {
       name,
       mode: p.defaultMode === 'override' ? 'override' : 'append',
       matchLower: p.match.toLowerCase(),
+      // 预计算段，供 matchBuiltinModelPrompt 复用（避免每次匹配重算）。
+      // Precomputed segments, reused by the matcher to avoid re-tokenizing per call.
+      segs: modelIdSegments(modelIdTokens(p.match.toLowerCase())),
       text: p.text,
     });
   }
@@ -70,10 +73,11 @@ export function listBuiltinModelPrompts() {
 }
 
 /**
- * 按 modelId 匹配内置条目：别名展开（expandModelIdVariants，先 lowercase）后任一变体
- * 包含 preset 的 match 即命中；多命中取 match 最长者、等长字典序（对齐 matchModelPrompt
- * 的消歧规则）。
- * Match a model id against built-in entries (alias-expanded substring, longest wins).
+ * 按 modelId 匹配内置条目：别名展开（expandModelIdVariants，先 lowercase）后切段，
+ * 与用户层同一套段匹配（ident 锁家族、版本排序消歧不否决）；段匹配全 miss 时与用户层
+ * 同样回退旧子串（vendor 前缀可能与家族同名、锚错起点时子串仍能救回，两层保持同语义）。
+ * 多命中按「版本贴近度 > 段数多 > 名字长 > 精确 > 字典序」消歧（复用 segmentHitRank）。
+ * Match a model id against built-in entries (segment match + shared substring fallback).
  *
  * @param {string|null} modelId
  * @returns {{ id: string, name: string, mode: 'override'|'append', text: string } | null}
@@ -81,9 +85,14 @@ export function listBuiltinModelPrompts() {
 export function matchBuiltinModelPrompt(modelId) {
   const variants = expandModelIdVariants(modelId);
   if (!variants.length) return null;
-  const hits = listBuiltinModelPrompts().filter((e) => variants.some((v) => v.includes(e.matchLower)));
+  const idSegsList = variants.map((v) => modelIdSegments(modelIdTokens(v)));
+  const entries = listBuiltinModelPrompts();
+  // 主路径：段匹配（与用户层同一套 collectSegmentHits + segmentHitRank）。
+  let hits = collectSegmentHits(entries, idSegsList, (e) => e.segs);
+  // 兜底：段匹配全 miss 时回退旧子串（与用户层同语义）。
+  if (!hits.length) hits = substringHits(variants, entries);
   if (!hits.length) return null;
-  hits.sort((a, b) => b.matchLower.length - a.matchLower.length || a.name.localeCompare(b.name));
+  hits.sort(segmentHitRank);
   const e = hits[0];
   return { id: e.id, name: e.name, mode: e.mode, text: e.text };
 }

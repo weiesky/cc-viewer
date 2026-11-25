@@ -18,6 +18,7 @@ const {
   isBuiltinDisabled,
   materializeBuiltinPrompt,
 } = await import('../server/lib/builtin-model-prompts.js');
+const { matchModelPrompt } = await import('../server/lib/model-system-prompts.js');
 
 // 与 system-prompt-templates/presets/index.json 一一对应（system-prompt-presets.test.js
 // 已钉 EXPECTED_IDS；这里只钉 name 派生，避免双重维护两份清单）。
@@ -91,6 +92,89 @@ describe('builtin-model-prompts: 模型匹配', () => {
     assert.equal(hit.id, 'kimi-k3');
     assert.equal(hit.mode, 'override');
     assert.ok(hit.text.length > 0);
+  });
+
+  it('带厂商前缀仍命中家族条目（ident 锁家族，前缀透明）', () => {
+    assert.equal(matchBuiltinModelPrompt('vendor/DeepSeek-V4.1-Flash-1017')?.name, 'DEEPSEEK-V4-FLASH');
+    assert.equal(matchBuiltinModelPrompt('antchat/DeepSeek-V4.1-Flash-1017')?.name, 'DEEPSEEK-V4-FLASH');
+    assert.equal(matchBuiltinModelPrompt('vendor/DeepSeek-V4.1-Pro')?.name, 'DEEPSEEK-V4-PRO');
+    assert.equal(matchBuiltinModelPrompt('glink/GLM-5.3:glink_domestic')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('glink/Kimi-K3.1-Pro:glink_domestic')?.name, 'KIMI-K3');
+    assert.equal(matchBuiltinModelPrompt('glink/Qwen3.8-2.4T-A95B:glink_domestic')?.name, 'QWEN-3');
+  });
+
+  it('版本演进自动落到同主线的最新家族成员（不否决、不掉兜底）', () => {
+    // GLM 家族现有 5.2/5.3 两条：新版本 5.4/5.9/5.10 应落 GLM-5.3 而非更旧的 5.2 或 null。
+    assert.equal(matchBuiltinModelPrompt('antchat/GLM-5.4')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('GLM-5.9')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('glm-5.10-pro')?.name, 'GLM-5.3');
+    // 精确命中仍优先：5.3 自己精确命中自己。
+    assert.equal(matchBuiltinModelPrompt('antchat/GLM-5.3')?.name, 'GLM-5.3');
+  });
+
+  it('防误伤：ident 链断裂不跨家族命中', () => {
+    assert.equal(matchBuiltinModelPrompt('antchat/Ling-3.0-Flash-VL'), null); // 无对应家族
+    assert.equal(matchBuiltinModelPrompt('antchat/auto'), null);
+    assert.equal(matchBuiltinModelPrompt('vendor/DeepSeek-V4.1-Pro')?.name, 'DEEPSEEK-V4-PRO'); // pro 不命中 flash
+  });
+
+  it('起锚：vendor 前缀与家族同名时不锚错起点（段匹配逐处起锚取最优）', () => {
+    // vendor 前缀恰好等于家族名：旧「findIndex 首次出现」会把锚定在 vendor 段上静默 miss。
+    assert.equal(matchBuiltinModelPrompt('deepseek/deepseek-v4-flash')?.name, 'DEEPSEEK-V4-FLASH');
+    assert.equal(matchBuiltinModelPrompt('deepseek-ai/DeepSeek-V4-Flash')?.name, 'DEEPSEEK-V4-FLASH');
+    assert.equal(matchBuiltinModelPrompt('kimi/kimi-k3')?.name, 'KIMI-K3');
+    assert.equal(matchBuiltinModelPrompt('glm/GLM-5.3')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('glm/glm-5.3')?.name, 'GLM-5.3');
+  });
+
+  it('跨 major：贴向最高版本的同族条目（不否决、不拿最旧）', () => {
+    // GLM 家族现有 5.2/5.3：跨 major 的新/旧 id 都应落最高的 GLM-5.3 而非最旧的 5.2。
+    assert.equal(matchBuiltinModelPrompt('GLM-6')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('glm-6.3')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('glm-4.8')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('GLM-7')?.name, 'GLM-5.3');
+    // 同 major 时仍按 minor 贴近度：5.2.x 精确/更近落 5.2，5.3 精确落 5.3。
+    assert.equal(matchBuiltinModelPrompt('glm-5.2.1')?.name, 'GLM-5.2');
+    assert.equal(matchBuiltinModelPrompt('glm-5.3')?.name, 'GLM-5.3');
+  });
+
+  it('内置层子串兜底：段匹配全 miss 时回退旧子串（与用户层同语义）', () => {
+    // 非规范命名（无分隔符、段匹配无法对齐 ident 链）经旧子串兜底命中，两层保持一致。
+    assert.equal(matchBuiltinModelPrompt('xglm-5.3x')?.name, 'GLM-5.3');
+    assert.equal(matchBuiltinModelPrompt('mydeepseek-v4-flash')?.name, 'DEEPSEEK-V4-FLASH');
+    // 与任何 preset 家族都无交集的 id 仍 null（兜底只覆盖含家族名的命名，不放大命中面）。
+    assert.equal(matchBuiltinModelPrompt('totally-unrelated-model-xyz'), null);
+    assert.equal(matchBuiltinModelPrompt('gpt-9-turbo'), null);
+  });
+
+  it('两层同语义：同一批 id 在用户层与内置层同空同非空', () => {
+    // 同语义约束（test/system-prompt-files.test.js 亦钉）：两层经同一套 expandModelIdVariants
+    // + 段匹配。给用户层目录放置与内置同名的家族条目，则任一 id 在两层的命中集合必须
+    // 同空同非空——否则出现「用户层静默 miss、内置反客为主」或反之的语义破口。
+    const dir = mkdtempSync(join(tmpdir(), 'ccv-parity-'));
+    mkdirSync(join(dir, 'system_prompt'), { recursive: true });
+    // 与内置 preset 家族对齐的用户条目（文件名大写落盘）。
+    for (const n of ['DEEPSEEK-V4-FLASH', 'GLM-5.2', 'GLM-5.3', 'QWEN-3', 'KIMI-K3']) {
+      writeFileSync(join(dir, 'system_prompt', `${n}_SYSTEM.md`), 'x');
+    }
+    const candidates = [{ dir: join(dir, 'system_prompt'), scope: 'global' }];
+    const cases = [
+      ['vendor/DeepSeek-V4.1-Flash-1017', true],
+      ['antchat/GLM-5.3', true],
+      ['antchat/GLM-5.4', true],          // 版本演进落家族
+      ['glink/Qwen3.8-2.4T:glink_domestic', true],
+      ['k3', true],                       // 别名
+      ['claude-opus-4-8[1m]', false],     // 官方 id 与 preset 家族无交集
+      ['gpt-5', false],
+      ['antchat/auto', false],
+      ['antchat/Ling-3.0-Flash-VL', false],
+      ['k30', false],                     // lookalike
+    ];
+    for (const [id, expected] of cases) {
+      assert.equal(matchBuiltinModelPrompt(id) !== null, expected, `builtin ${id}`);
+      assert.equal(matchModelPrompt(id, candidates) !== null, expected, `user ${id}`);
+    }
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

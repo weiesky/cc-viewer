@@ -13,6 +13,9 @@ import {
   writeModelPrompt,
   deleteModelPrompt,
   matchModelPrompt,
+  modelIdTokens,
+  modelIdSegments,
+  matchSegments,
 } from '../server/lib/model-system-prompts.js';
 
 describe('model-system-prompts: 名称/文件名语法', () => {
@@ -227,5 +230,97 @@ describe('model-system-prompts: 读写/列表/匹配', () => {
     writeModelPrompt(dir, 'kimi', 'override', 'x');
     const r = matchModelPrompt('kimi-k3', [{ dir, scope: 'global' }]);
     assert.equal(r.name, 'KIMI');
+  });
+
+  it('match: 带厂商前缀与版本跳变仍命中家族条目（段匹配，版本不否决）', () => {
+    const dir = join(mkTmp(), MODEL_PROMPT_DIR);
+    writeModelPrompt(dir, 'deepseek-v4-flash', 'override', 'x');
+    // 厂商前缀 + 版本跳变（V4 → V4.1）：旧纯子串在此落空，段匹配命中家族。
+    const r = matchModelPrompt('vendor/DeepSeek-V4.1-Flash-1017', [{ dir, scope: 'global' }]);
+    assert.equal(r?.name, 'DEEPSEEK-V4-FLASH');
+  });
+
+  it('match: 版本对不上仍落回家族（不否决、不掉兜底）', () => {
+    const dir = join(mkTmp(), MODEL_PROMPT_DIR);
+    writeModelPrompt(dir, 'glm-5.2', 'override', 'a');
+    writeModelPrompt(dir, 'glm-5.3', 'override', 'b');
+    // GLM-5.4 家族里没有精确条目：落到同主线的最新成员 GLM-5.3，而非更旧的 5.2 或兜底。
+    const r = matchModelPrompt('antchat/GLM-5.4', [{ dir, scope: 'global' }]);
+    assert.equal(r?.name, 'GLM-5.3');
+  });
+
+  it('match: 段匹配全 miss 时回退旧子串（保住官方用户非规范命名）', () => {
+    const dir = join(mkTmp(), MODEL_PROMPT_DIR);
+    writeModelPrompt(dir, 'opu', 'override', 'x'); // 部分 ident 子串，段匹配无法命中
+    const r = matchModelPrompt('claude-opus-4-8[1m]', [{ dir, scope: 'global' }]);
+    assert.equal(r?.name, 'OPU');
+  });
+});
+
+describe('model-system-prompts: 分词/段匹配纯函数', () => {
+  it('tokens: 版本拆分量、字母串保留、其余字符为分隔', () => {
+    assert.deepEqual(modelIdTokens('vendor/DeepSeek-V4.1-Flash-1017'), ['vendor', 'deepseek', 'v', '4', '1', 'flash', '1017']);
+    assert.deepEqual(modelIdTokens('glink/Qwen3.8-2.4T-A95B:glink_domestic'), ['glink', 'qwen', '3', '8', '2', '4', 't', 'a', '95', 'b', 'glink', 'domestic']);
+    assert.deepEqual(modelIdTokens('claude-opus-4-8[1m]'), ['claude', 'opus', '4', '8']); // [1m] 后缀被剥
+    assert.deepEqual(modelIdTokens(''), []);
+    assert.deepEqual(modelIdTokens(null), []);
+  });
+
+  it('segments: ident 与其后连续数字合并为一段', () => {
+    assert.deepEqual(modelIdSegments(modelIdTokens('deepseek-v4-flash')), [
+      { ident: 'deepseek', nums: [] },
+      { ident: 'v', nums: ['4'] },
+      { ident: 'flash', nums: [] },
+    ]);
+    assert.deepEqual(modelIdSegments(modelIdTokens('glm-5.3')), [{ ident: 'glm', nums: ['5', '3'] }]);
+    // 前导纯数字自成一段（ident:null）
+    assert.deepEqual(modelIdSegments(['4', '8'])[0], { ident: null, nums: ['4'] });
+  });
+
+  it('matchSegments: ident 锁家族、版本不否决，返回贴近度得分', () => {
+    const seg = (s) => modelIdSegments(modelIdTokens(s));
+    // 命中 + 前缀（id 版本更长）
+    assert.equal(matchSegments(seg('deepseek-v4-flash'), seg('vendor/DeepSeek-V4.1-Flash-1017'))?.matched, true);
+    // ident 链断裂 → miss（flash ≠ pro）
+    assert.equal(matchSegments(seg('deepseek-v4-flash'), seg('vendor/DeepSeek-V4.1-Pro')), null);
+    // 首段无 ident（纯数字 entry）→ miss
+    assert.equal(matchSegments(seg('4-8'), seg('claude-opus-4-8')), null);
+    // 版本演进：同主线新成员(GLM-5.3)贴近度高于旧成员(GLM-5.2)
+    const id = seg('antchat/GLM-5.4');
+    const s52 = matchSegments(seg('glm-5.2'), id).score;
+    const s53 = matchSegments(seg('glm-5.3'), id).score;
+    assert.ok(s53 > s52, `glm-5.3(${s53}) 应比 glm-5.2(${s52}) 更贴近 GLM-5.4`);
+  });
+
+  it('matchSegments: 版本演进贴近度防误伤（相邻版本不跨家族）', () => {
+    const seg = (s) => modelIdSegments(modelIdTokens(s));
+    // glm-5.3 vs GLM-5.4：同主线（major=5），贴近度为正、可命中排序
+    assert.ok(matchSegments(seg('glm-5.3'), seg('antchat/GLM-5.4')) !== null);
+    // glm-5.2 vs glm-5.4：同主线但 minor 差距更大，贴近度低于 5.3（不否决，仍命中但排后）
+    const far = matchSegments(seg('glm-5.2'), seg('antchat/GLM-5.4')).score;
+    const near = matchSegments(seg('glm-5.3'), seg('antchat/GLM-5.4')).score;
+    assert.ok(near > far);
+  });
+
+  it('matchSegments: 计分契约钉住（精确 4 / 前缀 3 / 同 major 贴近 / 跨 major 高版本 / exact）', () => {
+    const seg = (s) => modelIdSegments(modelIdTokens(s));
+    // 精确：逐位等长 → 4，exact=true
+    const exact = matchSegments(seg('kimi-k3'), seg('kimi-k3'));
+    assert.equal(exact.score, 4);
+    assert.equal(exact.exact, true);
+    // 前缀：entry v{4} 是 id v{4,1} 的前缀 → 3，exact=false
+    const prefix = matchSegments(seg('deepseek-v4-flash'), seg('vendor/DeepSeek-V4.1-Flash-1017'));
+    assert.equal(prefix.score, 3);
+    assert.equal(prefix.exact, false);
+    // 同 major：GLM-5.3 vs GLM-5.4 → 1+1/2=1.5；GLM-5.2 vs GLM-5.4 → 1+1/3≈1.333
+    assert.equal(matchSegments(seg('glm-5.3'), seg('GLM-5.4')).score, 1.5);
+    assert.ok(Math.abs(matchSegments(seg('glm-5.2'), seg('GLM-5.4')).score - 4 / 3) < 1e-9);
+    // 跨 major：贴向最高版本（GLM-5.3 的分严格高于 GLM-5.2），且量纲 (0,1) 恒小于同 major
+    const crossHigh = matchSegments(seg('glm-5.3'), seg('GLM-6')).score;
+    const crossLow = matchSegments(seg('glm-5.2'), seg('GLM-6')).score;
+    assert.ok(crossHigh > crossLow, `跨 major 应贴向最高版本：5.3(${crossHigh}) > 5.2(${crossLow})`);
+    assert.ok(crossHigh < 1, '跨 major 量纲应 < 1（小于任何同 major 分值）');
+    // 同 major 必大于跨 major（major 匹配是强信号）
+    assert.ok(matchSegments(seg('glm-5.3'), seg('GLM-5.9')).score > crossHigh);
   });
 });
