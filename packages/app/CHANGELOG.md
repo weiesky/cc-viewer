@@ -1,5 +1,15 @@
 # cc-viewer
 
+## 1.9.37
+
+### Patch Changes
+
+- 1ff192b: feat(web): the mobile hamburger menu's "New workspace" entry becomes "Workspace manager", opening a two-section modal — a switch section listing the live workspaces (polled from `/api/live-processes`, incl. a synthesized bound-project row so there is always a way back) that reuses the desktop tab semantics (bound row detaches, other rows activate), and a create section handing off to the shared NewProjectModal. The mobile header project label now follows the viewed project after a switch, and the context-bar percent resets on a view switch instead of backfilling the departed project's value.
+- df55d40: fix(server): model system-prompt matching now treats the model ID as structured segments instead of an opaque substring. Matching first pins the model family via the ident chain (ignoring case and any vendor prefix like `vendor/`), and the version only ranks entries within a family — it never vetoes a match, so an ID with a vendor prefix or a version bump (e.g. `vendor/DeepSeek-V4.1-Flash-1017`) now hits its family preset (`deepseek-v4-flash`), and an unseen version (e.g. `GLM-5.4` or `GLM-6`) lands on the closest entry of its family line instead of the fallback. Both layers keep the legacy substring predicate as a fallback so non-canonical names still hit. `presets/index.json` is untouched, so all `.builtin-disabled.json` tombstones stay valid.
+- 0caaf96: fix(server): reconcile seed-origin per-session proxy bindings with the owning workspace's live active profile and role assignments. Previously a session's proxy binding was a one-shot snapshot taken at register/attach time and never revisited, so hot-switching a workspace's active profile left already-seeded sessions on the stale choice, and a session seeded before the workspace config existed stayed pinned to the 'max' fallback forever. Bindings now carry an `origin` provenance ('seed' vs explicit 'user'), and seed-origin bindings also record their owning workspace so a later change can re-align them; `_loadProxyProfile` re-aligns only seed-origin bindings of the current workspace on every successful load (covering both the explicit switch route and the watchFile path). Explicit session-scope choices are never overwritten; the 'max'-never-falls-back routing semantics are unchanged.
+- 86514ba: fix(web): the "Context compacted" notice bar no longer persists forever. It now auto-hides when a new turn starts and offers a manual × close button, and its width matches the 800px-centered chat column instead of stretching full-width.
+- 41e2b42: feat(web): collapsed tool pills now carry a one-line call summary (`Bash: Run sudo true to refresh sudo credentials`) from a per-tool summary registry (apps/web/src/utils/toolSummary.js); the "Tools used:" prefix label and its `ui.toolsUsed` key are removed. Pills stack one per line and the summary renders one shade fainter than the tool name in both themes. In merged minimal-chat runs, each turn's "Thinking" collapse label now also carries that turn's own time (same formatTime as the pill popover) so consecutive turns are distinguishable.
+
 ## 1.9.36
 
 ### Patch Changes
