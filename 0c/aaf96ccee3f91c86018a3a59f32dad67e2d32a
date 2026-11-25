@@ -1,0 +1,64 @@
+packages/app/test/proxy-session-registry.test.js
+  s_d8deb597a2fc45::t_4e710008db9961 54,60,62-66,69-73
+  s_d8deb597a2fc45::t_ed4119cae7d378 2-3
+  s_d8deb597a2fc45::t_a63b04c34d7704 176-208
+  s_d8deb597a2fc45::t_8f26566bc93911 168,171-174
+  s_d8deb597a2fc45::t_a446a2ab82837d 103-167,169-170,175
+packages/app/server/lib/proxy-session-registry.js
+  s_d8deb597a2fc45::t_778f962b07d58f 2-3
+  s_d8deb597a2fc45::t_17139c8c37976c 212-219
+  s_d8deb597a2fc45::t_33ea8bddc8d030 22-27,31-35
+  s_d8deb597a2fc45::t_28496410ac9014 160-163,171,173-175
+  s_d8deb597a2fc45::t_9f5b23003b44cc 136-137
+  s_d8deb597a2fc45::t_47f5fd75b48dbc 106-110,117-125,131,135,138-141,145-147,150-159,164-170,172,176-178
+packages/app/test/api-proxy-profiles-scope.test.js
+  s_d8deb597a2fc45::t_5969f14f129d39 131
+  s_d8deb597a2fc45::t_005c8e3cff81a6 160-173
+  s_d8deb597a2fc45::t_563b99be1fc640 181
+packages/app/server/lib/sdk-manager.js
+  s_d8deb597a2fc45::t_c037330b81ff5c 3282
+  s_d8deb597a2fc45::t_0ae0e56b8ad7df 3510
+  s_d8deb597a2fc45::t_1644cac27d3f3c 3175-3187
+  s_d8deb597a2fc45::t_7c0b54807f110a 3238
+history.md
+  s_d8deb597a2fc45::t_d0cc28255ee7c2 5
+  s_d8deb597a2fc45::t_a60165d3225c25 6
+packages/app/test/proxy-session-seed-reseed.test.js
+  s_d8deb597a2fc45::t_0784e21513d9da 43-47,67
+  s_d8deb597a2fc45::t_a836363568dee9 2-3,5-9,11-12,14,31-32,42,48-53,66,68,71-72,77-80,84,86-87,90,98-99,103,107-108,110-113,115,117,120-123,125,128-133,136,141-144,146,149,151-177,180,185-188,190-192,194,197,200,202-204,206-222,225-227
+  s_d8deb597a2fc45::t_4e57e0292ce578 29-30
+  s_d8deb597a2fc45::t_60c779d032297f 58-62
+  s_d8deb597a2fc45::t_22a3df842e7c6e 1,4,10,13,15-28,33-41,54-57,63-65,69-70,73-76,81-83,85,88-89,91-97,100-102,104-106,109,114,116,118-119,124,126-127,134-135,137-140,145,148,150,178-179,181-184,189,193,195-196,198-199,201,205,224,228-229
+  s_d8deb597a2fc45::t_0a9acf39e4d755 147
+  s_d8deb597a2fc45::t_625ec46ad83d45 223
+.changeset/proxy-session-seed-reconcile.md
+  s_d8deb597a2fc45::t_6d0e7f4a3d5537 1-4
+  s_d8deb597a2fc45::t_55d15810d7b249 5
+packages/app/server/interceptor.js
+  s_d8deb597a2fc45::t_8d67a80d3e0137 418-421
+  s_d8deb597a2fc45::t_2cb629a0f23e44 433-436,440-451
+  s_d8deb597a2fc45::t_ec501fedf0bef0 18
+  s_d8deb597a2fc45::t_59a97a37007fdb 415-417
+  s_d8deb597a2fc45::t_95b3e15835e953 437-439
+  s_d8deb597a2fc45::t_e26be23ff4fc95 292,300,304-305,307
+packages/app/test/sdk-session-proxy-binding.test.js
+  s_d8deb597a2fc45::t_e0b23009945651 53,59-62,72,75,78,86-89
+  s_d8deb597a2fc45::t_e643855eccb076 20,25-26
+  s_d8deb597a2fc45::t_d357247f290b6a 100-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0caaf96ccee3f91c86018a3a59f32dad67e2d32a",
+  "prompts": {},
+  "sessions": {
+    "s_d8deb597a2fc45": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "815a5fbe-62be-4a38-8eea-81f31811b4df",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
