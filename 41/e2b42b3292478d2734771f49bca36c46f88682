@@ -1,0 +1,78 @@
+apps/web/src/global.css
+  s_ce46a17366a5e4::t_a88dbf47e39668 45
+  s_ce46a17366a5e4::t_9fecd6e4dc5c39 230
+  s_ce46a17366a5e4::t_3039ba2fcd37bb 46
+  s_ce46a17366a5e4::t_b0e7f22c69a7c3 231
+apps/web/src/components/chat/ChatMessage.jsx
+  s_ce46a17366a5e4::t_9849728769a9f3 5
+  s_ce46a17366a5e4::t_8aef359f37d468 1220
+  s_ce46a17366a5e4::t_824c8bb41a02d5 1207
+  s_ce46a17366a5e4::t_b11635224a14d8 1255-1258,1266-1271
+  s_ce46a17366a5e4::t_b275c1459c1733 1205-1206
+  s_ce46a17366a5e4::t_32970966886260 1386-1387
+  s_ce46a17366a5e4::t_5903ac7ccd6f8d 11
+apps/web/test/tool-summary.test.js
+  s_ce46a17366a5e4::t_9d4dfa671f6b88 178-192,194-205
+  s_ce46a17366a5e4::t_548651eadc6b1f 132,136-138
+  s_ce46a17366a5e4::t_cfa4d3314d845c 1-21,23-91,93,100-115,126-131,133,135,139-143,147-177,206-224,241-242,244-247,249-261
+  s_ce46a17366a5e4::t_6bdec1342414f3 134
+  s_ce46a17366a5e4::t_40791240ab8bc0 193
+  s_ce46a17366a5e4::t_a6ea9f6f18e969 225-232
+  s_ce46a17366a5e4::t_76c10d6f54b7e6 234-238
+  s_ce46a17366a5e4::t_adf1d087a43599 243
+  s_ce46a17366a5e4::t_1cdb7f523114ad 144-146
+  s_ce46a17366a5e4::t_6594d0fe805853 248
+  s_ce46a17366a5e4::t_c14fc4e1001a37 22
+  s_ce46a17366a5e4::t_7b27e98e608cfb 92,94-99
+  s_ce46a17366a5e4::t_a9e02aabee5024 116-125
+  s_ce46a17366a5e4::t_b870964b8975a8 233,239-240
+apps/web/src/utils/toolSummary.js
+  s_ce46a17366a5e4::t_301be4e720466d 1-4,12-18,22-23,25-26,33,35-36,43-53,55,57-59,64-65,67-68,70-73,75-78,80-85,89-93,97-108,110,112,121
+  s_ce46a17366a5e4::t_bd1b83e1989d30 60-63
+  s_ce46a17366a5e4::t_49c35acd38915d 32
+  s_ce46a17366a5e4::t_3cac4c5147a0d5 86
+  s_ce46a17366a5e4::t_243e1ef5e18abf 113-115
+  s_ce46a17366a5e4::t_941edaf86fe387 27-28
+  s_ce46a17366a5e4::t_f069f96060f397 5-7
+  s_ce46a17366a5e4::t_ebfd3b2d8ffc64 8-11,19-21,24,29-31,34,37-42,54,56,66,69,74,79,87-88,94-96,109,111,116-120
+apps/web/src/components/chat/ChatMessage.module.css
+  s_ce46a17366a5e4::t_25a148b34e5463 424,429-432,439-440
+  s_ce46a17366a5e4::t_6b37518ff07472 483-485,494
+  s_ce46a17366a5e4::t_3518fa26bb409d 488-491
+  s_ce46a17366a5e4::t_721e74e75b840e 425-428,433-435,438
+  s_ce46a17366a5e4::t_02474999362f7c 496-499
+  s_ce46a17366a5e4::t_186781820dfad1 516-525
+  s_ce46a17366a5e4::t_40009c0228d7e8 486-487,493,495
+  s_ce46a17366a5e4::t_9f49c0eb4be295 436-437
+apps/web/test/minimal-chat-wiring.test.js
+  s_ce46a17366a5e4::t_7778903aad17b8 82-85,87-91
+  s_ce46a17366a5e4::t_f65427880cef5b 86
+  s_ce46a17366a5e4::t_c59a078c452cde 100-109,122-124
+  s_ce46a17366a5e4::t_af81f8ac3c906a 110-115,121
+  s_ce46a17366a5e4::t_6f89dbcc5a8d74 117-119
+  s_ce46a17366a5e4::t_34e513eb6cdbf0 116,120
+.changeset/tool-pill-summary.md
+  s_ce46a17366a5e4::t_c162482b84548d 5
+  s_ce46a17366a5e4::t_715559e84ac785 1-4
+history.md
+  s_ce46a17366a5e4::t_6c16b24c43c108 7
+  s_ce46a17366a5e4::t_88a4cea79ad81f 5
+  s_ce46a17366a5e4::t_49c4b255f44826 8
+  s_ce46a17366a5e4::t_59ae8df6acb0a2 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "41e2b42b3292478d2734771f49bca36c46f88682",
+  "prompts": {},
+  "sessions": {
+    "s_ce46a17366a5e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1062559d-c960-4f95-9935-0793845ed58f",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
