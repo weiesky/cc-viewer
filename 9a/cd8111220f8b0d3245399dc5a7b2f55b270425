@@ -1,0 +1,71 @@
+apps/web/test/sdkTaskTracker.test.js
+  s_679ef1fbc73994::t_30c163df1fb318 347,352-366,386-387,414,419-421
+  s_679ef1fbc73994::t_3ae463bd88345e 406-407
+  s_679ef1fbc73994::t_6e03732f2b861f 348-351,367-368,375-379,381-384
+  s_679ef1fbc73994::t_0de28eaf5d60fa 369-374,380,385,388-405,408-413,415-418
+scripts/tarball-baseline.json
+  s_679ef1fbc73994::t_c619f0f366825d 1344
+apps/web/test/sdkTaskTracker-persist.test.js
+  s_679ef1fbc73994::t_ea87a4827d4aa1 257,262-275,277-290
+  s_679ef1fbc73994::t_b2d064ddcc252f 230-233,237-256
+  s_679ef1fbc73994::t_b274f882d579c6 234-236,258-261,276
+apps/web/src/utils/sdkTaskTracker.js
+  s_679ef1fbc73994::t_6e8630f520faa2 350-357
+  s_679ef1fbc73994::t_1303e673654329 32
+  s_679ef1fbc73994::t_3af2d73597d68d 435-437,439
+  s_679ef1fbc73994::t_02e60df95875c9 349
+  s_679ef1fbc73994::t_cca5241971218c 438
+apps/web/src/utils/taskStore.js
+  s_679ef1fbc73994::t_b955214636b90d 164-165
+  s_679ef1fbc73994::t_d843c67ae07a53 166-171
+packages/core/test/sdk-task-label.test.js
+  s_679ef1fbc73994::t_c2a57eb0c0d5be 1-67,70-118
+  s_679ef1fbc73994::t_70a1f86d9a0fbc 68-69
+apps/web/src/components/chat/TaskProgressHud.jsx
+  s_679ef1fbc73994::t_7d851e16f7838d 203
+  s_679ef1fbc73994::t_55f65467173e41 63-66,71-72
+history.md
+  s_679ef1fbc73994::t_8a2071a03fd558 5
+  s_679ef1fbc73994::t_56075bb8bc26ca 6
+packages/app/server/lib/sdk-manager.js
+  s_679ef1fbc73994::t_6b18ba4b14073f 42
+  s_679ef1fbc73994::t_1ad307c86a59d6 3116-3123,3130
+  s_679ef1fbc73994::t_75941915e434e4 3129
+  s_679ef1fbc73994::t_113f99ea962f55 477-491
+  s_679ef1fbc73994::t_56237a77b9093b 1839-1843,1845
+packages/app/server/lib/task-state.js
+  s_679ef1fbc73994::t_b2de7c082372b4 23-27
+  s_679ef1fbc73994::t_6d9c64c7fddb72 17-22
+.changeset/task-panel-degraded-id-rows.md
+  s_679ef1fbc73994::t_c75cfdbd4305a3 5
+  s_679ef1fbc73994::t_fbb464d2cebdd9 7,9-11
+  s_679ef1fbc73994::t_4bdb0843b25ff0 1-4,6,8
+packages/core/src/sdk-task-label.js
+  s_679ef1fbc73994::t_cf1be3c8e36074 1-7,13,22,24-26,30,38-42,46-48,52,54,57-61,65,67,69-70
+  s_679ef1fbc73994::t_d5e20ab17b79a1 8-12,14-21,23,27-29,31-37,43-45,49-51,53,55-56,62-64,66,68
+packages/app/test/sdk-task-table.test.js
+  s_679ef1fbc73994::t_3f564f951b79b9 134-136,149-150
+  s_679ef1fbc73994::t_ab345e67d1a34c 273-278,283
+  s_679ef1fbc73994::t_f5bf143a369574 272,279-282,284-297,299-300,304-342
+  s_679ef1fbc73994::t_c7b6e5ff09e7ba 298,301-303
+  s_679ef1fbc73994::t_e78d5603c9c572 373-417
+  s_679ef1fbc73994::t_1e232dc85c17fc 343-372
+apps/web/test/task-progress-hud.test.js
+  s_679ef1fbc73994::t_583ea7a5a92c94 275-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9acd8111220f8b0d3245399dc5a7b2f55b270425",
+  "prompts": {},
+  "sessions": {
+    "s_679ef1fbc73994": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4019e97d-46f2-4093-9de9-9a6634965dd7",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
