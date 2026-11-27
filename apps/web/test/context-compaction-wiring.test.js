@@ -59,6 +59,18 @@ describe('ChatView trigger + confirm + inject wiring', () => {
     assert.match(chatView, /prevProps\.turnActive && !this\.props\.turnActive[\s\S]{0,200}_onCompactionTurnEnd/, 'turn-end checkpoint');
     assert.match(chatView, /markTurnStart\(this\._compaction\)/, 'turn-start advances seq');
   });
+  it('freshness gate: stale readings (repeated key) never re-evaluate; fresh ones stamp lastCountedKey', () => {
+    // The freshness fingerprint is the only guard against acting on an already-evaluated
+    // stale snapshot. With consecutiveRequired=1 it is load-bearing: applyCheckpoint is no
+    // longer idempotent per reading (two calls with the same reading both pick), so the
+    // dedup must live in the ChatView checkpoint path, not in the state machine.
+    assert.match(chatView, /reading\.key != null && this\._compaction\.lastCountedKey != null && reading\.key === this\._compaction\.lastCountedKey/,
+      'stale check: same reading.key as lastCountedKey is rejected');
+    assert.match(chatView, /this\._compaction\.lastCountedKey = reading\.key/,
+      'fresh evaluation stamps lastCountedKey for the next round');
+    assert.match(chatView, /freshnessWaitMs/,
+      'stale path polls up to freshnessWaitMs for a new reading');
+  });
   it('sends compact-inject with reqId + frozen anchor + /compact command', () => {
     assert.match(chatView, /type: 'compact-inject'/, 'compact-inject frame');
     assert.match(chatView, /reqId/, 'carries reqId');

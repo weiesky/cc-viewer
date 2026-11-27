@@ -24,8 +24,9 @@ export const COMPACTION_DEFAULTS = Object.freeze({
   // in tokens mode, only when it drops below 95% of the threshold.
   hysteresisPercentPoints: 5,
   hysteresisTokenRatio: 0.95,
-  // Require N consecutive "fresh above-threshold readings" before showing the confirm bar (tolerates a single anomalous fluctuation).
-  consecutiveRequired: 2,
+  // Number of consecutive "fresh above-threshold readings" required before showing the confirm bar.
+  // 1 = trigger on the first fresh above-threshold reading (current behavior); raise to 2+ to tolerate a single anomalous fluctuation.
+  consecutiveRequired: 1,
   // Number of turns to cool down after a successful injection.
   cooldownTurns: 2,
   // This many consecutive injection failures trips the circuit breaker (reset on view switch/config change).
@@ -496,7 +497,7 @@ export function shouldReleaseDeferral(def, item, reading) {
  * items is the normalized array already filtered by enabled; index is keyed by its position in items.
  * Returns { index, item } for the confirm bar to show, or null.
  *
- * Order: cooldown (per-turn/growth release) → deferral (per-turn/growth release) → threshold (N consecutive).
+ * Order: cooldown (per-turn/growth release) → deferral (per-turn/growth release) → threshold (consecutiveRequired).
  * This function only handles threshold decisions and reading-driven growth release; per-turn release is already done by advanceTurn (reading-independent).
  */
 export function applyCheckpoint(state, items, reading) {
@@ -529,6 +530,7 @@ export function applyCheckpoint(state, items, reading) {
       else continue;
     }
     // 4) Threshold: N consecutive above-threshold readings are required to become a candidate (items released per-turn this turn are exempt from consecutive counting).
+    //    With the default consecutiveRequired=1, a single above-threshold reading is enough — the counter is effectively a one-shot.
     if (!isAboveThreshold(item, reading)) { state.counters.set(i, 0); continue; }
     const n = (state.counters.get(i) || 0) + 1;
     state.counters.set(i, n);

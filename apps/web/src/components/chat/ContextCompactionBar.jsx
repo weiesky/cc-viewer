@@ -171,9 +171,15 @@ export default function ContextCompactionBar({
           type="button"
           className={styles.compactionBarConfirm}
           disabled={busy || injecting}
-          title={busy ? t('ui.contextCompaction.bar.busy') : undefined}
           onClick={onConfirm}
         >{injecting ? t('ui.contextCompaction.bar.injecting') : t('ui.contextCompaction.bar.confirm')}</button>
+        {/* Show the busy hint inline next to the button instead of a hover-only
+            tooltip — a tooltip would require the user to hover long enough to
+            discover why the button is disabled, which is invisible affordance
+            on a row that also contains a live countdown. */}
+        {busy && (
+          <span className={styles.compactionBarBusyHint}>{t('ui.contextCompaction.bar.busy')}</span>
+        )}
       </div>
       {hasCountdown && bar.countdownEndsAt && totalSec > 0 && (
         <div

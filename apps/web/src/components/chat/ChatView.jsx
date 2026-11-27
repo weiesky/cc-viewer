@@ -4267,7 +4267,7 @@ class ChatView extends React.Component {
   /* ------------------------------------------------------------------ *
    * Context compaction trigger (2026-11)
    * Decisions live in the frontend (it owns usage, busy/idle, and confirm-bar interaction); injection goes through the server's authoritative idle validation.
-   * Debounce: usage is the only trusted source; show only after 2 consecutive fresh above-threshold readings; hysteresis/cooldown/circuit breaker;
+   * Trigger: usage is the only trusted source; show on the first fresh above-threshold reading; hysteresis/cooldown/circuit breaker;
    * evaluate only at real turn-end boundaries, never mid-stream; the confirm bar freezes anchor+viewKey.
    * ------------------------------------------------------------------ */
 
@@ -4372,9 +4372,9 @@ class ChatView extends React.Component {
     }
   };
 
-  // Called at real turn-end boundaries (turnActive falling edge). Evaluate once with a reading after settle; when the reading is not yet
-  // available, or is the same one counted in the previous round (stale), wait up to freshnessWaitMs for the next new reading,
-  // avoiding "the same old snapshot counted twice in a row to reach the threshold" (review P1).
+  // Called at real turn-end boundaries (turnActive falling edge). Evaluate once with a fresh reading after settle; when the reading
+  // is not yet available, or is the same one already evaluated in the previous round (stale), wait up to freshnessWaitMs for the
+  // next new reading — the freshness fingerprint (lastCountedKey) prevents acting on an already-evaluated stale snapshot.
   _onCompactionTurnEnd = () => {
     if (!this._compactionArmed()) return;
     const viewKey = this._compactionViewKey();

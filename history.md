@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+- feat(web): **压缩气泡正文补充压缩理由** — 正文从「已达到触发条件」改为「已触发 + 上下文持续在增长,及时压缩能保持响应质量」（18 语言同步），向用户解释为什么需要压缩而不只是规则命中。Coverage: `context-compaction-i18n.test.js`。
+
+- feat(web): **压缩气泡 busy 提示改为 inline** — 「立即压缩」按钮在 turn 进行中 disabled 时，提示「本轮对话结束后才能压缩」改为直接显示在按钮后方，不再依赖 hover tooltip；样式用 warning color 区别于正文。Coverage: 无新增（UI 仅展示层改动，逻辑未变）。
+
+- feat(web): **上下文压缩改为首次超阈值即弹出** — 去掉「连续两个超阈值读数」去抖：轮次结束时出现第一个新鲜的超阈值读数，立即按执行时机弹出确认气泡（或倒计时/自动注入）；新鲜度指纹、滞回、冷却、延后与失败熔断不变，960K 强制压缩不变。设置弹窗说明文案（18 语言）与 README 同步更新。Coverage: `context-compaction.test.js`, `context-compaction-i18n.test.js`, `context-compaction-wiring.test.js`。
+
 - fix(web+server): **任务面板退化 `#id` 行** — SDK 模式下任务面板部分任务只显示 `#taskId`。`getSdkTaskSnapshot` 与客户端 `applySnapshot`/`restoreFromStorage` 用共享 predicate（`@ccv/core/sdk-task-label`）过滤"无 label"（`description`/`summary` 均为空）的 terminal 残留；`TaskProgressHud` label fallback 扩为 `subject || description || #id`；同时修复服务端 sdk-task 表 fold 时 prev 总为 undefined 导致 merge 失效、以及 task_started re-fire 继承旧 terminal status 的两个 bug。PTY stub 占位仍按设计保留。Coverage: `sdk-task-table.test.js`, `sdkTaskTracker.test.js`, `sdkTaskTracker-persist.test.js`, `task-progress-hud.test.js`, `sdk-task-label.test.js`。
 
-- feat(web+server): **上下文压缩设置** — 快捷设置菜单新增「上下文压缩设置」入口，沿用「快捷指令」的列表管理（新增/编辑/删除/拖拽/启停），每条可配标题、自定义压缩脚本、触发阈值（按百分比或 K Token）与「执行时机」（用户选择 / 30 秒 / 3 分钟倒计时 / 自动执行）；配置存 `preferences.json` 全局 `contextCompaction` 键。轮次结束且空闲时读取用量（SDK 快照 / PTY context_window），连续两个超阈值读数才触发：倒计时模式弹出浮于输入框上方、左对齐四芒星的气泡并倒计时，到点自动执行（不可见时暂停）；自动模式直接注入；手动模式等用户点按。「(x)」为拒绝本次并延后提醒（下一轮结束或上下文 +50K/+5% 先到再提醒）。注入经服务端空闲守卫（SDK sendUserMessage 轮闸门 / PTY chatQueue.injectCommand 严格锚定）；含滞回、冷却、失败熔断与多标签页去重。Coverage: `context-compaction.test.js`, `context-compaction-wiring.test.js`, `context-compaction-i18n.test.js`, `chat-queue-inject-command.test.js`, `compact-inject-guard.test.js`, `compact-inject-wiring.test.js`, `sdk-session-state.test.js`, `api-preferences.test.js`。
+- feat(web+server): **上下文压缩设置** — 快捷设置菜单新增「上下文压缩设置」入口，沿用「快捷指令」的列表管理（新增/编辑/删除/拖拽/启停），每条可配标题、自定义压缩脚本、触发阈值（按百分比或 K Token）与「执行时机」（用户选择 / 30 秒 / 3 分钟倒计时 / 自动执行）；配置存 `preferences.json` 全局 `contextCompaction` 键。轮次结束且空闲时读取用量（SDK 快照 / PTY context_window），超阈值读数即触发：倒计时模式弹出浮于输入框上方、左对齐四芒星的气泡并倒计时，到点自动执行（不可见时暂停）；自动模式直接注入；手动模式等用户点按。「(x)」为拒绝本次并延后提醒（下一轮结束或上下文 +50K/+5% 先到再提醒）。注入经服务端空闲守卫（SDK sendUserMessage 轮闸门 / PTY chatQueue.injectCommand 严格锚定）；含滞回、冷却、失败熔断与多标签页去重。Coverage: `context-compaction.test.js`, `context-compaction-wiring.test.js`, `context-compaction-i18n.test.js`, `chat-queue-inject-command.test.js`, `compact-inject-guard.test.js`, `compact-inject-wiring.test.js`, `sdk-session-state.test.js`, `api-preferences.test.js`。
 
 - feat(web+server): **内置默认压缩规则 + 960K 强制压缩** — 「默认压缩规则」（75% / 手动）为内置项：不可删除，但标题/脚本/阈值/启停/执行时机均可编辑（白名单 `builtinId`，每次归一化都合并，删空列表的用户也会重新获得）；当用量接近其阈值（≤100K）时，血条以虚线水位线标注（hover 显示说明）。上下文超过 960K（写死）时流式中立即强制压缩：打断当前会话并注入默认规则当前保存的脚本（SDK `forceSendUserMessage` 入队 + send-now；PTY enqueue + sendNow 的 ESC 打断 + bracketed paste，绝不盲写）。Coverage: `context-compaction.test.js`, `context-compaction-wiring.test.js`, `context-compaction-i18n.test.js`, `compact-inject-wiring.test.js`。
 

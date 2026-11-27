@@ -467,39 +467,43 @@ describe('trigger state machine', () => {
     { title: 'b', script: 'sb', threshold: { mode: 'percent', value: 90 } },
   ]).filter((i) => i.builtinId == null);
 
-  it('show only on the 2nd consecutive above-threshold reading; a dip in between resets', () => {
+  it('shows on the first fresh above-threshold reading (no consecutive debounce)', () => {
+    // Product decision (2026-11): the previous two-consecutive-readings debounce is removed — a single
+    // fresh above-threshold reading is enough to show the confirm bar. Pin the constant so a future
+    // revert is caught by intent.
+    assert.equal(COMPACTION_DEFAULTS.consecutiveRequired, 1, 'product decision: first above-threshold reading triggers');
     const s = createTriggerState();
-    assert.equal(applyCheckpoint(s, items, reading(85)), null); // 1st time
-    const pick = applyCheckpoint(s, items, reading(85));        // 2nd time → show a
-    assert.equal(pick.index, 0);
-    // counter resets after showing the bar; must accumulate again
-    assert.equal(applyCheckpoint(s, items, reading(85)), null);
+    const pick = applyCheckpoint(s, items, reading(85));
+    assert.equal(pick?.index, 0);
+    assert.equal('released' in pick, false, 'threshold hit, not a deferral release');
+  });
+
+  it('one above-threshold reading is enough after a below-threshold one (no accumulation needed)', () => {
+    const s = createTriggerState();
+    assert.equal(applyCheckpoint(s, items, reading(75)), null); // below both thresholds (80/90)
+    assert.equal(applyCheckpoint(s, items, reading(85))?.index, 0); // first above-threshold reading shows
   });
 
   it('takes the first candidate in list order (a before b)', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(95)); // both above threshold, 1st time
-    const pick = applyCheckpoint(s, items, reading(95));
+    const pick = applyCheckpoint(s, items, reading(95)); // both above threshold → a wins
     assert.equal(pick.index, 0);
   });
 
   it('markIgnored → permanent snooze, cleared only after dropping below hysteresis', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));
     const pick = applyCheckpoint(s, items, reading(85));
     markIgnored(s, pick.index);
     // still above threshold but snoozed → no longer shows (even after many turns)
     assert.equal(applyCheckpoint(s, items, reading(85)), null);
     assert.equal(applyCheckpoint(s, items, reading(85)), null);
-    // dropping below hysteresis (80-5=75) clears snooze and zeroes the counter; requires 2 consecutive again
+    // dropping below hysteresis (80-5=75) clears snooze; the first above-threshold reading after re-arm shows
     assert.equal(applyCheckpoint(s, items, reading(70)), null);
-    assert.equal(applyCheckpoint(s, items, reading(85)), null); // 1st time
-    assert.equal(applyCheckpoint(s, items, reading(85))?.index, 0); // 2nd time shows again
+    assert.equal(applyCheckpoint(s, items, reading(85))?.index, 0);
   });
 
   it('markDeferred (x decline) → with no context growth, re-reminds on the per-turn fallback (+2 turns)', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));
     const pick = applyCheckpoint(s, items, reading(85));
     markDeferred(s, pick.index, reading(85), 'x'); // releaseAtTurn = completedTurns+2 = 2
     // next turn ends (completedTurns=1): zero context growth, growth not reached, per-turn not due (+2) → still deferred, no show
@@ -514,10 +518,9 @@ describe('trigger state machine', () => {
 
   it('markDeferred (x decline) → context growth +5% releases at the next turn first (growth outranks the per-turn fallback)', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));       // 85% of 200K = 170K
-    const pick = applyCheckpoint(s, items, reading(85));
-    markDeferred(s, pick.index, reading(85), 'x'); // baseline 170K/200K, releaseAtTurn=2
-    // next turn ends: advanceTurn(completedTurns=1, +2 fallback not due) → but context already grew to 180K (+5pt) → growth release shows immediately
+    const pick = applyCheckpoint(s, items, reading(85, 170000));   // 85% of 200K = 170K, baseline tokens non-zero
+    markDeferred(s, pick.index, reading(85, 170000), 'x'); // baseline 170K/200K, releaseAtTurn=2
+    // next turn ends: advanceTurn(completedTurns=1, +2 fallback not due) → but context already grew to 180K (+5pt) → growth release shows immediately via dPercent branch
     advanceTurn(s);
     const r = { ok: true, percent: 90, tokens: 180000, maxTokens: 200000, source: 'sdk', ts: 2 };
     const again = applyCheckpoint(s, items, r);
@@ -527,10 +530,9 @@ describe('trigger state machine', () => {
 
   it('markDeferred: context growth +5% arrives first and releases first (without waiting for the next turn)', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));       // 85% of 200K = 170K
-    const pick = applyCheckpoint(s, items, reading(85));
-    markDeferred(s, pick.index, reading(85), 'x'); // baseline 170K/200K
-    // context grows to 180K (+10K tokens = +5pt) → growth release, re-remind immediately (no turn advance)
+    const pick = applyCheckpoint(s, items, reading(85, 170000));   // 85% of 200K = 170K, baseline tokens non-zero
+    markDeferred(s, pick.index, reading(85, 170000), 'x'); // baseline 170K/200K
+    // context grows to 180K (+10K tokens = +5pt of 200K) → growth release via dPercent branch, re-remind immediately (no turn advance)
     const r = { ok: true, percent: 90, tokens: 180000, maxTokens: 200000, source: 'sdk', ts: 2 };
     const again = applyCheckpoint(s, items, r);
     assert.equal(again?.index, 0);
@@ -539,7 +541,6 @@ describe('trigger state machine', () => {
 
   it('markDeferred: context growth +50K tokens arrives first and releases first', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));
     const pick = applyCheckpoint(s, items, reading(85));
     markDeferred(s, pick.index, reading(85), 'x'); // baseline 170K
     // +49K does not release (< 50K and < 5% of 200K=10K? 49K>10K would release via 5pt first — use a larger window to isolate the tokens condition)
@@ -549,6 +550,17 @@ describe('trigger state machine', () => {
     assert.equal(shouldReleaseDeferral(def, items[0], { ok: true, tokens: 130000, maxTokens: 1000000 }), false);
     // +50K tokens: reaches 50K → release
     assert.equal(shouldReleaseDeferral(def, items[0], { ok: true, tokens: 150000, maxTokens: 1000000 }), true);
+  });
+
+  it('shouldReleaseDeferral: dPercent branch (5pt) fires independently of dTokens', () => {
+    // Baseline 170K/200K. +5pt means tokens grew by 10K (5% of 200K). To isolate
+    // the dPercent branch from dTokens (which would also release at +50K), use
+    // a window where +50K < +5pt — i.e., a smaller window so 5pt is reached first.
+    const def = { baseline: { tokens: 170000, maxTokens: 200000 } };
+    // +4.5pt (179K): below 5pt AND below +50K tokens → no release
+    assert.equal(shouldReleaseDeferral(def, items[0], { ok: true, tokens: 179000, maxTokens: 200000 }), false);
+    // +5pt (180K): reaches 5pt → release (dPercent branch, dTokens = +10K < 50K)
+    assert.equal(shouldReleaseDeferral(def, items[0], { ok: true, tokens: 180000, maxTokens: 200000 }), true);
   });
 
   it('shouldReleaseDeferral: window drift / context drop → release', () => {
@@ -565,27 +577,22 @@ describe('trigger state machine', () => {
 
   it('markInjected → cooldown 2 turns (released per-turn by advanceTurn)', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));
     const pick = applyCheckpoint(s, items, reading(85));
     markInjected(s, pick.index); // releaseAtTurn = 0+2 = 2
     // turn 1: advanceTurn → completedTurns=1 < 2, still cooling, no show
     advanceTurn(s);
     assert.equal(applyCheckpoint(s, items, reading(85)), null);
-    // turn 2: advanceTurn → completedTurns=2 ≥ 2, released; counting restarts this turn (1st)
-    advanceTurn(s);
-    assert.equal(applyCheckpoint(s, items, reading(85)), null); // count=1
-    // turn 3: 2nd time → show
+    // turn 2: advanceTurn → completedTurns=2 ≥ 2, released; the first above-threshold reading after release shows
     advanceTurn(s);
     assert.equal(applyCheckpoint(s, items, reading(85))?.index, 0);
   });
 
   it('below hysteresis during cooldown → cleared early', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));
-    markInjected(s, applyCheckpoint(s, items, reading(85)).index);
-    // cooling, but the reading drops below hysteresis → clears immediately
+    const pick = applyCheckpoint(s, items, reading(85));
+    markInjected(s, pick.index);
+    // cooling, but the reading drops below hysteresis → clears immediately; the next above-threshold reading shows
     assert.equal(applyCheckpoint(s, items, reading(70)), null);
-    assert.equal(applyCheckpoint(s, items, reading(85)), null); // 1st time
     assert.equal(applyCheckpoint(s, items, reading(85))?.index, 0);
   });
 
@@ -609,8 +616,8 @@ describe('trigger state machine', () => {
   it('markExternalCompaction cools down all items and clears deferrals and snoozes (rebaseline)', () => {
     const s = createTriggerState();
     // create one deferral and one snooze
-    applyCheckpoint(s, items, reading(85));
-    markDeferred(s, applyCheckpoint(s, items, reading(85)).index, reading(85), 'x');
+    const pick = applyCheckpoint(s, items, reading(85));
+    markDeferred(s, pick.index, reading(85), 'x');
     markIgnored(s, 1);
     assert.equal(s.deferral.size, 1);
     assert.equal(s.snoozed.size, 1);
@@ -653,12 +660,11 @@ describe('trigger state machine', () => {
     assert.equal(s.deferral.size, 0);
     assert.equal(s.snoozed.size, 0);
     assert.equal(s.justReleasedDeferral.size, 0);
-    assert.equal(applyCheckpoint(s, items, reading(95)) === null, true); // recount from the 1st
+    assert.equal(applyCheckpoint(s, items, reading(95))?.index, 0); // shows on the first reading after reset
   });
 
   it('markInjectRolledBack revokes cooldown + clears pending/lastAcked, not counted as failure (SDK not-delivered rollback)', () => {
     const s = createTriggerState();
-    applyCheckpoint(s, items, reading(85));
     const pick = applyCheckpoint(s, items, reading(85));
     markInjected(s, pick.index);              // optimistic ok: cooldown + lastAcked
     s.lastAckedReqId = 'r1'; s.lastAckedIndex = pick.index;

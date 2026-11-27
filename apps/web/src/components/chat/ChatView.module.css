@@ -751,6 +751,15 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* Inline busy hint shown next to the disabled confirm button — replaces the
+   hover-only tooltip so the reason is visible without requiring the user to
+   hover long enough to discover it. Uses the warning color so it stands out
+   from the body text but is not as strong as an error. */
+.compactionBarBusyHint {
+  font-size: 12px;
+  color: var(--warning-color, #faad14);
+  white-space: nowrap;
+}
 .compactionBarSettings {
   display: inline-flex;
   align-items: center;
