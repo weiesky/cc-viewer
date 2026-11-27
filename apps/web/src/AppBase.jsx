@@ -480,6 +480,7 @@ class AppBase extends React.Component {
       claudeSettings: ctx.claudeSettings,
       preferences: ctx.preferences,
       onUpdatePreferences: ctx.updatePreferences,
+      onUpdateGlobalPreferences: ctx.updateGlobalPreferences,
       onUpdateClaudeSettings: ctx.updateClaudeSettings,
       // 把 lang 塞进 settings spread,让 App / Mobile 入口都自动拿到,
       // 避免 ChatMessage 切语言时只在桌面端刷新而漏移动端。

@@ -957,6 +957,7 @@ async function runImSdkMode(platformId) {
   serverMod.setSdkCancelApproval(sdkManager.cancelApproval);
   serverMod.setSdkAutoCancelApproval(sdkManager.autoCancelApproval);
   serverMod.setSdkSendUserMessage(sdkManager.sendUserMessage);
+  serverMod.setSdkForceSendUserMessage(sdkManager.forceSendUserMessage);
   serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
   serverMod.setSdkRetryTurn(sdkManager.retryInterruptedTurn);
   serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);
@@ -965,6 +966,7 @@ async function runImSdkMode(platformId) {
   serverMod.setSdkGetContextUsageSnapshot(sdkManager.getContextUsageSnapshot);
   serverMod.setSdkGetMcpStatusSnapshot(sdkManager.getMcpStatusSnapshot);
   serverMod.setSdkGetSessionStateSnapshot(sdkManager.getSessionStateSnapshot);
+  serverMod.setSdkGetTurnGate(sdkManager.getTurnGate);
   serverMod.setSdkGetSdkTaskSnapshot(sdkManager.getSdkTaskSnapshot);
   serverMod.setSdkResolveBoundPrimaryInstanceKey(sdkManager.resolveBoundPrimaryInstanceKey);
   serverMod.setSdkSendQueuedNow(sdkManager.sendQueuedNow);
@@ -1231,6 +1233,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkCancelApproval(sdkManager.cancelApproval);
   serverMod.setSdkAutoCancelApproval(sdkManager.autoCancelApproval);
   serverMod.setSdkSendUserMessage(sdkManager.sendUserMessage);
+  serverMod.setSdkForceSendUserMessage(sdkManager.forceSendUserMessage);
   serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
   serverMod.setSdkRetryTurn(sdkManager.retryInterruptedTurn);
   serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);
@@ -1239,6 +1242,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkGetContextUsageSnapshot(sdkManager.getContextUsageSnapshot);
   serverMod.setSdkGetMcpStatusSnapshot(sdkManager.getMcpStatusSnapshot);
   serverMod.setSdkGetSessionStateSnapshot(sdkManager.getSessionStateSnapshot);
+  serverMod.setSdkGetTurnGate(sdkManager.getTurnGate);
   serverMod.setSdkGetSdkTaskSnapshot(sdkManager.getSdkTaskSnapshot);
   // WS attach-stamp coherence: the bound cwd's primary instanceKey, used to cohere a
   // bound-project client's `_ccvViewInstance` during the pre-poll hydration window.

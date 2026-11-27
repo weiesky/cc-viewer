@@ -63,6 +63,8 @@ const KEYS = [
   'ui.projectPrefsManage.deleteConfirm',
   'ui.projectPrefsManage.currentTag',
   'ui.projectPrefsManage.empty',
+  // Context compaction settings (quick-menu row)
+  'ui.contextCompaction.menuItem',
 ];
 
 describe('quick settings menu i18n — all 18 locales', () => {

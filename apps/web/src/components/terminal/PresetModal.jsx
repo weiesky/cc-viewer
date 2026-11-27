@@ -74,7 +74,6 @@ export default function PresetModal({ open, onClose, items, onItemsChange, dismi
     <>
       <Modal title={t('ui.terminal.presetShortcuts')} open={open} onCancel={handleClose} footer={null} width={800}
         styles={{ content: { background: 'var(--bg-elevated)', border: '1px solid var(--border-light)' }, header: { background: 'var(--bg-elevated)', borderBottom: 'none' } }}>
-        <div className={styles.presetSectionHeader}><span className={styles.presetSectionTitle}>{t('ui.terminal.agentTeamCustom')}</span></div>
         <div className={styles.presetList} onDragOver={e => { e.preventDefault(); e.stopPropagation(); }} onDrop={e => { e.preventDefault(); e.stopPropagation(); }}>
           {items.length === 0 ? <div className={styles.presetListEmptyHint}>—</div> : items.map((item, idx) => {
             const isBuiltinRaw = item.builtinId && !item.modified;

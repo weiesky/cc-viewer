@@ -465,3 +465,58 @@ describe('sdk-session-state relay', () => {
     assert.deepEqual(stateFrames(broadcasts).map((f) => f.state), ['running', 'idle']);
   });
 });
+
+// getTurnGate (2026-11): the atomic "can a turn start right now" gate the context-compaction
+// inject path consults. Unlike getSessionStateSnapshot (last ANNOUNCED state, which lags the
+// _startTurn ensure window), the gate derives busy from the live `_queryBusy`/`_pendingTurns`.
+describe('sdk getTurnGate', () => {
+  it('returns null for an unknown anchor (no registered session)', async () => {
+    const { deps } = makeDeps();
+    const fq = makeResidentQuery({ initMsgs: [sysInit()] });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await tick(4);
+    // An anchor that resolves to nothing → null (callers treat as not-idle / target-gone).
+    assert.equal(sdk.getTurnGate({ project: 'no-such-project-xyz', instanceKey: 'ccv-deadbeef' }), null);
+  });
+
+  it('idle when no turn is in flight; queueLen/pendingApprovals surface for the gate', async () => {
+    const { deps } = makeDeps();
+    const fq = makeResidentQuery({ initMsgs: [sysInit()], respond: () => [resultMsg()] });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await tick(4);
+    const gate = sdk.getTurnGate(); // no anchor → active session
+    assert.ok(gate, 'gate exists for the active session');
+    assert.equal(gate.idle, true, 'no turn in flight → idle');
+    assert.equal(gate.state, 'idle');
+    assert.equal(gate.queueLen, 0);
+    assert.equal(gate.pendingApprovals, 0);
+    assert.equal(gate.turnId, null);
+  });
+
+  it('not idle while a turn is parked in flight (busy derived from _queryBusy/_pendingTurns)', async () => {
+    const { deps } = makeDeps();
+    let release;
+    const gatePromise = new Promise((r) => { release = r; });
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: async () => { await gatePromise; return [resultMsg()]; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const p = sdk.sendUserMessage('hi').catch(() => {});
+    await tick(6);
+    const gate = sdk.getTurnGate();
+    assert.ok(gate, 'gate exists mid-turn');
+    assert.equal(gate.idle, false, 'turn in flight → not idle');
+    assert.equal(gate.state, 'running');
+    assert.ok(gate.turnId, 'in-flight turn exposes a turnId');
+    release();
+    await p;
+    await tick(8);
+    const after = sdk.getTurnGate();
+    assert.equal(after.idle, true, 'turn settled → idle again');
+    assert.equal(after.turnId, null);
+  });
+});

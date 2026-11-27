@@ -150,9 +150,24 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       // prefsByProject(项目独立配置 fork)只能经 admin-only 的 /api/project-prefs/* 修改；元字段
       // (_isLocal/_projectScoped/…)仅 GET 回包，绝不让它们经 /api/preferences 落盘污染。
       delete incoming.prefsByProject;
-      // 定时任务只能经 /api/scheduled-tasks (admin+same-origin) 写 —— 任何客户端(含 admin)
-      // 都不得借 prefs POST 注入/清空/覆盖任务(claim CAS、调度状态校验只在 store 层做)。
+      // Scheduled tasks are writable only via /api/scheduled-tasks (admin+same-origin) — no client
+      // (admin included) may inject/clear/overwrite tasks through a prefs POST (claim CAS and schedule
+      // state validation live only in the store layer).
       delete incoming.scheduledTasks;
+      // Compaction rules are machine-global, and executionTiming:'auto' is auto-injected by the frontend
+      // without confirmation — the danger class is identical to scheduledTasks. Non-admin clients (an
+      // open no-password LAN session, or a cross-site form) must not plant a "low threshold + auto +
+      // arbitrary script" rule into every session of the host operator. Admin-only; stripped otherwise.
+      if (!isAdminReq(req, isLocal)) {
+        delete incoming.contextCompaction;
+      } else if (Object.prototype.hasOwnProperty.call(incoming, 'contextCompaction')) {
+        // Admin writes still require same-origin (blocks cross-site form POSTs; same gate as CLAUDE_EXECUTABLE).
+        if (!isSameOriginBrowserRequest(req, parsedUrl)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Same-origin request required' }));
+          return;
+        }
+      }
       for (const k of Object.keys(incoming)) if (k[0] === '_') delete incoming[k];
       // IM bridge configs 同理：只能经 admin-only 的 /api/dingtalk/config、/api/im/* 修改，禁止借
       // /api/preferences 植入凭据。

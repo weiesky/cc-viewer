@@ -14,9 +14,11 @@ import { listPlatforms } from './im/im-config.js';
 import { getProjectName } from './project-state.js';
 
 // SINGLE SOURCE of "what must never live inside a fork": secrets (auth password + IM creds),
-// machine-level paths (logDir/claudeConfigDir), and the internal forks map. snapshotForFork /
-// cleanPatch / the admin list read all funnel through stripSensitive so the rule can't drift.
-const STRIP_KEYS = ['auth', 'authByProject', 'prefsByProject', 'logDir', 'claudeConfigDir', 'scheduledTasks'];
+// machine-level paths (logDir/claudeConfigDir), the internal forks map, and global-only features
+// that must stay identical across every project (scheduledTasks; contextCompaction — the
+// compaction rules are a machine-global list, never per-project). snapshotForFork / cleanPatch /
+// the admin list read all funnel through stripSensitive so the rule can't drift.
+const STRIP_KEYS = ['auth', 'authByProject', 'prefsByProject', 'logDir', 'claudeConfigDir', 'scheduledTasks', 'contextCompaction'];
 
 /** Strip secrets + IM credentials + machine-level keys from a prefs-shaped object in place. */
 export function stripSensitive(obj) {
@@ -80,12 +82,17 @@ export function snapshotForFork(prefsRaw) {
  * stamps them after this runs.
  */
 export function resolveScoped(globalPrefs, fork) {
-  const { approvalModal: gAM, ...gRest } = globalPrefs || {};
-  const { approvalModal: fAM, ...fRest } = fork || {};
+  const { approvalModal: gAM, contextCompaction: gCC, ...gRest } = globalPrefs || {};
+  // Strip the fork's own contextCompaction copy up front so a hand-edited/legacy dirty fork
+  // can never shadow the global machine-wide list. The GLOBAL value is re-applied below.
+  const { approvalModal: fAM, contextCompaction: _fCC, ...fRest } = fork || {};
   const merged = { ...gRest, ...fRest };
   // 定时任务是全局状态(claim CAS 只在全局 prefs 上进行)——fork 永远不得携带/遮蔽它,
   // 否则脏 fork 会把任务定义/claim 透给 scoped 客户端读侧。
   delete merged.scheduledTasks;
+  // Compaction rules are machine-global (STRIP_KEYS already blocks fork writes): after stripping the fork's dirty copy, restore the global value —
+  // what was removed is the fork's shadowing, not the global value itself (otherwise scoped clients lose the rules and their save would overwrite the global).
+  if (gCC !== undefined) merged.contextCompaction = gCC;
   if (gAM || fAM) {
     // 防引用别名：fork 无 approvalModal 时也返回浅拷贝，避免调用方（preferencesGet 的
     // voicePack reconcile）回写到解析出的全局对象（当前每请求新解析虽无害，仍保持"绝不外泄内部引用"）。

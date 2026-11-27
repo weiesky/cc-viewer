@@ -1424,6 +1424,7 @@
   "server/lib/code-replace.js",
   "server/lib/code-search.js",
   "server/lib/codefuse-managed-mode.js",
+  "server/lib/compact-inject-guard.js",
   "server/lib/config-backup.js",
   "server/lib/context-watcher.js",
   "server/lib/continuation-args.js",

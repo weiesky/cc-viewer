@@ -317,12 +317,16 @@ function _injectHead() {
 }
 
 /**
- * Poll (≤ INJECT_POLL_MAX_MS) until _safeToInject(), then run fn. On timeout: do NOT inject —
+ * Poll (≤ INJECT_POLL_MAX_MS) until the idle probe passes, then run fn. On timeout: do NOT inject —
  * invoke onTimeout instead (caller decides: keep queued / restore item). A timed-out blind
  * write could land in a TUI-native question prompt and be submitted as its answer.
  * Tick-counted (not Date-based) so mock.timers without Date mocking can drive it in tests.
+ *
+ * `probe` defaults to the global `_safeToInject`; anchor-targeted injects (injectCommand) pass
+ * their target-scoped probe so the poll watches the SAME workspace the initial check gated on.
  */
-function _pollUntilSafe(fn, onTimeout) {
+function _pollUntilSafe(fn, onTimeout, probe) {
+  const isIdle = typeof probe === 'function' ? probe : _safeToInject;
   _clearPollTimer();
   const maxTicks = Math.ceil(INJECT_POLL_MAX_MS / INJECT_POLL_MS);
   let ticks = 0;
@@ -333,7 +337,7 @@ function _pollUntilSafe(fn, onTimeout) {
       if (onTimeout) onTimeout();
       return;
     }
-    if (!_safeToInject()) return;
+    if (!isIdle()) return;
     _clearPollTimer();
     fn();
   }, INJECT_POLL_MS);
@@ -514,8 +518,48 @@ export function sendNow(id, anchor) {
     _restoreDispatch();
   };
 
+  // Busy check for the ITEM's own scope (anchor-scoped when available), not whichever PTY is
+  // globally active: a background workspace's streaming must not decide whether THIS target gets
+  // interrupted, and this target's streaming must not be masked by an idle global bucket (review:
+  // force compaction would otherwise paste /compact into a busy target without interrupting it).
+  const itemAnchor = item.anchor || null;
+  const _scopedProbes = itemAnchor && typeof _deps.isTurnActiveFor === 'function' && typeof _deps.isStreamingFor === 'function';
+  // Target-scoped idle probe for the poll/inject path: prefers the anchor-aware probes, plus the
+  // claude-TUI kind + approval/external-injection guards; falls back to the global _safeToInject
+  // when no scoped probe is wired. Mirrors _injectTextWhenIdle's targetIdle (review P1-1).
+  const idleProbe = _scopedProbes
+    ? (() => {
+        if (!_deps) return false;
+        if (_injecting) return false;
+        try {
+          if (_deps.isTurnActiveFor(itemAnchor)) return false;
+          if (_deps.isStreamingFor(itemAnchor)) return false;
+          if (typeof _deps.getPtyKindFor === 'function' && _deps.getPtyKindFor(itemAnchor) !== 'claude') return false;
+          if (_deps.hasPendingApproval && _deps.hasPendingApproval()) return false;
+          if (_deps.hasExternalInjection && _deps.hasExternalInjection()) return false;
+        } catch (err) { reportSwallowed('chat-queue.probe', err); return false; }
+        return true;
+      })
+    : _safeToInject;
   let streaming = false;
-  try { streaming = !!(_deps.isStreaming && _deps.isStreaming()); } catch { streaming = false; }
+  try {
+    if (_scopedProbes) {
+      streaming = !!(_deps.isTurnActiveFor(itemAnchor) || _deps.isStreamingFor(itemAnchor));
+    } else {
+      streaming = !!(_deps.isStreaming && _deps.isStreaming());
+    }
+  } catch { streaming = false; }
+  // Pending-approval guard (regression): the anchor-scoped busy check treats "turn active while a
+  // tool approval is waiting" as streaming, but writing ESC here would cancel the user's pending
+  // approval prompt — the OLD global-isStreaming path never did that (API-call-level idle during an
+  // approval wait fell through to the idle poll). Don't touch the PTY while an approval is open;
+  // just poll until it's answered, then inject.
+  let pendingApproval = false;
+  try { pendingApproval = !!(_deps.hasPendingApproval && _deps.hasPendingApproval()); } catch { pendingApproval = false; }
+  if (streaming && pendingApproval) {
+    _pollUntilSafe(inject, restore, idleProbe);
+    return true;
+  }
   if (streaming) {
     // Interrupt the item's own session, not whichever PTY is globally active.
     const writeFocus = (data, tag) => {
@@ -540,14 +584,14 @@ export function sendNow(id, anchor) {
       _escTimer = null;
       if (gen !== _gen || !_dispatch || _dispatch.item.id !== item.id) return;
       if (writeFocus('\x1b', 'chat-queue.send-now.esc') === false) return;
-      _pollUntilSafe(inject, restore);
+      _pollUntilSafe(inject, restore, idleProbe);
     }, STOP_ESC_DELAY_MS);
     if (typeof _escTimer.unref === 'function') _escTimer.unref();
-  } else if (_safeToInject()) {
+  } else if (idleProbe()) {
     // Idle / parked queue (e.g. after Stop): no interrupt needed — inject right away.
     inject();
   } else {
-    _pollUntilSafe(inject, restore);
+    _pollUntilSafe(inject, restore, idleProbe);
   }
   return true;
 }
@@ -594,6 +638,74 @@ export function stop() {
 const RESUME_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Shared "inject a slash-command paste only when observably idle" core (2026-11).
+ * Owns the single `_dispatch`/`_injecting`/`_pollTimer` slot discipline: refuses up-front when
+ * any is owned (mirrors sendNow's guard) instead of clobbering a pending dispatch / drain poll
+ * and stranding a queued message.
+ *
+ * Anchor-targeted busy probe: when the caller passes an anchor AND deps expose the target-scoped
+ * probes (`isStreamingFor` / `getPtyKindFor`), the idle check is scoped to the TARGET workspace,
+ * not the globally-bound one (the generic `_safeToInject` reads the bound project's streaming
+ * state — a known multi-project limitation that would inject into a busy target or refuse an
+ * idle one). Falls back to the global probes when target-scoped ones are not wired.
+ *
+ * @param {string} text — already-validated command text (caller sanitizes/validates shape)
+ * @param {object|null} anchor — { project?, instanceKey? } routing target
+ * @param {object} [opts] — { strict:boolean } forwarded to writeToPtySequentialFor
+ * @returns Promise<{ok:true}|{ok:false,reason:'busy'|'no-deps'|'no-anchor'|'write-failed'}>
+ */
+function _injectTextWhenIdle(text, anchor, { strict = false } = {}) {
+  return new Promise((resolve) => {
+    if (!_deps) { resolve({ ok: false, reason: 'no-deps' }); return; }
+    // Refuse BEFORE touching _pollUntilSafe: a dispatch (even in its ESC-delay window) or a
+    // drain's poll owns the single timer slots — barging in would strand a queued message.
+    if (_dispatch || _injecting || _pollTimer) { resolve({ ok: false, reason: 'busy' }); return; }
+
+    // Target-scoped idle check. Uses the anchor-aware probes when available; falls back to the
+    // global _safeToInject otherwise. Never falls through to an inject on a throwing probe.
+    //   - isStreamingFor(anchor)  → target scope streaming (server wires streamingStateFor(scopeKeyOf(...)))
+    //   - isTurnActiveFor(anchor) → target scope turn-level busy (turnStateFor); a turn-level truth
+    //                               covers the per-API-call flicker gap the streaming probe has.
+    //   - getPtyKindFor(anchor)   → target is a claude TUI
+    const targetIdle = () => {
+      if (!_deps) return false;
+      if (_injecting) return false;
+      try {
+        if (typeof _deps.isTurnActiveFor === 'function' && _deps.isTurnActiveFor(anchor)) return false;
+        if (typeof _deps.isStreamingFor === 'function' && _deps.isStreamingFor(anchor)) return false;
+        if (typeof _deps.getPtyKindFor === 'function' && _deps.getPtyKindFor(anchor) !== 'claude') return false;
+        // Fall back to the global probes only when no scoped probe is wired at all.
+        if (typeof _deps.isStreamingFor !== 'function' && typeof _deps.isTurnActiveFor !== 'function') {
+          if (_deps.getPtyKind && _deps.getPtyKind() !== 'claude') return false;
+          if (_deps.isStreaming && _deps.isStreaming()) return false;
+        }
+        if (_deps.hasPendingApproval && _deps.hasPendingApproval()) return false;
+        if (_deps.hasExternalInjection && _deps.hasExternalInjection()) return false;
+      } catch (err) { reportSwallowed('chat-queue.probe', err); return false; }
+      return true;
+    };
+
+    let settled = false;
+    const done = (r) => { if (!settled) { settled = true; resolve(r); } };
+    const inject = () => {
+      _injecting = true;
+      try {
+        _deps.writeToPtySequentialFor(bracketPasteSubmit(text), (ok) => {
+          _injecting = false;
+          done(ok ? { ok: true } : { ok: false, reason: 'write-failed' });
+        }, { settleMs: 250, strict }, anchor || {});
+      } catch (err) {
+        _injecting = false;
+        reportSwallowed('chat-queue.inject', err);
+        done({ ok: false, reason: 'write-failed' });
+      }
+    };
+    if (targetIdle()) { inject(); return; }
+    _pollUntilSafe(inject, () => done({ ok: false, reason: 'busy' }), targetIdle);
+  });
+}
+
+/**
  * True /resume (2026-10-06): inject `/resume <uuid>` into a target project's running claude
  * PTY so the process switches INTO that session in place (Claude Code's native SessionStart
  * hook then re-binds the v2 writer via beginResumeSwitch). This is the in-process switch —
@@ -606,38 +718,54 @@ const RESUME_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  *   { ok:false, reason:'bad-uuid' }     — sessionUuid is not a UUID shape
  *   { ok:false, reason:'no-deps' }      — initChatQueue never ran (SDK mode / not wired)
  *   { ok:false, reason:'write-failed' } — the PTY write failed or threw
- *
- * Shares the single `_injecting`/`_pollTimer`/`_dispatch` slots with the drain/sendNow paths,
- * so it refuses up-front when any is owned (mirrors sendNow's guard) instead of clobbering a
- * pending dispatch and stranding a queued message. The completion handler resets `_injecting`
- * unconditionally (both callback and catch) so a mid-inject clear()/stop() generation bump can
- * never wedge the queue.
  */
 export function injectResumeCommand(sessionUuid, anchor) {
+  if (!_deps) return Promise.resolve({ ok: false, reason: 'no-deps' });
+  const uuid = sanitizeInbound(String(sessionUuid == null ? '' : sessionUuid)).trim();
+  if (!RESUME_UUID_RE.test(uuid)) return Promise.resolve({ ok: false, reason: 'bad-uuid' });
+  return _injectTextWhenIdle(`/resume ${uuid}`, anchor);
+}
+
+const COMPACT_CMD_RE = /^\/compact(\s|$)/;
+const INJECT_CMD_MAX_LEN = 20000;
+
+/**
+ * Inject a `/compact <script>` (context compaction) command into the anchored claude PTY.
+ * Stricter than injectResumeCommand on routing: strict:true is ALWAYS passed so an unresolved /
+ * dead anchor fails (`target-gone`/`write-failed`) instead of falling back to the active PTY and
+ * compacting the WRONG conversation (review P0). The target is also liveness-probed up front, and
+ * a non-empty FIFO for the same scope returns `busy` (compaction must not jump ahead of queued
+ * user messages).
+ *
+ * Resolves:
+ *   { ok:true }                    — the paste was written to the anchored PTY
+ *   { ok:false, reason:'busy' }    — target busy / slot owned / poll timeout (retryable)
+ *   { ok:false, reason:'target-gone' } — anchor resolves to no live claude PTY
+ *   { ok:false, reason:'bad-text' }    — not a `/compact` command / empty / over-length
+ *   { ok:false, reason:'no-anchor' }   — no project/instance routing key supplied
+ *   { ok:false, reason:'no-deps' }     — initChatQueue never ran (SDK mode / not wired)
+ *   { ok:false, reason:'write-failed'} — the PTY write failed or threw
+ */
+export function injectCommand(text, anchor) {
   return new Promise((resolve) => {
     if (!_deps) { resolve({ ok: false, reason: 'no-deps' }); return; }
-    const uuid = sanitizeInbound(String(sessionUuid == null ? '' : sessionUuid)).trim();
-    if (!RESUME_UUID_RE.test(uuid)) { resolve({ ok: false, reason: 'bad-uuid' }); return; }
-    // Refuse BEFORE touching _pollUntilSafe: a dispatch (even in its ESC-delay window) or a
-    // drain's poll owns the single timer slots — barging in would strand a queued message.
-    if (_dispatch || _injecting || _pollTimer) { resolve({ ok: false, reason: 'busy' }); return; }
-    let settled = false;
-    const done = (r) => { if (!settled) { settled = true; resolve(r); } };
-    const inject = () => {
-      _injecting = true;
-      try {
-        _deps.writeToPtySequentialFor(bracketPasteSubmit(`/resume ${uuid}`), (ok) => {
-          _injecting = false;
-          done(ok ? { ok: true } : { ok: false, reason: 'write-failed' });
-        }, { settleMs: 250 }, anchor || {});
-      } catch (err) {
-        _injecting = false;
-        reportSwallowed('chat-queue.resume.inject', err);
-        done({ ok: false, reason: 'write-failed' });
-      }
-    };
-    if (_safeToInject()) { inject(); return; }
-    _pollUntilSafe(inject, () => done({ ok: false, reason: 'busy' }));
+    const clean = sanitizeInbound(String(text == null ? '' : text)).trim();
+    if (!clean || clean.length > INJECT_CMD_MAX_LEN || !COMPACT_CMD_RE.test(clean)) { resolve({ ok: false, reason: 'bad-text' }); return; }
+    const a = anchor && typeof anchor === 'object' ? anchor : null;
+    if (!a || !(a.project || a.instanceKey)) { resolve({ ok: false, reason: 'no-anchor' }); return; }
+    // Liveness pre-flight: a dead/mis-resolved target never enters the poll loop.
+    if (typeof _deps.hasLivePtyFor === 'function') {
+      let live;
+      try { live = _deps.hasLivePtyFor(a); } catch (err) { reportSwallowed('chat-queue.liveness-probe', err); live = undefined; }
+      if (live === false) { resolve({ ok: false, reason: 'target-gone' }); return; }
+    }
+    // Fairness: refuse to jump ahead of queued user messages for the same scope.
+    if (typeof _deps.getQueueSnapshot === 'function') {
+      let qlen = 0;
+      try { const snap = _deps.getQueueSnapshot(a); qlen = Array.isArray(snap) ? snap.length : 0; } catch (err) { reportSwallowed('chat-queue.queue-probe', err); qlen = 0; }
+      if (qlen > 0) { resolve({ ok: false, reason: 'busy' }); return; }
+    }
+    resolve(_injectTextWhenIdle(clean, a, { strict: true }));
   });
 }
 
