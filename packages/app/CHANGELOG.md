@@ -1,5 +1,37 @@
 # cc-viewer
 
+## 1.9.38
+
+### Patch Changes
+
+- c000823: feat(web): context compaction prompts on the first fresh above-threshold reading
+  
+  The compaction reminder (confirm bubble, countdown, or automatic injection, depending on the rule's execution timing) now fires at the first turn-end check whose fresh usage reading exceeds a rule's threshold; the previous two-consecutive-readings debounce is removed. Freshness fingerprinting, hysteresis, post-injection cooldown, decline deferral, permanent ignore, and the failure circuit breaker are unchanged, as is the 960K forced compaction. The settings-modal hint (all 18 locales) and both READMEs are updated to match.
+  
+  feat(web): compaction busy hint shown inline next to the confirm button
+  
+  When the "Compact now" button is disabled because a turn is in flight, the reason ("Compaction is possible only after the current turn ends") now renders inline next to the button in the warning color instead of as a hover-only tooltip, so the affordance does not depend on the user hovering long enough to discover it.
+  
+  feat(web): compaction bubble body explains why compaction matters
+  
+  The bubble body no longer just states "rule triggered"; it now reads "rule triggered — context keeps growing, compacting now preserves response quality" in all 18 locales, so the user sees the reason to compact rather than a bare threshold hit.
+  
+  Coverage: `context-compaction-i18n.test.js`.
+- 9be2579: feat(web+server): context compaction settings — configurable /compact rules with threshold-based confirm
+  
+  Quick-settings menu gains a "Context compaction" entry managing a list of compaction rules (title / custom script / percent-or-K threshold), stored as the global `contextCompaction` key in preferences.json. After a turn ends, context usage is read from the SDK snapshot (get_context_usage) or the PTY context_window event; the first fresh over-threshold reading surfaces a reminder, and `/compact <script>` is injected through an idle-guarded server path (SDK sendUserMessage turn-gate / PTY chatQueue.injectCommand with strict anchor routing). Includes hysteresis, cooldown, a failure circuit-breaker, cross-tab dedupe, and a management modal sharing the quick-shortcuts list UI.
+  
+  Each rule also carries an "execution timing": ask-the-user, auto-after-30s, auto-after-3min (a countdown bubble that can be acted on or declined early, paused while hidden), or fully automatic (inject without a bubble). The reminder now floats as a bubble above the composer aligned to the quick-settings star instead of a full-width bar, with an explicit (x) "decline this time, remind me later" (re-reminds after the next turn ends or context grows +50K tokens / +5%).
+  
+  A built-in "default compaction rule" (75% / ask-the-user) is now always present — it cannot be deleted (whitelisted `builtinId`, merged into every config so existing users who cleared their list get it back), but its title / script / threshold / enabled / timing are all user-editable. A watermark line marks the lowest enabled rule's threshold on the context usage bar, shown only once usage comes within 100K of it. When context usage crosses 960K tokens mid-turn, a forced compaction fires immediately: the current turn is interrupted and the default rule's current script is injected (user-edited, or the built-in fallback) — SDK `forceSendUserMessage` queue + send-now; PTY enqueue + sendNow ESC-interrupt + bracketed paste, never blind-write. A post-compaction latch prevents re-firing on stale readings until usage genuinely drops.
+- 9acd811: fix(web+server): task panel no longer shows bare `#id` rows for label-less entries
+  
+  In SDK mode the HUD checklist could render rows labelled only with the raw task id even though a description was available on hover. Server `getSdkTaskSnapshot` and client `sdkTaskTracker.applySnapshot` / `restoreFromStorage` now share a predicate (`@ccv/core/sdk-task-label`) that filters out terminal entries with no displayable label (`description`/`summary` empty after trim). `TaskProgressHud`'s label and current-task fallback chain is extended to `subject || description || #taskId`, so summary-bearing entries surface their text instead of a bare id. PTY-mode stub rows are deliberately kept (a live placeholder while the next TaskUpdate lands) — the filter stays SDK-scoped.
+  
+  Also fixes two server-side fold bugs in the sdk-task table: (1) the LRU `delete` ran before the `get`, so `_foldSdkTask` always received `prev=undefined` and any status-only `task_updated` patch would silently replace the entry and wipe the started frame's description; (2) a `task_started` re-fire for a reused taskId now resets run-scoped state (status/summary/usage/endTime), matching the client tracker's reset semantics so a reconnect replay does not clobber the live in_progress row back to the previous run's terminal state.
+  
+  Coverage: `sdk-task-table.test.js`, `sdkTaskTracker.test.js`, `sdkTaskTracker-persist.test.js`, `task-progress-hud.test.js`, `sdk-task-label.test.js`.
+
 ## 1.9.37
 
 ### Patch Changes
