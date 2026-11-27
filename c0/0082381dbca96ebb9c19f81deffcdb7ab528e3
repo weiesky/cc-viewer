@@ -1,0 +1,56 @@
+apps/web/src/i18n.js
+  s_679ef1fbc73994::t_9d75138469fe78 2028-2045
+  s_679ef1fbc73994::t_e245f340b29919 1568-1585
+apps/web/src/utils/contextCompaction.js
+  s_679ef1fbc73994::t_cd2e319bffac57 500
+  s_679ef1fbc73994::t_50431c7154024a 27-29
+  s_679ef1fbc73994::t_59281072f25947 533
+apps/web/src/components/chat/ChatView.jsx
+  s_679ef1fbc73994::t_795b05eefcbee4 4270
+  s_679ef1fbc73994::t_4a851cca7bb9f1 4375-4377
+.changeset/context-compaction-first-reading.md
+  s_679ef1fbc73994::t_92bee5c55a5afc 1-8
+  s_679ef1fbc73994::t_472fdff6506cf8 9-12
+  s_679ef1fbc73994::t_58a077321e297b 13-17
+.changeset/context-compaction-settings.md
+  s_679ef1fbc73994::t_68b718d78dd5ef 7
+apps/web/test/context-compaction-wiring.test.js
+  s_679ef1fbc73994::t_f1e7fc629434e9 62-73
+apps/web/src/components/chat/ChatView.module.css
+  s_679ef1fbc73994::t_4c3df47d9519fa 760
+  s_679ef1fbc73994::t_bac30dcdca9d34 754-759,761-762
+apps/web/test/context-compaction.test.js
+  s_679ef1fbc73994::t_74004649968d50 470-474,476-484,489,500,502
+  s_679ef1fbc73994::t_3e063cf9870362 555-565
+  s_679ef1fbc73994::t_c17fc5f29b73f8 619-620
+  s_679ef1fbc73994::t_194c227030578d 585,592-594
+  s_679ef1fbc73994::t_9b76b35e390e2b 663
+  s_679ef1fbc73994::t_63da78cab6c0ff 521-523,533-535
+README.md
+  s_679ef1fbc73994::t_635df51010d55d 167
+docs/README.zh.md
+  s_679ef1fbc73994::t_46c4e140461794 186
+history.md
+  s_679ef1fbc73994::t_4fa550542dbf6c 7-9
+  s_679ef1fbc73994::t_3539ebfbdb1bb9 5-6
+  s_679ef1fbc73994::t_4a037e6d403686 13
+  s_679ef1fbc73994::t_92b76f7e6b9675 10
+apps/web/src/components/chat/ContextCompactionBar.jsx
+  s_679ef1fbc73994::t_4920460ba88304 176-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c00082381dbca96ebb9c19f81deffcdb7ab528e3",
+  "prompts": {},
+  "sessions": {
+    "s_679ef1fbc73994": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4019e97d-46f2-4093-9de9-9a6634965dd7",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
