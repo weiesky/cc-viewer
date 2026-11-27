@@ -60,13 +60,16 @@ export default function TaskProgressHud() {
   const total = tasks.length;
 
   // Derive "current" in display order: first in_progress (its activeForm in
-  // present tense preferred), else the next pending task.
+  // present tense preferred), else the next pending task. Both label slots
+  // fall back to description before the bare "#id" — an SDK-mode entry whose
+  // started frame was lost can carry only summary (mapped to description),
+  // and showing that is more useful than the raw id.
   const inProgress = tasks.find(x => x.status === 'in_progress');
   const nextPending = tasks.find(x => x.status === 'pending');
   const currentTask = inProgress || nextPending;
   const current = inProgress
-    ? (inProgress.activeForm || inProgress.subject || `#${inProgress.taskId}`)
-    : (nextPending.subject || `#${nextPending.taskId}`);
+    ? (inProgress.activeForm || inProgress.subject || inProgress.description || `#${inProgress.taskId}`)
+    : (nextPending.subject || nextPending.description || `#${nextPending.taskId}`);
   // The header bubble shows the current task's DETAIL (same as a row's Popover),
   // not the title already visible in the strip. Empty detail → no bubble.
   const currentDetail = currentTask ? (currentTask.description || currentTask.subject || '') : '';
@@ -197,7 +200,7 @@ function TaskRow({ task }) {
           {...TOUCH_TRIGGER_PROPS}
         >
           <span className={`${styles.label} ${task.status === 'completed' ? styles.labelDone : ''} ${task.status === 'failed' ? styles.labelFailed : ''}`}>
-            {task.subject || `#${task.taskId}`}
+            {task.subject || task.description || `#${task.taskId}`}
           </span>
         </Popover>
         {task.status === 'in_progress' && task.activeForm && task.activeForm !== task.subject && (

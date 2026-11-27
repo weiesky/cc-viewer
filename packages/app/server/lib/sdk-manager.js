@@ -39,6 +39,7 @@ import { seedSessionProxyProfile, clearSessionProxyProfile, clearSessionProxyPro
 import { readPrefsRaw } from './prefs-store.js';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
 import { AGENT_PROMPT_SNIPPET_LEN } from '@ccv/core/contentFilter';
+import { hasWireTaskLabel } from '@ccv/core/sdk-task-label';
 import {
   computeAutoApprove,
   createAutoApproveState,
@@ -473,6 +474,21 @@ function _normalizeSdkTask(msg) {
 const _SDK_TASK_TERMINAL = new Set(['completed', 'failed', 'stopped', 'killed']);
 function _foldSdkTask(prev, frame) {
   const next = { ...(prev || {}), taskId: frame.taskId };
+  // A task_started re-fire opens a NEW run for this taskId (the client tracker
+  // does the same — sdkTaskTracker.js resets status to in_progress on re-fire,
+  // "a task id may be reused after session reset or completion"). Reset the
+  // run-scoped fields so a previous incarnation's terminal state does not leak
+  // into the new run: a status-only task_notification/summary/usage/endTime
+  // from the old run must not survive, and the new run starts in 'running'.
+  // Without this, merge semantics (post fold-bug fix) would let `completed`
+  // stick across the re-fire, and the next reconnect replay would clobber the
+  // client's correct in_progress row back to the stale terminal one.
+  if (frame.subtype === 'task_started') {
+    delete next.status;
+    delete next.summary;
+    delete next.usage;
+    delete next.endTime;
+  }
   if (frame.sessionId != null) next.sessionId = frame.sessionId;
   if (frame.toolUseId != null) next.toolUseId = frame.toolUseId;
   if (frame.taskType != null) next.taskType = frame.taskType;
@@ -1820,8 +1836,13 @@ function _createSession(cwd, { freshKey = false } = {}) {
               _sdkTaskTable = new Map();
               _sdkTaskTableSessionId = sdkTaskFrame.sessionId;
             }
+            // Read prev BEFORE the LRU delete — otherwise _foldSdkTask always
+            // sees undefined and "merge" silently becomes "replace", wiping the
+            // started frame's description/toolUseId/promptSnippet on any
+            // status-only task_updated / task_notification.
+            const prev = _sdkTaskTable.get(sdkTaskFrame.taskId);
             _sdkTaskTable.delete(sdkTaskFrame.taskId); // re-insert for LRU order
-            _sdkTaskTable.set(sdkTaskFrame.taskId, _foldSdkTask(_sdkTaskTable.get(sdkTaskFrame.taskId), sdkTaskFrame));
+            _sdkTaskTable.set(sdkTaskFrame.taskId, _foldSdkTask(prev, sdkTaskFrame));
             while (_sdkTaskTable.size > _SDK_TASK_TABLE_CAP) {
               const oldest = _sdkTaskTable.keys().next().value;
               _sdkTaskTable.delete(oldest);
@@ -3092,12 +3113,21 @@ function _createSession(cwd, { freshKey = false } = {}) {
     // otherwise a client that missed the session boundary keeps its stale agents.
     // skipTranscript entries are tracked (they carry the session boundary) but hidden
     // from the replay, matching the live path that never shows ambient tasks.
+    // Label-less TERMINAL entries are also hidden: the predicate (hasWireTaskLabel)
+    // is shared with the client tracker and treats null/empty/whitespace-only
+    // description+summary as "no label" — a terminal ghost would render as a bare
+    // `#id` on the HUD with no live update to relabel it. In-flight entries stay
+    // visible regardless of label so a later task_progress(description) frame
+    // can still enrich them. Label-less entries still live in the table for
+    // session-boundary detection and LRU bookkeeping; the filter only spares
+    // the replay payload.
     getSdkTaskSnapshot: () => ({
       type: 'sdk-task-snapshot',
       cwd: _cwd,
       instanceKey,
       sessionId: _sdkTaskTableSessionId,
-      tasks: [..._sdkTaskTable.values()].filter((t) => t.skipTranscript !== true),
+      tasks: [..._sdkTaskTable.values()].filter((t) =>
+        t.skipTranscript !== true && hasWireTaskLabel(t)),
     }),
     fetchContextUsage: async () => {
       // On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,

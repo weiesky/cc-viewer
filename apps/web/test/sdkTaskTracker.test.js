@@ -344,5 +344,80 @@ describe('utils/sdkTaskTracker.js', () => {
       applySnapshot({ tasks: 'nope' });
       assert.deepEqual(getTasks().map((t) => t.taskId), ['t1'], 'unchanged on malformed input');
     });
+
+    it('drops label-less entries (no description, no summary) as a client-side mirror of the server filter', () => {
+      // Belt-and-braces: even if a stale server replays a label-less ghost, the
+      // tracker must not adopt it — the HUD would render a bare "#id" row, which
+      // is never this turn's work.
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_vis', taskType: 'local_agent', status: 'running', description: 'Visible' },
+          { taskId: 't_sum', taskType: 'local_agent', status: 'completed', terminal: true, summary: 'Find dispatch of non-interactive local commands' },
+          { taskId: 't_ghost', taskType: 'local_agent', status: 'completed', terminal: true }, // no description, no summary
+        ],
+      });
+      const ids = getTasks().map((t) => t.taskId);
+      assert.deepEqual(ids, ['t_vis', 't_sum'],
+        'label-less ghost dropped; description-bearing and summary-bearing kept');
+      const sum = getTasks().find((t) => t.taskId === 't_sum');
+      assert.equal(sum.subject, null, 'summary maps to description, subject stays null');
+      assert.equal(sum.description, 'Find dispatch of non-interactive local commands',
+        'HUD label falls back to description → renders the summary text');
+    });
+
+    it('treats empty-string and whitespace-only labels as label-less on TERMINAL entries (truthy guard, not != null)', () => {
+      // The HUD renders subject || description || `#id`. `''` is falsy, so a
+      // terminal entry with `description: ''` would surface as a bare "#id" row
+      // with no live update coming to relabel it — the filter must drop it.
+      // In-flight (non-terminal) label-less entries stay visible regardless
+      // (see the "in-flight label-less stays" test below).
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_vis', taskType: 'local_agent', status: 'running', description: 'Visible' },
+          { taskId: 't_empty_sum', taskType: 'local_agent', status: 'completed', terminal: true, summary: '' },
+          { taskId: 't_ws', taskType: 'local_agent', status: 'completed', terminal: true, description: '   ' },
+          { taskId: 't_empty_both', taskType: 'local_agent', status: 'completed', terminal: true, description: '', summary: '' },
+        ],
+      });
+      assert.deepEqual(getTasks().map((t) => t.taskId), ['t_vis'],
+        'terminal entries with empty/whitespace labels are treated as label-less');
+    });
+
+    it('keeps in-flight label-less entries so a later task_progress(description) can relabel them', () => {
+      // P2 decision: the label-less filter only applies to TERMINAL entries.
+      // An in-flight entry whose only frames were status-only task_updated
+      // patches is still a live task; filtering it would hide the row from a
+      // reconnect replay with no way for later deltas to re-label it.
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_inflight', taskType: 'local_agent', status: 'running' }, // no desc, no summary, NOT terminal
+          { taskId: 't_pending', taskType: 'local_agent', status: 'pending' }, // no desc, no summary, NOT terminal
+          { taskId: 't_ghost_terminal', taskType: 'local_agent', status: 'completed', terminal: true }, // terminal label-less → dropped
+        ],
+      });
+      const ids = getTasks().map((t) => t.taskId);
+      assert.deepEqual(ids, ['t_inflight', 't_pending'],
+        'in-flight label-less entries stay; terminal label-less dropped');
+    });
+
+    it('label-less snapshot adoption drops the row even when the tracker already tracks it', () => {
+      // Pin the semantics: the snapshot is authoritative-replace, so a filtered
+      // TERMINAL label-less entry removes the tracked row of the same taskId.
+      // Live frames for an unknown taskId early-return, so the row stays gone
+      // until a refired task_started or the next reconnect. Acceptable because
+      // the server-side fold merge (post-fix) preserves the started frame's
+      // description, so a legitimately-started task should never appear
+      // label-less in a snapshot.
+      applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Live' });
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [{ taskId: 't1', status: 'completed', terminal: true }], // terminal label-less
+      });
+      assert.deepEqual(getTasks(), [],
+        'snapshot-adoption filter replaces the whole view; existing entries are not immune');
+    });
   });
 });

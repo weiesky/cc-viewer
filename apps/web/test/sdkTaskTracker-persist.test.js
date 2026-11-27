@@ -227,4 +227,65 @@ describe('sdkTaskTracker persistence (browser refresh)', () => {
     const parsed = JSON.parse(globalThis.localStorage.getItem('ccv_activeAgents:s1'));
     assert.equal(parsed.tasks[0].taskId, 'a1', 'checkpoint intact, not overwritten by an echo');
   });
+
+  it('restoreFromStorage drops label-less seed rows (subject==null && description==null)', async () => {
+    // Write a checkpoint directly with a degraded row (no subject, no description)
+    // alongside a healthy one. The restore filter must drop the degraded row —
+    // a TERMINAL label-less row renders on the HUD as a bare "#id" with no live
+    // update coming to relabel it; it is replay/checkpoint residue, not a live
+    // in-flight stub.
+    globalThis.localStorage.setItem('ccv_activeAgents:s1', JSON.stringify({
+      sessionId: 's1',
+      tasks: [
+        { taskId: 'ok', subject: 'Find dispatch', description: null, status: 'in_progress' },
+        { taskId: 'ghost', subject: null, description: null, status: 'completed' },
+        { taskId: 'sum', subject: null, description: 'Find dispatch of non-interactive local commands', status: 'completed' },
+      ],
+      ownerKey: null,
+      ts: Date.now(),
+    }));
+    simulateRefresh();
+    tracker.restoreFromStorage('s1');
+    const ids = store.getTasks().map((t) => t.taskId);
+    assert.deepEqual(ids, ['ok', 'sum'],
+      'label-less ghost dropped; subject-bearing and description-bearing rows kept');
+    const sum = store.getTasks().find((t) => t.taskId === 'sum');
+    assert.equal(sum.subject, null);
+    assert.equal(sum.description, 'Find dispatch of non-interactive local commands',
+      'HUD label falls back to description → renders the summary text');
+  });
+
+  it('restoreFromStorage treats empty-string subject/description as label-less on TERMINAL rows', async () => {
+    // Truthy guard parity with applySnapshot: `subject: ''` is falsy, so a
+    // terminal row with no other label renders a bare "#id" — the filter must
+    // treat it as label-less too.
+    globalThis.localStorage.setItem('ccv_activeAgents:s1', JSON.stringify({
+      sessionId: 's1',
+      tasks: [
+        { taskId: 'ok', subject: 'Real', description: null, status: 'in_progress' },
+        { taskId: 'empty_subj', subject: '', description: null, status: 'completed' },
+        { taskId: 'empty_desc', subject: null, description: '', status: 'completed' },
+        { taskId: 'ws_subj', subject: '   ', description: null, status: 'completed' },
+      ],
+      ownerKey: null,
+      ts: Date.now(),
+    }));
+    simulateRefresh();
+    tracker.restoreFromStorage('s1');
+    assert.deepEqual(store.getTasks().map((t) => t.taskId), ['ok'],
+      'terminal rows with empty / whitespace-only labels are treated as label-less');
+  });
+
+  it('an all-label-less checkpoint restores as empty (hasSdkState stays false)', async () => {
+    globalThis.localStorage.setItem('ccv_activeAgents:s1', JSON.stringify({
+      sessionId: 's1',
+      tasks: [{ taskId: 'ghost', subject: null, description: null, status: 'completed' }],
+      ownerKey: null,
+      ts: Date.now(),
+    }));
+    simulateRefresh();
+    tracker.restoreFromStorage('s1');
+    assert.deepEqual(store.getTasks(), [], 'no displayable row → nothing restored');
+    assert.equal(tracker.hasSdkState(), false, 'empty restore does not mark SDK state');
+  });
 });

@@ -161,6 +161,14 @@ function _normalizeTask(t) {
   // status; an unknown status here means the wire invariant broke — drop the
   // row rather than render a ghost "pending".
   if (t.status != null && !VALID_STATUSES.has(t.status)) return null;
+  // PTY-mode snapshots keep label-less stub rows by design (see the PTY-vs-SDK
+  // note in packages/app/server/lib/task-state.js). The SDK-mode label-less
+  // filter is scoped to TERMINAL replay/restore entries and lives in
+  // sdk-manager.getSdkTaskSnapshot + sdkTaskTracker.applySnapshot /
+  // restoreFromStorage (@ccv/core/sdk-task-label). Live SDK frames
+  // (applyFrame) and PTY snapshots pass through this store unfiltered — both
+  // are live in-flight placeholders that a later TaskUpdate(subject) /
+  // task_progress(description) can still relabel.
   return {
     ...t,
     taskId: String(t.taskId),

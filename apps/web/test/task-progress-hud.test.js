@@ -272,3 +272,40 @@ describe('TaskProgressHud progress dots contract', () => {
     assert.match(m[1], /flex:\s*1\s+1\s+auto/, 'spacer absorbs the freed row width');
   });
 });
+
+describe('TaskProgressHud label fallback contract', () => {
+  it('TaskRow label chain is subject || description || #taskId', () => {
+    // A summary-bearing SDK ghost (subject=null, description=<summary>) or a
+    // PTY stub that picked up a description via TaskUpdate renders its text
+    // instead of the bare id. Mutation: reverting to `subject || #taskId`
+    // would reintroduce the bare-#id rows this diff exists to fix.
+    assert.ok(
+      jsx.includes('task.subject || task.description || `#${task.taskId}`'),
+      'TaskRow label falls back through subject → description → #id');
+  });
+
+  it('collapsed strip current chain falls back through description before #id', () => {
+    // The in-progress slot prefers activeForm (present tense); both slots must
+    // then try subject, then description, before the bare #id — otherwise a
+    // label-less current row shows `#id` on the strip while the expanded row
+    // shows real text.
+    assert.ok(
+      jsx.includes('inProgress.activeForm || inProgress.subject || inProgress.description || `#${inProgress.taskId}`'),
+      'in_progress current falls back through activeForm → subject → description → #id');
+    assert.ok(
+      jsx.includes('nextPending.subject || nextPending.description || `#${nextPending.taskId}`'),
+      'pending current falls back through subject → description → #id');
+  });
+
+  it('activeForm still wins over subject/description for in_progress label', () => {
+    // Regression: the fallback chain must keep activeForm first — a task with
+    // activeForm should not lose its present-tense label just because a
+    // description was added later.
+    const iActive = jsx.indexOf('inProgress.activeForm');
+    const iSubject = jsx.indexOf('inProgress.subject');
+    const iDesc = jsx.indexOf('inProgress.description');
+    assert.ok(iActive > -1 && iSubject > -1 && iDesc > -1, 'all three fields referenced');
+    assert.ok(iActive < iSubject && iSubject < iDesc,
+      'activeForm → subject → description precedence preserved');
+  });
+});
