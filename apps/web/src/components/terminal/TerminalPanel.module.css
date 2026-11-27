@@ -561,6 +561,20 @@
   text-overflow: ellipsis;
 }
 
+/* Read-only badge for the built-in compaction rule (default rule): a small tag after the title. */
+.compactionBuiltinTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  vertical-align: 1px;
+}
+
 .presetInput {
   width: min(600px, 80vw);
   background: var(--bg-container);
@@ -958,4 +972,11 @@
   color: var(--text-light);
   display: block;
   margin-bottom: 4px;
+}
+
+/* The inner add/edit Modal of context compaction settings (560px wide): .presetInput/.presetTextarea's
+   width:min(600px, 80vw) would overflow inside it, so scope it to 100% within that Modal here. */
+.compactionFormModal .presetInput,
+.compactionFormModal .presetTextarea {
+  width: 100%;
 }

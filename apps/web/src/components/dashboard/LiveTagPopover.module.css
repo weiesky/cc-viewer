@@ -49,6 +49,28 @@
 }
 
 
+/* Compaction watermark: a low-opacity vertical dashed line, unobtrusive, serving only as a position hint; on hover the Popover explains its meaning. */
+.liveTagWatermark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--ctx-color, currentColor);
+  opacity: 0.3;
+  pointer-events: auto; /* lets the dashed line receive hover to trigger the explanatory Popover (the parent fill is none) */
+  z-index: 2;
+  transition: left 0.3s;
+}
+
+.watermarkTip {
+  max-width: 220px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-line; /* renders \n in the copy as line breaks */
+}
+
+
 .liveTagHistory {
   background: var(--bg-surface);
   border-color: var(--border-light);

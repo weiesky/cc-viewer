@@ -2003,6 +2003,8 @@ class AppHeader extends React.Component {
         onRefreshMemory={this.handleRefreshMemory}
         onToolsCatalogOpenChange={this._setToolsCatalogOpen}
         projectName={projectName}
+        contextWindow={contextWindow}
+        contextCompaction={(this.context && this.context.preferences && this.context.preferences.contextCompaction) || null}
       />,
       slot
     );

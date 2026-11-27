@@ -54,6 +54,7 @@ import { setProxyStatsListener, setSlowUpstreamListener } from './lib/proxy/prox
 import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
+import { createCompactInjectGuard } from './lib/compact-inject-guard.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { takeInheritedAccessToken } from './lib/access-token.js';
 import { cancelAutoApproveState } from './lib/auto-approve.js';
@@ -1950,6 +1951,42 @@ async function setupTerminalWebSocket(httpServer) {
         writeToPtySequentialFor,
         getPtyKind,
         isStreaming: () => streamingState.active,
+        // Target-scoped busy probes for injectCommand (context compaction): scope the idle check
+        // to the ANCHOR's workspace, not the globally-bound one. The scope key MUST be normalized
+        // with normalizeProducerScope first — producers fold the BOUND project to the '' bucket
+        // (scopeKeyForEntry / _resolveScopeForHookPayload), so a raw `scopeKeyOf(boundName, …)`
+        // would read a never-written bucket and report a streaming bound TUI as idle (review P0).
+        isStreamingFor: (anchor) => {
+          if (!anchor || typeof anchor !== 'object') return streamingState.active;
+          const p = anchor.project || (anchor.cwd ? projectKeyForCwd(anchor.cwd) : null) || null;
+          const inst = (typeof anchor.instanceKey === 'string' && anchor.instanceKey) || null;
+          const sc = normalizeProducerScope({ project: p, instance: inst }, _projectName || '');
+          const direct = scopeKeyOf(sc.project, sc.instance);
+          if (streamingStateFor(direct).active === true) return true;
+          // Anchor without an instance key (a project-only view of parallel workspaces): the producer
+          // writes buckets keyed `project\0instance`, so a project-level direct lookup misses — also scan
+          // every active instance bucket under this project.
+          if (!sc.instance && sc.project) {
+            const prefix = `${sc.project}\0`;
+            for (const k of activeStreamingScopes()) { if (k.startsWith(prefix)) return true; }
+          }
+          return false;
+        },
+        isTurnActiveFor: (anchor) => {
+          if (!anchor || typeof anchor !== 'object') return turnActive.active === true;
+          const p = anchor.project || (anchor.cwd ? projectKeyForCwd(anchor.cwd) : null) || null;
+          const inst = (typeof anchor.instanceKey === 'string' && anchor.instanceKey) || null;
+          const sc = normalizeProducerScope({ project: p, instance: inst }, _projectName || '');
+          const direct = scopeKeyOf(sc.project, sc.instance);
+          if (turnStateFor(direct).active === true) return true;
+          if (!sc.instance && sc.project) {
+            const prefix = `${sc.project}\0`;
+            for (const k of activeTurnScopes()) { if (k.startsWith(prefix)) return true; }
+          }
+          return false;
+        },
+        getPtyKindFor: (anchor) => getPtyKindFor(anchor),
+        getQueueSnapshot: (anchor) => chatQueue.getSnapshot(anchor),
         hasPendingApproval: () => pendingAskHooks.size > 0 || pendingPermHooks.size > 0,
         hasExternalInjection: () => imCore.anyActiveInjection(),
         hasLivePtyFor: (anchor) => {
@@ -3167,6 +3204,147 @@ async function setupTerminalWebSocket(httpServer) {
                 catch (e2) { reportSwallowed('server.sdk-send-failed-send', e2); }
               });
             }
+          } else if (msg.type === 'compact-inject') {
+            // Context compaction: after the user agrees via the frontend confirm bar, request injection of `/compact <script>`.
+            // Trigger decisions live in the frontend; the server does authoritative idle validation + anchor routing + multi-tab dedup.
+            // The compact-inject-done ack goes only to the initiating ws (directed); on success broadcast
+            // context-compaction-injected so other tabs close the bar + enter cooldown.
+            const reply = (payload) => {
+              try { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'compact-inject-done', reqId: payload.reqId, ...payload })); }
+              catch (e) { reportSwallowed('server.compact-inject.reply', e); }
+            };
+            const reqId = (typeof msg.reqId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(msg.reqId)) ? msg.reqId : null;
+            const text = typeof msg.text === 'string' ? msg.text.trim() : '';
+            const project = (typeof msg.project === 'string' && msg.project) ? msg.project : null;
+            const instanceKey = (typeof msg.instanceKey === 'string' && msg.instanceKey) ? msg.instanceKey : null;
+            const anchor = (project || instanceKey) ? { project: project || undefined, instanceKey: instanceKey || undefined } : null;
+            // 960K forced compaction: the only path allowed to inject mid-stream (interrupts the current session). Other sources never inject mid-stream.
+            const isForce = msg.force === true;
+            if (!reqId || !/^\/compact(\s|$)/.test(text) || text.length > 20000) { reply({ reqId, ok: false, reason: 'bad-text' }); return; }
+            if (!anchor) { reply({ reqId, ok: false, reason: 'no-anchor' }); return; }
+
+            // Resolve the target's real identity (broadcast/dedup keys use the resolved value; never echo the raw project — a raw basename
+            // for projects containing spaces/CJK would be silently dropped).
+            let resolvedProject = project;
+            let resolvedInstance = instanceKey;
+
+            if (isSdkMode) {
+              const gate = _sdkGetTurnGate ? _sdkGetTurnGate(anchor) : null;
+              if (!gate) { reply({ reqId, ok: false, reason: 'session-inactive' }); return; }
+              resolvedInstance = gate.instanceKey || instanceKey;
+              // Atomic gate: idle + no turn in flight + no pending approval + empty queue; otherwise reply busy so the frontend retries next turn.
+              // 960K forced compaction skips the idle gate (it exists precisely to interrupt a busy current turn).
+              if (!isForce && !gate.idle) { reply({ reqId, ok: false, reason: 'busy' }); return; }
+            } else {
+              // PTY mode: target liveness precheck (a dead target is rejected immediately, no polling). Use the module-level
+              // _ptyGetKindFor/_ptyListLive (pty-manager is wired at init); the WS handler scope
+              // has no local destructuring from await import.
+              const live = (() => {
+                try {
+                  if (instanceKey) return _ptyGetKindFor ? _ptyGetKindFor({ instanceKey }) === 'claude' : undefined;
+                  if (project) return _ptyListLive ? _ptyListLive().some((pty) => pty.ptyKind === 'claude' && projectKeyForCwd(pty.cwd) === project) : undefined;
+                } catch (e) { reportSwallowed('server.compact-inject.liveness', e); }
+                return undefined;
+              })();
+              if (live === false) { reply({ reqId, ok: false, reason: 'target-gone' }); return; }
+            }
+
+            // Dedup key: the resolved target identity (project + instanceKey). When project is missing, degrade to the instance key
+            // (scopeKeyOf(null, inst) collapses to the BOUND_SCOPE ''); never treat an empty-key badScope as a
+            // fake duplicate success (that would make the frontend markInjected + cooldown while nothing was injected).
+            const scopeKey = resolvedProject
+              ? scopeKeyOf(resolvedProject, resolvedInstance)
+              : (resolvedInstance ? `inst:${resolvedInstance}` : null);
+            if (!scopeKey) { reply({ reqId, ok: false, reason: 'no-anchor' }); return; }
+            const g = compactInjectGuard.tryBegin(scopeKey);
+            // In-flight ≠ succeeded: the lock holder may still be polling for idle; if it eventually fails, treating it as duplicate would let
+            // this end fake success (nothing injected). In-flight replies busy (retryable); only the success window replies duplicate (review P2-3).
+            if (!g.allowed) {
+              if (g.inFlight) { reply({ reqId, ok: false, reason: 'busy' }); return; }
+              reply({ reqId, ok: true, duplicate: true }); return;
+            }
+
+            const finishOk = () => {
+              compactInjectGuard.commit(scopeKey);
+              reply({ reqId, ok: true });
+              // Broadcast so other tabs in the same scope close the bar + enter cooldown (converged by resolved identity).
+              try { broadcastWsMessage({ type: 'context-compaction-injected', project: resolvedProject || undefined, instanceKey: resolvedInstance || undefined, ts: Date.now() }); }
+              catch (e) { reportSwallowed('server.compact-inject.broadcast', e); }
+            };
+            const finishFail = (reason) => {
+              // busy / failure both release immediately, not occupying the window, allowing genuine retries.
+              compactInjectGuard.release(scopeKey);
+              reply({ reqId, ok: false, reason });
+            };
+
+            if (isSdkMode) {
+              // 960K forced compaction: enqueue + immediate send-now (once the current turn is interrupted, drain pushes out /compact).
+              if (isForce) {
+                if (!_sdkForceSendUserMessage) { finishFail('no-deps'); return; }
+                try {
+                  const result = _sdkForceSendUserMessage(text, { project: resolvedProject || undefined, instanceKey: resolvedInstance || undefined });
+                  // force interrupt calls _cancelAllApprovals: broadcast close signals for the cancelled approval popups,
+                  // otherwise the popups hang forever (a deleted pending cannot recover via reconnect replay).
+                  const cancelled = (result && Array.isArray(result.cancelled)) ? result.cancelled : [];
+                  try { _broadcastApprovalCloses(cancelled, 'Force compaction'); } catch (e) { reportSwallowed('server.compact-inject.approval-close', e); }
+                  finishOk();
+                } catch (err) {
+                  reportSwallowed('server.compact-inject.sdk-force', err);
+                  if (err && err.code === 'not-delivered') { compactInjectGuard.rollback(scopeKey); finishFail('not-delivered'); }
+                  else if (err && err.code === 'busy') { finishFail('busy'); } // dispatch slot occupied: retryable, no fake success
+                  else finishFail('error');
+                }
+                return;
+              }
+              if (!_sdkSendUserMessage) { finishFail('no-deps'); return; }
+              // Ack on ACCEPTANCE — sendUserMessage's promise resolves only when the turn SETTLES
+              // (cli.js:987: never await it), so the ack must fire synchronously, not behind it.
+              // But an early ROUTING failure surfaces as an immediate rejection (`not-delivered`
+              // on a teardown-raced/closed query, thrown at the first await inside the async fn) —
+              // map that to a directed failure ack so the client doesn't fake-success + cooldown
+              // for a `/compact` that never landed. The guard's success window is likewise rolled
+              // back via release() so a real retry isn't deduped for 60s.
+              let p;
+              try {
+                p = _sdkSendUserMessage(text, { project: resolvedProject || undefined, instanceKey: resolvedInstance || undefined });
+              } catch (err) {
+                reportSwallowed('server.compact-inject.sdk', err);
+                finishFail('error');
+                return;
+              }
+              if (p && typeof p.catch === 'function') {
+                p.catch((err) => {
+                  reportSwallowed('server.compact-inject.sdk', err);
+                  if (err && err.code === 'not-delivered') {
+                    // Early routing failure: revoke the optimistic ack from just now (close the bar with a failure hint + roll back the dedup window).
+                    compactInjectGuard.rollback(scopeKey);
+                    reply({ reqId, ok: false, reason: 'not-delivered' });
+                  }
+                });
+              }
+              finishOk();
+            } else {
+              // 960K forced compaction (PTY): enqueue + sendNow — write focus-in+ESC to interrupt the current generation,
+              // poll for idle, then bracketed-paste /compact. Never a blind write (on failure requeue; frontend ack failure is retryable).
+              if (isForce) {
+                try {
+                  const ptyAnchor = { project: resolvedProject || undefined, instanceKey: resolvedInstance || undefined };
+                  const item = chatQueue.enqueue(text, ptyAnchor);
+                  if (!item) { finishFail('error'); return; }
+                  const started = chatQueue.sendNow(item.id, ptyAnchor);
+                  if (started) { finishOk(); return; }
+                  // sendNow did not start (slot occupied/external injection): remove the just-enqueued /compact from the queue — otherwise it would be
+                  // auto-injected as an ordinary message during a later rescue/drain, chaining duplicate compactions with the frontend's busy retry (ghost item).
+                  try { chatQueue.remove(item.id, ptyAnchor); } catch (e) { reportSwallowed('server.compact-inject.pty-force.remove', e); }
+                  finishFail('busy'); // retryable, the frontend forces again next turn
+                } catch (err) { reportSwallowed('server.compact-inject.pty-force', err); finishFail('error'); }
+                return;
+              }
+              chatQueue.injectCommand(text, { project: resolvedProject || undefined, instanceKey: resolvedInstance || undefined })
+                .then((r) => { if (r && r.ok) finishOk(); else finishFail((r && r.reason) || 'error'); })
+                .catch((err) => { reportSwallowed('server.compact-inject.pty', err); finishFail('error'); });
+            }
+            return;
           } else if (msg.type === 'sdk-interrupt') {
             // Stop button in SDK mode — interrupt current turn, keep session alive.
             // Streaming-state reconciliation comes from the wire path (proxy →
@@ -3522,6 +3700,15 @@ function _emitTurnEnd(sessionId, ts, transcriptPath = null, scope = null) {
     // _scheduleTurnEndBroadcast entry. chatQueue no-ops internally when uninitialized
     // (SDK mode / tests that never ran startViewer).
     try { chatQueue.onTurnEnd(sid, t); } catch { /* best-effort */ }
+    // Compaction dedup window: after a turn ends, the dedup window of the last successful injection can be released (allowing the next confirmation).
+    // This covers PTY; the SDK side is cleared separately by the sdk-compact broadcast. The production-side scope is already normalized (instances folded),
+    // while the injecting guard's key carries the instance stamp, so clear all instance keys by project (clearProject) rather than a single clearSuccess (review P2-2).
+    try {
+      const proj = sc.project || (_projectName || '');
+      // minAgeMs=success window: a window younger than 60s since the last successful injection is kept — it belongs to the interrupted round's result;
+      // clearing immediately would let multiple tabs chain forced compactions through the gap while compaction is still running (review P1-3). Old windows (≥60s) release normally.
+      if (proj) compactInjectGuard.clearProject(proj, { minAgeMs: 60000 });
+    } catch (e) { reportSwallowed('server.compact-inject.guard-clear', e); }
     if (typeof _onTurnEndBroadcastForTests === 'function') {
       try { _onTurnEndBroadcastForTests({ sessionId: sid, ts: t }); }
       catch (e) { if (process.env.NODE_ENV === 'test') throw e; /* prod 不让测试桩污染 */ }
@@ -4115,6 +4302,15 @@ function isIdAddressedApprovalClear(msg) {
 }
 
 export function broadcastWsMessage(msg) {  if (terminalWss) {
+    // A real SDK compaction happened (compact_boundary) → release that scope's injection dedup window (allowing the next confirmation).
+    // Clear it on the way before broadcasting; frame dispatch is unaffected; sdk-compact carries its own cwd + instanceKey.
+    if (msg && typeof msg === 'object' && msg.type === 'sdk-compact') {
+      try {
+        const cp = msg.cwd ? projectKeyForCwd(msg.cwd) : null;
+        const gk = scopeKeyOf(cp || (_projectName || ''), msg.instanceKey || null);
+        if (gk) compactInjectGuard.clearSuccess(gk);
+      } catch (e) { reportSwallowed('server.compact-inject.guard-clear-sdk', e); }
+    }
     // SDK multi-session (2026-10-12): a cwd-tagged frame belongs to one workspace's session.
     // Route it only to clients viewing that workspace (or the bound view with no ?project=),
     // so a background workspace's approval/queue/spinner never bleeds into the foreground.
@@ -4218,6 +4414,10 @@ export function setSdkCancelApproval(fn) { _sdkCancelApproval = fn; }
 let _sdkSendUserMessage = null;
 export function setSdkSendUserMessage(fn) { _sdkSendUserMessage = fn; }
 
+/** Reference to sdk-manager's forceSendUserMessage (set by cli.js after import) — 960K forced compaction. */
+let _sdkForceSendUserMessage = null;
+export function setSdkForceSendUserMessage(fn) { _sdkForceSendUserMessage = fn; }
+
 /** Reference to sdk-manager's interruptTurn (set by cli.js after import). */
 let _sdkInterruptTurn = null;
 export function setSdkInterruptTurn(fn) { _sdkInterruptTurn = fn; }
@@ -4247,6 +4447,13 @@ export function setSdkGetMcpStatusSnapshot(fn) { _sdkGetMcpStatusSnapshot = fn; 
 /** Reference to sdk-manager's getSessionStateSnapshot (set by cli.js after import). */
 let _sdkGetSessionStateSnapshot = null;
 export function setSdkGetSessionStateSnapshot(fn) { _sdkGetSessionStateSnapshot = fn; }
+
+/** sdk-manager's getTurnGate (atomic can-start-turn gate) for context-compaction inject. */
+let _sdkGetTurnGate = null;
+export function setSdkGetTurnGate(fn) { _sdkGetTurnGate = fn; }
+
+/** Per-scope dedupe for context-compaction injects (one confirm → one `/compact`). */
+const compactInjectGuard = createCompactInjectGuard();
 
 /** Reference to sdk-manager's getSdkTaskSnapshot (set by cli.js after import). */
 let _sdkGetSdkTaskSnapshot = null;

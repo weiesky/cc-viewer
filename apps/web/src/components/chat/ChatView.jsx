@@ -54,6 +54,33 @@ import TaskProgressHud from './TaskProgressHud';
 import { applyFrame as applySdkTaskFrame, applySnapshot as applySdkTaskSnapshot, resetForSession as resetSdkTaskTrackerForSession, restoreFromStorage as restoreSdkTaskTrackerFromStorage } from '../../utils/sdkTaskTracker';
 import PresetModal from '../terminal/PresetModal';
 import ScheduleTaskModal from '../common/ScheduleTaskModal';
+import ContextCompactionBar from './ContextCompactionBar';
+import CompactionSettingsModal from '../common/CompactionSettingsModal';
+import {
+  COMPACTION_DEFAULTS,
+  DEFAULT_COMPACTION_ITEM,
+  FORCE_COMPACT_THRESHOLD_TOKENS,
+  FORCE_COMPACT_CHECK_INTERVAL_MS,
+  FORCE_COMPACT_COOLDOWN_MS,
+  forceCompactTokens,
+  isForceCompactLatched,
+  normalizeCompactionConfig,
+  buildCompactCommand,
+  normalizeUsageReading,
+  createTriggerState,
+  resetTriggerState,
+  markTurnStart,
+  applyCheckpoint,
+  markInjected,
+  markExternalCompaction,
+  markDeferred,
+  markInjectFailed,
+  markInjectBusy,
+  markInjectRolledBack,
+  assignCompactionIds,
+  advanceTurn,
+  TIMING_COUNTDOWN_MS,
+} from '../../utils/contextCompaction';
 import UltraPlanModal from '../terminal/UltraPlanModal';
 import UltraplanPanel, { readUltraplanPopoverSize, ultraplanOverlayInnerStyle } from '../terminal/UltraplanPanel';
 import UltraplanExpertManagerModal from '../terminal/UltraplanExpertManagerModal';
@@ -377,6 +404,10 @@ class ChatView extends React.Component {
       mobilePresetModalVisible: false,
       scheduleModalVisible: false,
       scheduleModalTaskId: null, // sidebar-clicked task id — modal auto-selects + scrolls to it
+      // Context compaction settings (2026-11): compaction command list + management modal + trigger confirm bar.
+      compactionItems: [],
+      compactionModalVisible: false,
+      compactionBar: null, // { index, title, usedLabel, maxLabel, percentLabel, status:'idle'|'injecting' } | null
       localAskAnswers: {}, // 提交后的本地答案映射，用于 Last Response 立即切换到非交互式
       pendingPermission: null, // { id, toolName, input } — active permission approval request
       permissionQueue: [], // queued permission requests when one is already active
@@ -442,6 +473,16 @@ class ChatView extends React.Component {
     this._inputRef = React.createRef();
     this._stopOptimisticTimer = null; // 乐观停止兜底定时器
     this._sdkRetryResetTimer = null; // manual [retry] 15s fallback (componentWillUnmount clears)
+    // Context compaction trigger (in-memory, not persisted): state machine + latest reading + timers. See utils/contextCompaction.js.
+    this._compaction = createTriggerState();
+    this._compactionSdkUsage = null;   // latest sdk-context-usage frame { usage, ts, trigger }
+    this._compactionCheckpointTimer = null; // settle/reading-wait timer after turn end
+    this._compactionBarTimer = null;   // confirm bar 90s timeout
+    this._compactionAckTimer = null;   // injection 10s ack timeout
+    // 960K streaming forced compaction: periodically evaluate the context_window reading during streaming; above the threshold, interrupt immediately + inject the default script.
+    this._forceCompactTimer = null;    // streaming evaluation timer
+    this._forceCompactLastFiredAt = 0; // last forced trigger timestamp (no second forced trigger within the cooldown window)
+    this._forceCompactLatch = null;    // post-compaction latch {tokens,key}: do not re-trigger until the reading genuinely drops
     // Last sessionId seen on the VIEWED workspace's sdk-session-state frame — drives the
     // same-workspace /clear/resume tracker reset. Per-view state: a view switch nulls it
     // so the new view's first frame seeds it instead of comparing against another view's.
@@ -860,6 +901,18 @@ class ChatView extends React.Component {
       if (pending.length > 0) {
         this.setState({ dismissedSdkCompactTs: [...dismissed, ...pending.map(n => n.ts)] });
       }
+      // Compaction trigger: turn start (rising edge) — advance turnSeq + clear the checkpoint. The bubble stays up and never auto-closes
+      // (the user requires manual close only); while a new turn is running the bubble's "Run compaction" is disabled by busy (never inject mid-stream),
+      // clickable only after this turn ends and the session is idle. The injecting state is finalized by ack/sdk-compact.
+      markTurnStart(this._compaction);
+      this._clearCompactionCheckpoint();
+      this._startForceCompactWatch(); // 960K streaming force: evaluate context_window while the turn is running
+    }
+    // Compaction trigger: turn end (falling edge). Evaluate only on a real end — fake falling edges from view switches/attach are
+    // caught by _compactionArmed() (attachedSid/isLocalLog/cliMode gates) and the viewKey check.
+    if (prevProps.turnActive && !this.props.turnActive) {
+      this._stopForceCompactWatch(); // 960K force: stop as soon as the turn ends (turn-end decisions go through the normal checkpoint)
+      this._onCompactionTurnEnd();
     }
     // Sharding (2026-11): a "load earlier history" prepend landed — expand the
     // render window by the number of items it added and anchor the viewport, or
@@ -974,6 +1027,18 @@ class ChatView extends React.Component {
       if (viewSwitched || planLostView) { this._planAutoCancelled.clear(); this._permAutoCancelled.clear(); }
       // Pinned sdk-error rows belong to the previous view's workspace/instance.
       this._clearSdkErrors();
+      // The compaction confirm bar and trigger counters belong to the previous view: close the bar + reset the state
+      // machine (viewKey change), preventing the old view's anchor/readings from wrongly injecting into the new session.
+      this._clearCompactionCheckpoint();
+      this._clearCompactionAckTimer();
+      this._stopForceCompactWatch();
+      this._compactionSdkUsage = null;
+      // The 960K latch/cooldown belong to the previous workspace/instance too: a latch armed on view A
+      // must not suppress view B's forced compaction (review P2-1 / correctness P3-8).
+      this._forceCompactLatch = null;
+      this._forceCompactLastFiredAt = 0;
+      if (this.state.compactionBar) this._closeCompactionBar();
+      resetTriggerState(this._compaction, { viewKey: this._compactionViewKey() });
       // The slow-upstream toast belongs to the workspace that emitted it. Destroy
       // alone is not enough — the 5s tick re-opens it while _slowUpstreamPending is
       // non-empty, and the resolved frame for the old view is dropped by
@@ -1550,6 +1615,12 @@ class ChatView extends React.Component {
     this._splitDrag.dispose();
     if (this._planAutoTimer) { this._planAutoTimer(); this._planAutoTimer = null; } // deadlineCountdown stop()
     if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
+    // Context compaction: clear all timers and pending-ack state (no setState / injection after unmount).
+    this._clearCompactionCheckpoint();
+    this._clearCompactionBarTimer();
+    this._clearCompactionAckTimer();
+    this._stopForceCompactWatch();
+    this._compaction.pendingInject = null;
     // 缓发超时 timer + 残留上传占位的 objectURL 清扫(卸载中 drain/超时回调已各自 _unmounted 守卫)。
     clearTimeout(this._sendDeferTimer);
     for (const u of (this.state.uploadingItems || [])) { if (u.previewUrl) { try { URL.revokeObjectURL(u.previewUrl); } catch {} } }
@@ -3039,10 +3110,25 @@ class ChatView extends React.Component {
   _loadPresets() {
     // 数据从 props 派生 (SettingsContext 集中 fetch);未 ready 时静默返回,
     // componentDidUpdate 监听 props.preferences / props.claudeSettings 后重试。
-    const agentTeamEnabled = this.props.claudeSettings?.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS === '1';
-    if (!agentTeamEnabled) return;
     const data = this.props.preferences;
     if (!data) return;
+    // Context compaction commands load independently of the AgentTeam switch (it is a global feature and must not be
+    // cut off by CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS — otherwise rules never hydrate under the default config and the
+    // confirm bar never triggers; review P1). Config content change → reset the trigger state machine to avoid stale counters misfiring.
+    const compactionItems = normalizeCompactionConfig(data.contextCompaction);
+    const compactionSignature = JSON.stringify(compactionItems);
+    if (this._compaction && this._compaction.configSignature !== null && this._compaction.configSignature !== compactionSignature) {
+      resetTriggerState(this._compaction, { configSignature: compactionSignature });
+      this._clearCompactionAckTimer();
+      if (this.state.compactionBar) this._closeCompactionBar();
+    }
+    if (this._compaction) this._compaction.configSignature = compactionSignature;
+    // Assign a stable content-addressed id to each item (shared with TerminalPanel via
+    // assignCompactionIds), so toggling / dragging / reloading can't shift row ids and delete the wrong row.
+    const compactionItemsWithId = assignCompactionIds(compactionItems);
+
+    const agentTeamEnabled = this.props.claudeSettings?.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS === '1';
+    if (!agentTeamEnabled) { this.setState({ compactionItems: compactionItemsWithId }); return; }
     const dismissed = Array.isArray(data.dismissedBuiltinPresets) ? new Set(data.dismissedBuiltinPresets) : new Set();
     let items = [];
     if (Array.isArray(data.presetShortcuts)) {
@@ -3065,6 +3151,7 @@ class ChatView extends React.Component {
       customUltraplanExperts: customExperts,
       ultraplanExpertOrder: expertOrder,
       ultraplanExpertHidden: expertHidden,
+      compactionItems: compactionItemsWithId,
     };
     // 若当前选中的变体已不可见（被另一端删除 / 隐藏），回退到首个可见专家（无可见则 codeExpert）。
     // 与 TerminalPanel._loadPresetShortcuts 同款语义。
@@ -3546,6 +3633,21 @@ class ChatView extends React.Component {
               postTokens: msg.postTokens ?? null,
             }].slice(-10),
           }));
+          // Compaction actually happened → close the confirm bar + reset counters + enter cooldown (injection success ≠ compaction happened; this is authoritative).
+          // View filtering: a background workspace's compaction must not affect the current view's trigger state (review P1).
+          if (this._sdkFrameMatchesView(msg)) this._onExternalCompaction();
+        } else if (msg.type === 'sdk-context-usage') {
+          // SDK-mode usage snapshot (pushed by the server at turn end / after compaction, carrying ts+trigger). Stored as the preferred
+          // reading source for compaction decisions; attached history views do not participate. usage:null is an authoritative clear signal → clear the reading.
+          if (this.props.sdkMode && !this.props.attachedSid && this._sdkFrameMatchesView(msg)) {
+            this._compactionSdkUsage = msg.usage ? { usage: msg.usage, ts: Number.isFinite(msg.ts) ? msg.ts : Date.now(), trigger: msg.trigger || null } : null;
+          }
+        } else if (msg.type === 'compact-inject-done') {
+          // Ack for this end's compact-inject (directed).
+          this._onCompactionAck(msg);
+        } else if (msg.type === 'context-compaction-injected') {
+          // Another tab in the same scope has injected successfully → this end closes the bar + enters cooldown.
+          this._onCompactionInjectedElsewhere(msg);
         } else if (msg.type === 'queue-state') {
           // Server-authoritative busy queue → floating bubbles above the composer.
           // Full-snapshot semantics: replace, never merge.
@@ -4160,6 +4262,390 @@ class ChatView extends React.Component {
   // sdk-error dialogue row/toast: a background workspace's failure must not land here.
   _sdkFrameMatchesView = (msg) => {
     return sdkPlanMatchesView(msg, this.props.viewProject || this.props.projectName || '', this.props.viewInstance || null);
+  };
+
+  /* ------------------------------------------------------------------ *
+   * Context compaction trigger (2026-11)
+   * Decisions live in the frontend (it owns usage, busy/idle, and confirm-bar interaction); injection goes through the server's authoritative idle validation.
+   * Trigger: usage is the only trusted source; show on the first fresh above-threshold reading; hysteresis/cooldown/circuit breaker;
+   * evaluate only at real turn-end boundaries, never mid-stream; the confirm bar freezes anchor+viewKey.
+   * ------------------------------------------------------------------ */
+
+  // Whether the current view can arm compaction decisions (not a history attach, not a local log, a live session).
+  _compactionArmed = () => {
+    if (!this.props.cliMode) return false;
+    if (this.props.isLocalLog) return false;
+    if (this.props.attachedSid) return false;
+    return true;
+  };
+
+  _compactionViewKey = () => `${this.props.viewProject || this.props.projectName || ''}|${this.props.viewInstance || ''}|${this.props.attachedSid || ''}`;
+
+  // Reverse-scan props.requests for the freshest mainAgent request carrying a usage object.
+  // Shared by _collectCompactionReading (turn-end checkpoint) and _evaluateForceCompact (960K
+  // streaming check) so the two never drift. Returns { usage, ts } or null.
+  _latestMainAgentUsage = () => {
+    const reqs = this.props.requests;
+    if (!Array.isArray(reqs)) return null;
+    for (let i = reqs.length - 1; i >= 0; i--) {
+      const r = reqs[i];
+      if (isMainAgent(r) && r.response && r.response.body && r.response.body.usage) {
+        return { usage: r.response.body.usage, ts: r.timestamp };
+      }
+    }
+    return null;
+  };
+
+  // Collect one usage reading (single-source priority: SDK snapshot → PTY context_window → request fallback).
+  // Returns normalizeUsageReading's result; no usable reading → { ok:false }.
+  _collectCompactionReading = () => {
+    // After /clear, contextBarLocked holds the lock: contextWindow is still the pre-clear high watermark (AppBase locks until the next
+    // non-/clear message); do not read PTY context_window/request fallback then, avoiding false triggers from pre-clear readings.
+    const locked = this.props.contextBarLocked === true;
+    const sdkUsage = this.props.sdkMode && !this.props.attachedSid ? (this._compactionSdkUsage && this._compactionSdkUsage.usage) : null;
+    const sdkTs = this._compactionSdkUsage ? this._compactionSdkUsage.ts : null;
+    const contextWindow = locked ? null : (this.props.contextWindow || null);
+    // Request fallback: freshest mainAgent request carrying usage (shared helper).
+    const last = locked ? null : this._latestMainAgentUsage();
+    const mainAgentUsage = last ? { ...last.usage, ts: last.ts } : null;
+    return normalizeUsageReading({ sdkUsage, sdkTs, contextWindow, mainAgentUsage });
+  };
+
+  // 960K streaming forced compaction: start periodic evaluation on the turnActive rising edge, stop on the falling edge.
+  // Mid-stream only context_window (SSE) updates along the way, so the reading goes through forceCompactTokens (ignores the stale SDK snapshot).
+  _startForceCompactWatch = () => {
+    this._stopForceCompactWatch();
+    if (!this._compactionArmed()) return;
+    this._forceCompactTimer = setInterval(() => {
+      if (this._unmounted) { this._stopForceCompactWatch(); return; }
+      this._evaluateForceCompact();
+    }, FORCE_COMPACT_CHECK_INTERVAL_MS);
+  };
+
+  _stopForceCompactWatch = () => {
+    if (this._forceCompactTimer) { clearInterval(this._forceCompactTimer); this._forceCompactTimer = null; }
+  };
+
+  // Each evaluation: take the latest context_window reading; ≥ 960K and not latched/cooling → force interrupt + inject the default script.
+  _evaluateForceCompact = () => {
+    if (!this._compactionArmed()) return;
+    // Single slot: an injection already in flight (forced or normal) means no re-trigger.
+    if (this._compaction.pendingInject) return;
+    // Cooldown window: after one force, no second force within FORCE_COMPACT_COOLDOWN_MS (interrupt+compaction itself takes time).
+    if (Date.now() - this._forceCompactLastFiredAt < FORCE_COMPACT_COOLDOWN_MS) return;
+    // Take the latest reading visible mid-stream: context_window first, request fallback (ignore the /clear lock period).
+    if (this.props.contextBarLocked === true) return;
+    const contextWindow = this.props.contextWindow || null;
+    const last = this._latestMainAgentUsage();
+    const reading = forceCompactTokens({ contextWindow, mainAgentUsage: last ? last.usage : null });
+    if (!reading) return;
+    // Reading dropped below the threshold → the latch (if any) has served its purpose; clear it so a
+    // later rise can trigger again. This MUST run before the threshold early-return, otherwise the
+    // latch can never be cleared (the <960K branch that clears it would be unreachable) and 960K
+    // becomes a one-shot safety net (review P0-1 / security P1-1).
+    if (reading.tokens < FORCE_COMPACT_THRESHOLD_TOKENS) { this._forceCompactLatch = null; return; }
+    // Post-compaction latch: once triggered, do not interrupt again while the reading has not genuinely dropped (still the stale
+    // pre-compaction high reading); prevents "being repeatedly interrupted by the same old reading in the next round / during a long
+    // compaction after compaction" (review P0). Only a reading below the threshold or a new reading with a clear drop clears it.
+    if (isForceCompactLatched(this._forceCompactLatch, reading, FORCE_COMPACT_THRESHOLD_TOKENS)) return;
+    // Trigger forced compaction: use the CURRENT saved script of the built-in default rule (the
+    // user may have edited it — 960K uses whatever the default rule currently holds, never empty),
+    // Note: 960K is the last-resort safety net against context overflow, so it is NOT gated on the
+    // rule's `enabled` flag — disabling the rule only stops its threshold reminder, not this fallback.
+    // falling back to the built-in script if somehow absent.
+    const items = Array.isArray(this.state.compactionItems) ? this.state.compactionItems : [];
+    const defaultRule = items.find((i) => i && i.builtinId === 'default');
+    const script = (defaultRule && typeof defaultRule.script === 'string' && defaultRule.script.trim())
+      ? defaultRule.script
+      : DEFAULT_COMPACTION_ITEM.script;
+    const sent = this._dispatchCompaction({
+      index: -1,
+      item: { script },
+      source: 'force',
+      force: true,
+      anchor: this._terminalAnchor(),
+    });
+    // Only after a real send: arm cooldown + latch (recording the reading fingerprint at trigger time); an early guard return does not waste the cooldown.
+    if (sent) {
+      this._forceCompactLastFiredAt = Date.now();
+      this._forceCompactLatch = { tokens: reading.tokens, key: reading.key };
+    }
+  };
+
+  // Called at real turn-end boundaries (turnActive falling edge). Evaluate once with a fresh reading after settle; when the reading
+  // is not yet available, or is the same one already evaluated in the previous round (stale), wait up to freshnessWaitMs for the
+  // next new reading — the freshness fingerprint (lastCountedKey) prevents acting on an already-evaluated stale snapshot.
+  _onCompactionTurnEnd = () => {
+    if (!this._compactionArmed()) return;
+    const viewKey = this._compactionViewKey();
+    if (this._compaction.viewKey !== viewKey) {
+      resetTriggerState(this._compaction, { viewKey });
+      // viewKey changed → the latch/cooldown belong to the previous view; clear them too.
+      this._forceCompactLatch = null;
+      this._forceCompactLastFiredAt = 0;
+    }
+    // Turn advance: completedTurns+1 and per-turn release of due cooldowns/deferrals. Call unconditionally (reading-independent),
+    // otherwise when readings are stale / a bar is showing, deferrals are never released per-turn (review P0-4).
+    advanceTurn(this._compaction);
+    this._clearCompactionCheckpoint();
+    const startedAt = Date.now();
+    const evaluate = () => {
+      if (this._unmounted) return;
+      // A new turn started mid-way (queue drain immediately starts one) → abandon this checkpoint.
+      if (this.props.turnActive || this.props.isStreaming) return;
+      if (this.state.queuedMessages && this.state.queuedMessages.length > 0) return;
+      if (!this._compactionArmed()) return;
+      const reading = this._collectCompactionReading();
+      // Reading unavailable, or the same one as last counted → wait for the next. The fingerprint (reading.key = source|tokens|max|ts)
+      // holds for both SDK (has ts) and PTY/request fallback (no ts, relies on content fingerprint).
+      const stale = !reading.ok
+        || (reading.key != null && this._compaction.lastCountedKey != null && reading.key === this._compaction.lastCountedKey);
+      if (stale) {
+        if (Date.now() - startedAt < COMPACTION_DEFAULTS.freshnessWaitMs) {
+          this._compactionCheckpointTimer = setTimeout(evaluate, COMPACTION_DEFAULTS.readingPollMs);
+        }
+        return;
+      }
+      this._runCompactionCheckpoint(reading);
+    };
+    this._compactionCheckpointTimer = setTimeout(evaluate, COMPACTION_DEFAULTS.readingPollMs);
+  };
+
+  // Evaluation once a fresh reading is ready: run the state machine; on a hit, branch by execution timing —
+  // auto injects directly (no bubble); user/s30/m3 shows the bubble (waiting for a click or countdown).
+  _runCompactionCheckpoint = (reading) => {
+    const items = (this.state.compactionItems || []).filter(i => i && i.enabled !== false);
+    if (!items.length) return;
+    if (this._compaction.circuitOpen) return;
+    if (this.state.compactionBar) return; // one is already showing
+    const pick = applyCheckpoint(this._compaction, items, reading);
+    // Record the reading fingerprint counted this time (for the next round's "same reading" check).
+    if (reading.key != null) this._compaction.lastCountedKey = reading.key;
+    if (!pick) return;
+    if (pick.item.executionTiming === 'auto') {
+      // auto: inject directly at the due time, no bubble. Reuse the unified send kernel (single-slot guard; if the slot is taken, skip this round).
+      // Must carry an anchor (the user path takes bar._frozen; auto has no bar and must capture the current view's anchor on the spot).
+      this._dispatchCompaction({ index: pick.index, item: pick.item, source: 'auto', reading, anchor: this._terminalAnchor() });
+      return;
+    }
+    this._openCompactionBar(pick.index, pick.item, reading);
+  };
+
+  _fmtK = (tokens) => (tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K` : `${Math.round(tokens)}`);
+
+  _openCompactionBar = (index, item, reading) => {
+    this._clearCompactionBarTimer();
+    // Freeze the anchor + viewKey + reading at bar time; clicks send only the frozen values (preventing injection into the wrong session after a view switch).
+    // The reading values (tokens/maxTokens) are also stored in _frozen, used as the deferred growth baseline when (x) closes (review P1).
+    const anchor = this._terminalAnchor();
+    const timing = item.executionTiming || 'user';
+    const countdownMs = TIMING_COUNTDOWN_MS[timing] || 0;
+    const bar = {
+      index,
+      title: item.builtinId != null ? (item.title || t('ui.contextCompaction.builtinDefaultTitle')) : (item.title || t('ui.contextCompaction.defaultTitle')),
+      usedLabel: this._fmtK(reading.tokens),
+      maxLabel: this._fmtK(reading.maxTokens),
+      percentLabel: (Math.round(reading.percent * 10) / 10).toString(),
+      status: 'idle',
+      timing,                                   // user|s30|m3 (the bubble uses this to decide whether to show a countdown)
+      countdownEndsAt: countdownMs ? Date.now() + countdownMs : null, // absolute countdown deadline (local tick inside the bubble)
+      _frozen: { anchor, viewKey: this._compactionViewKey(), item, reading },
+    };
+    this.setState({ compactionBar: bar });
+    // The bubble can only be closed manually: no automatic timeout is attached. user mode waits for the user to click (x) / "Ignore" / "Run compaction";
+    // s30/m3 modes are driven by the in-bubble countdown to auto-execute at zero. Clicking blank space/switching messages/sending a message never closes it (explicit user requirement).
+  };
+
+  _closeCompactionBar = () => {
+    this._clearCompactionBarTimer();
+    if (this.state.compactionBar) this.setState({ compactionBar: null });
+  };
+
+  // Bubble countdown reached zero (s30/m3): equivalent to the user clicking "Run compaction", going through the unified confirm entry (with idle/WS guards).
+  // While the countdown is invisible the bubble component should already have paused it; guard once more here — if the bar is already closed/injecting at expiry, stay silent.
+  _onCompactionCountdownExpire = () => {
+    if (this._unmounted) return;
+    const bar = this.state.compactionBar;
+    if (!bar || bar.status !== 'idle') return;
+    this._confirmCompaction();
+  };
+
+  _clearCompactionCheckpoint = () => {
+    if (this._compactionCheckpointTimer) { clearTimeout(this._compactionCheckpointTimer); this._compactionCheckpointTimer = null; }
+  };
+  _clearCompactionBarTimer = () => {
+    if (this._compactionBarTimer) { clearTimeout(this._compactionBarTimer); this._compactionBarTimer = null; }
+  };
+  _clearCompactionAckTimer = () => {
+    if (this._compactionAckTimer) { clearTimeout(this._compactionAckTimer); this._compactionAckTimer = null; }
+  };
+
+  // The user clicks "Run compaction": take the frozen values from the bubble and go through the unified send kernel (source:'user').
+  _confirmCompaction = () => {
+    const bar = this.state.compactionBar;
+    if (!bar || bar.status !== 'idle' || this._compaction.pendingInject) return;
+    const frozen = bar._frozen;
+    if (!frozen || frozen.viewKey !== this._compactionViewKey()) { this._closeCompactionBar(); return; }
+    this._dispatchCompaction({ index: bar.index, item: frozen.item, source: 'user', reading: frozen.reading, anchor: frozen.anchor, bar });
+  };
+
+  // Unified send kernel: all three sources (user / countdown / auto) go through here (single-slot guard + ack ownership).
+  // source: 'user' user click | 'countdown' countdown expired | 'auto' automatic execution.
+  // Returns true when the inject frame was actually put on the wire (callers use this to only
+  // arm cooldown/latch AFTER a real send, not when an early guard returned without sending).
+  _dispatchCompaction = ({ index, item, source, reading, anchor, bar, force }) => {
+    if (this._compaction.pendingInject) return false; // single slot: abandon this attempt if in flight (warn for user, silent for auto/countdown)
+    const isUser = source === 'user';
+    const isForce = force === true || source === 'force';
+    // 960K forced compaction: the only path allowed to inject mid-stream (interrupts the current session). Other sources never inject mid-stream.
+    if (!isForce && (this.props.turnActive || this.props.isStreaming)) {
+      if (isUser) { try { message.warning(t('ui.contextCompaction.bar.busy')); } catch {} }
+      return false; // never inject mid-stream; auto silently gives up (reevaluate next round)
+    }
+    const ws = this._inputWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (isUser) { try { message.warning(t('ui.contextCompaction.bar.failed')); } catch {} }
+      return false;
+    }
+    // Anchor fallback: user/countdown take bar._frozen, auto captures on the spot at the call site; if any new caller omits it,
+    // fall back to the current view's anchor, avoiding a swallowed undefined dereference of anchor.project (review P0-1 defense).
+    const a = anchor || this._terminalAnchor();
+    if (!a || !a.project) return false; // never blind-send without a valid anchor
+    const reqId = `cc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const text = buildCompactCommand(item.script);
+    this._clearCompactionBarTimer();
+    this._clearCompactionAckTimer();
+    this._compaction.pendingInject = { reqId, index, source };
+    if (bar) this.setState({ compactionBar: { ...bar, status: 'injecting' } });
+    this._compactionAckTimer = setTimeout(() => {
+      if (this._unmounted) return;
+      // Ack timeout is treated as a failure (circuit-breaker counting).
+      const open = markInjectFailed(this._compaction, index);
+      this._closeCompactionBar();
+      // A timed-out force inject must not stay latched either (review P0-1).
+      this._forceCompactLatch = null;
+      this._forceCompactLastFiredAt = 0;
+      try { message.warning(t(open ? 'ui.contextCompaction.circuitOpen' : 'ui.contextCompaction.bar.failed')); } catch {}
+    }, COMPACTION_DEFAULTS.ackTimeoutMs);
+    try {
+      ws.send(JSON.stringify({
+        type: 'compact-inject',
+        reqId,
+        text,
+        project: a.project,
+        ...(isForce ? { force: true } : {}),
+        ...(a.instanceKey ? { instanceKey: a.instanceKey } : {}),
+        ...(a.sessionId ? { sessionId: a.sessionId } : {}),
+      }));
+      return true;
+    } catch (e) {
+      reportSwallowed('chatview.compaction.send', e);
+      this._clearCompactionAckTimer();
+      this._compaction.pendingInject = null;
+      if (bar) this.setState({ compactionBar: { ...bar, status: 'idle' } });
+      return false;
+    }
+  };
+
+  // (x) close (user declined this time) / confirm bar timeout / interrupted by a new round: defer the reminder — released when the
+  // next turn ends or context +50K/+5pt arrives first, then remind again. Not a permanent snooze: the user only declined "this time".
+  _deferCompaction = (reason = 'x') => {
+    const bar = this.state.compactionBar;
+    if (bar) markDeferred(this._compaction, bar.index, this._deferBaselineReading(bar), reason);
+    this._closeCompactionBar();
+  };
+
+  // When closing the bubble, take the deferred growth baseline reading: prefer the current new reading, otherwise fall back to the reading frozen at bar time.
+  _deferBaselineReading = (bar) => {
+    const fresh = this._collectCompactionReading();
+    if (fresh && fresh.ok) return fresh;
+    return (bar && bar._frozen && bar._frozen.reading) || null;
+  };
+
+  // Server ack compact-inject-done (sent only to this end): matches pendingInject's reqId.
+  // Note: an early SDK routing failure may send an optimistic ok first and then a not-delivered — ok already cleared pending,
+  // so not-delivered matches by "the most recently confirmed reqId", revoking the earlier success and reporting the failure.
+  _onCompactionAck = (msg) => {
+    if (!msg.reqId) return;
+    const pending = this._compaction.pendingInject;
+    const isLive = pending && msg.reqId === pending.reqId;
+    // Late not-delivered: match the reqId of the most recent ok. Note a newer pendingInject may exist by now
+    // (user/countdown/auto fired another one) — the late rollback revokes only "that ok'd one's" cooldown (lastAckedIndex),
+    // never clears the current pending/ack timer, otherwise it would wrongly delete the new injection's ownership (review P2-3).
+    if (!isLive && msg.reason === 'not-delivered' && msg.reqId === this._compaction.lastAckedReqId) {
+      markInjectRolledBack(this._compaction, this._compaction.lastAckedIndex, { clearPending: false });
+      try { message.warning(t('ui.contextCompaction.bar.failed')); } catch {}
+      return;
+    }
+    if (!isLive) return;
+    this._clearCompactionAckTimer();
+    this._compaction.pendingInject = null;
+    // Successful/duplicate from the auto source shows no toast (automatic execution needs no interruption; it already has the sdk-compact notice bar).
+    const isAutoSource = pending && pending.source === 'auto';
+    if (msg.ok) {
+      // ok = this end's injection was accepted; duplicate = another end/in-flight already injected (this end did not send). Both close the bar + enter cooldown.
+      // duplicate shows no "sent" toast (this end did not actually send; the hint would mislead).
+      this._compaction.lastAckedReqId = msg.reqId;
+      this._compaction.lastAckedIndex = pending ? pending.index : undefined;
+      markInjected(this._compaction, pending ? pending.index : undefined);
+      this._closeCompactionBar();
+      if (!msg.duplicate && !isAutoSource) { try { message.success(t('ui.contextCompaction.bar.sent')); } catch {} }
+      return;
+    }
+    if (msg.reason === 'busy') {
+      // Retryable: not counted as a failure, no cooldown; the confirm bar is kept and shows again next round.
+      markInjectBusy(this._compaction);
+      this._closeCompactionBar();
+      // Force injection that failed to land must NOT stay latched — otherwise one failed/busy attempt
+      // permanently disables the 960K safety net (review P0-1 / security P1-1). Clear the latch + cooldown
+      // so the next evaluation can retry.
+      this._forceCompactLatch = null;
+      this._forceCompactLastFiredAt = 0;
+      if (!isAutoSource) { try { message.warning(t('ui.contextCompaction.bar.busy')); } catch {} }
+      return;
+    }
+    if (msg.reason === 'not-delivered') {
+      // Early routing failure (may arrive right after an optimistic ok): revoke the applied cooldown and explicitly report the failure.
+      markInjectRolledBack(this._compaction, pending ? pending.index : undefined);
+      this._closeCompactionBar();
+      this._forceCompactLatch = null;
+      this._forceCompactLastFiredAt = 0;
+      try { message.warning(t('ui.contextCompaction.bar.failed')); } catch {}
+      return;
+    }
+    const open = markInjectFailed(this._compaction, pending ? pending.index : undefined);
+    this._closeCompactionBar();
+    this._forceCompactLatch = null;
+    this._forceCompactLastFiredAt = 0;
+    try { message.warning(t(open ? 'ui.contextCompaction.circuitOpen' : 'ui.contextCompaction.bar.failed')); } catch {}
+  };
+
+  // Another end (another tab in the same scope) has injected successfully: close the bar + cooldown all items.
+  _onCompactionInjectedElsewhere = (msg) => {
+    const proj = this.props.viewProject || this.props.projectName || '';
+    const inst = this.props.viewInstance || null;
+    if (msg.project && proj && msg.project !== proj) return;
+    // When this view is locked to a specific instance, a broadcast without an instance stamp does not close this view's bar (it may be
+    // another instance of the same project); the same applies when the frame carries an instance stamp that does not match.
+    if (inst && msg.instanceKey !== inst) return;
+    this._clearCompactionAckTimer();
+    this._compaction.pendingInject = null;
+    // Another end already injected: this end also enters force cooldown + latch, preventing its own 2s evaluator from reading the stale pre-compaction reading and forcing again (multi-tab chaining).
+    this._forceCompactLastFiredAt = Date.now();
+    this._forceCompactLatch = { tokens: FORCE_COMPACT_THRESHOLD_TOKENS, key: null };
+    markExternalCompaction(this._compaction, (this.state.compactionItems || []).filter(i => i && i.enabled !== false));
+    this._closeCompactionBar();
+  };
+
+  // External compaction event (SDK compact_boundary / triggered by another end): close the bar + reset counters + cooldown.
+  _onExternalCompaction = () => {
+    this._clearCompactionAckTimer();
+    this._compaction.pendingInject = null;
+    // Same as above: enter force cooldown + latch.
+    this._forceCompactLastFiredAt = Date.now();
+    this._forceCompactLatch = { tokens: FORCE_COMPACT_THRESHOLD_TOKENS, key: null };
+    markExternalCompaction(this._compaction, (this.state.compactionItems || []).filter(i => i && i.enabled !== false));
+    this._closeCompactionBar();
   };
 
   // --- Active subAgent/teammate card (--sdk mode) ---
@@ -5946,7 +6432,33 @@ class ChatView extends React.Component {
                 Self-subscribes to taskStore; renders null when no tasks, so no
                 cliMode gate is needed here (SDK mode never receives task_update). */}
             <TaskProgressHud />
-            <ChatInputBar
+            {/* Context compaction reminder bubble: appears when the threshold is reached, the current turn has ended, and the session is idle.
+                Bubble form: absolutely positioned above the input via .composerAnchor, left edge aligned with the quick-settings star (not covering
+                the input; absolutely positioned children do not count toward --input-stack-height, so the message area is not pushed up);
+                PTY terminal layout (terminalVisible && !sdkMode, ChatInputBar returns null with no star to anchor to) → falls back to the old horizontal bar. */}
+            {(() => {
+              const composerHidden = terminalVisible && !this.props.sdkMode;
+              const compactionBubble = (
+                <ContextCompactionBar
+                  bar={this.state.compactionBar}
+                  busy={this.props.turnActive || this.props.isStreaming}
+                  injecting={this.state.compactionBar ? this.state.compactionBar.status === 'injecting' : false}
+                  visible={!this.state.compactionModalVisible}
+                  fallback={composerHidden}
+                  onConfirm={this._confirmCompaction}
+                  onClose={() => this._deferCompaction('x')}
+                  onExpire={this._onCompactionCountdownExpire}
+                  onOpenSettings={() => this.setState({ compactionModalVisible: true })}
+                />
+              );
+              // Always render ChatInputBar (it internally decides between the full input / suggestion chip / null based on terminalVisible),
+              // never unmount it because of composerHidden — otherwise the suggestion chip is lost under the PTY terminal layout (review P1-3).
+              // When composerHidden, the bubble uses the fallback old horizontal bar (document flow, counts toward --input-stack-height);
+              // otherwise the bubble floats above the input via composerAnchor absolute positioning (not in document flow).
+              return (
+                <div className={composerHidden ? undefined : styles.composerAnchor}>
+                  {compactionBubble}
+                  <ChatInputBar
               inputRef={this._inputRef}
               inputEmpty={this.state.inputEmpty}
               inputSuggestion={this.state.inputSuggestion}
@@ -5972,6 +6484,8 @@ class ChatView extends React.Component {
               onOpenScheduleModal={(this.props.cliMode && !this.props.isLocalLog && (this.props.viewProject || this.props.projectName))
                 ? () => this.setState({ scheduleModalVisible: true })
                 : null}
+              onOpenCompactionSettings={() => this.setState({ compactionModalVisible: true })}
+              compactionCount={(this.state.compactionItems || []).filter(i => i && i.enabled !== false).length}
               onOpenUltraPlan={this.state.agentTeamEnabled && this.props.cliMode
                 ? (isMobile ? () => this.setState({ ultraplanModalOpen: true }) : () => this.setState({ ultraplanPopoverOpen: true }))
                 : null}
@@ -6045,6 +6559,9 @@ class ChatView extends React.Component {
                 avatarSrc: this.props.userProfile?.avatar || defaultAvatarUrl,
               } : null}
             />
+                </div>
+              );
+            })()}
             </div>
             {/* On pure phones the chip never renders, so this ProxyModal can never open — phones use
                 the Mobile hamburger menu's fullscreen drawer. Mount this copy only for the PC/iPad
@@ -6140,7 +6657,7 @@ class ChatView extends React.Component {
                 {this.props.sdkMode ? (
                   <TerminalPanel scratchOnly scratchOpen={terminalVisible} viewProject={this.props.viewProject} viewInstance={this.props.viewInstance} />
                 ) : (
-                <TerminalPanel claudeSettings={this.props.claudeSettings} preferences={this.props.preferences} onUpdatePreferences={this.props.onUpdatePreferences} onUpdateClaudeSettings={this.props.onUpdateClaudeSettings} onEditorOpen={(sessionId, filePath) => {
+                <TerminalPanel claudeSettings={this.props.claudeSettings} preferences={this.props.preferences} onUpdatePreferences={this.props.onUpdatePreferences} onUpdateGlobalPreferences={this.props.onUpdateGlobalPreferences} onUpdateClaudeSettings={this.props.onUpdateClaudeSettings} onEditorOpen={(sessionId, filePath) => {
                   this.setState({
                     editorSessionId: sessionId,
                     editorFilePath: filePath,
@@ -6183,6 +6700,16 @@ class ChatView extends React.Component {
       <WorkflowRunsModal run={this.state.workflowModalRun} onClose={() => this.setState({ workflowModalRun: null })} />
       <UserPromptsModal open={this.state.userPromptsModalOpen} requests={this.props.requests} onClose={() => this.setState({ userPromptsModalOpen: false })} />
       <PresetModal open={this.state.mobilePresetModalVisible} onClose={() => this.setState({ mobilePresetModalVisible: false })} items={this.state.presetItems} onItemsChange={(items) => this.setState({ presetItems: items })} onSavePresets={(payload) => { if (this.props.onUpdatePreferences) this.props.onUpdatePreferences(payload); }} />
+      {/* Context compaction settings panel (ChatView host, shared by desktop/mobile); autoCompactThreshold comes from the SDK snapshot.
+          items already carry stable ids (_loadPresets content addressing); save/sort strips runtime ids before persisting. */}
+      <CompactionSettingsModal
+        open={this.state.compactionModalVisible}
+        onClose={() => this.setState({ compactionModalVisible: false })}
+        items={this.state.compactionItems || []}
+        onItemsChange={(items) => this.setState({ compactionItems: items })}
+        onSave={(payload) => { const fn = this.props.onUpdateGlobalPreferences || this.props.onUpdatePreferences; if (fn) fn(payload); }}
+        autoCompactThreshold={(this._compactionSdkUsage && this._compactionSdkUsage.usage && this._compactionSdkUsage.usage.autoCompactThreshold) || null}
+      />
       <ScheduleTaskModal
         open={this.state.scheduleModalVisible}
         onClose={() => this.setState({ scheduleModalVisible: false, scheduleModalTaskId: null })}

@@ -103,3 +103,53 @@ describe('/api/preferences plain key passthrough (resumeAutoChoice no longer spe
     assert.equal(getPrefs(getHandler).resumeAutoChoice, null, 'GET returns the stored null unchanged');
   });
 });
+
+// contextCompaction (2026-11): the compaction-rule list is a plain top-level array on
+// preferences.json. The server neither transforms nor strips it — POST/GET is a plain
+// passthrough, and a re-POST replaces the array wholesale (applyPrefsPatch shallow-merge).
+describe('/api/preferences contextCompaction passthrough', { concurrency: false }, () => {
+  let getHandler, postHandler;
+
+  before(async () => {
+    const { preferencesRoutes } = await import('../server/routes/preferences.js');
+    getHandler = preferencesRoutes.find((r) => r.path === '/api/preferences' && r.method === 'GET').handler;
+    postHandler = preferencesRoutes.find((r) => r.path === '/api/preferences' && r.method === 'POST').handler;
+  });
+
+  beforeEach(() => { if (existsSync(prefsFile)) unlinkSync(prefsFile); });
+
+  it('POST a contextCompaction array → GET returns it verbatim', async () => {
+    const rules = [
+      { title: 'weekend', script: 'keep decisions', threshold: { mode: 'percent', value: 80 }, enabled: true },
+      { title: '', script: 'drop tool output', threshold: { mode: 'tokens', value: 150 }, enabled: false },
+    ];
+    const { status } = await postPrefs(postHandler, { contextCompaction: rules });
+    assert.equal(status, 200);
+    const got = getPrefs(getHandler).contextCompaction;
+    assert.deepEqual(got, rules, 'round-trips unchanged');
+  });
+
+  it('a second POST replaces the array wholesale (no merge), other keys untouched', async () => {
+    await postPrefs(postHandler, { contextCompaction: [{ title: 'a', script: 's1', threshold: { mode: 'percent', value: 80 } }], lang: 'zh' });
+    const next = [{ title: 'b', script: 's2', threshold: { mode: 'tokens', value: 200 } }];
+    await postPrefs(postHandler, { contextCompaction: next });
+    const data = getPrefs(getHandler);
+    assert.deepEqual(data.contextCompaction, next, 'array replaced, not merged');
+    assert.equal(data.lang, 'zh', 'unrelated key preserved across the replace');
+  });
+
+  it('non-admin (non-loopback) POST strips contextCompaction (auto-inject prompt is machine-global, admin-only)', async () => {
+    const req = new EventEmitter();
+    const body = JSON.stringify({ contextCompaction: [{ title: 'evil', script: 'x', threshold: { mode: 'percent', value: 1 }, executionTiming: 'auto' }], lang: 'en' });
+    // Wait for res.end (fires only after the async mutatePrefs settles) before asserting the file.
+    const done = new Promise((resolve) => {
+      const res = { writeHead() {}, end() { resolve(); } };
+      postHandler(req, res, { pathname: '/api/preferences' }, /* isLocal */ false, deps);
+    });
+    req.emit('data', body); req.emit('end');
+    await done;
+    const data = getPrefs(getHandler);
+    assert.equal('contextCompaction' in data, false, 'non-admin cannot write the machine-global auto-inject rules');
+    assert.equal(data.lang, 'en', 'unrelated non-admin-writable keys still land');
+  });
+});

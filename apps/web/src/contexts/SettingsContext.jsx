@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useCallback, useMemo, useRef
 import { apiUrl } from '../utils/apiUrl';
 import { setLang } from '../i18n';
 import { setClaudeConfigDir } from '../utils/tClaude';
+import { reportSwallowed } from '../utils/errorReport';
 
 // 集中管理 /api/claude-settings 与 /api/preferences,消除多组件重复 fetch。
 // AppBase 通过 contextType 直接消费;ChatView/TerminalPanel/AppHeader 等子组件
@@ -87,6 +88,20 @@ export function SettingsProvider({ children }) {
     if (mountedRef.current) setPreferences(merged);
   }, []);
 
+  // Machine-global write (ignores the per-project config scope): always POST the global /api/preferences, and update locally optimistically.
+  // For "one global copy" features (e.g. contextCompaction compaction rules; the server already lists it in STRIP_KEYS,
+  // so it never enters any project fork). Do not use for ordinary preferences that should follow the project scope.
+  const updateGlobalPreferences = useCallback((patch) => {
+    const merged = { ...(prefsRef.current || {}), ...patch };
+    prefsRef.current = merged;
+    if (mountedRef.current) setPreferences(merged);
+    return fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then(r => r.ok ? r.json() : null).catch((e) => { reportSwallowed('settings.updateGlobalPreferences', e); return null; });
+  }, []);
+
   // 重新拉取 /api/preferences 并广播（toggle 项目独立配置后、admin 改完别人项目 fork 后调用）。
   // 返回最新数据的 Promise，便于 AppBase 接着重跑本地 state 水合（_hydratePrefsFromData）。
   const refreshPreferences = useCallback(() => {
@@ -119,10 +134,11 @@ export function SettingsProvider({ children }) {
     _prefsReady: readyPromises.prefsReady,
     _claudeSettingsReady: readyPromises.claudeReady,
     updatePreferences,
+    updateGlobalPreferences,
     updateClaudeSettings,
     refreshPreferences,
     mergeLocalPreferences,
-  }), [claudeSettings, preferences, readyPromises, updatePreferences, updateClaudeSettings, refreshPreferences, mergeLocalPreferences]);
+  }), [claudeSettings, preferences, readyPromises, updatePreferences, updateGlobalPreferences, updateClaudeSettings, refreshPreferences, mergeLocalPreferences]);
 
   return (
     <SettingsContext.Provider value={value}>

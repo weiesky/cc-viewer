@@ -990,6 +990,8 @@ class Mobile extends AppBase {
                     fileLoading={this.state.fileLoading}
                     isStreaming={this.state.isStreaming}
                     turnActive={this.state.turnActive}
+                    contextWindow={this.state.contextWindow}
+                    contextBarLocked={this.state.contextBarLocked}
                     onPendingPermission={this.handlePendingPermission}
                     onPendingAsk={this.handleApprovalAsk}
                     onPendingPtyPlan={this.handleApprovalPtyPlan}

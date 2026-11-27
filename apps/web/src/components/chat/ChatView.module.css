@@ -704,6 +704,213 @@
   color: var(--text-primary);
 }
 
+/* Context-compaction confirm bar — sits in .inputStack above the composer, same
+   1000px-capped centered strip as .sdkNoticeBanner. No !important (project rule). */
+.compactionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 6px 12px;
+  width: calc(100% - 32px);
+  max-width: min(1000px, calc(100% - 32px));
+  margin: 2px auto 6px;
+  box-sizing: border-box;
+}
+.compactionBarTitle {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.compactionBarBody {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compactionBarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.compactionBarConfirm {
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--accent, #4f8cff);
+  background: var(--accent, #4f8cff);
+  color: var(--bg-elevated, #fff);
+  cursor: pointer;
+  font-size: 12px;
+}
+.compactionBarConfirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Inline busy hint shown next to the disabled confirm button — replaces the
+   hover-only tooltip so the reason is visible without requiring the user to
+   hover long enough to discover it. Uses the warning color so it stands out
+   from the body text but is not as strong as an error. */
+.compactionBarBusyHint {
+  font-size: 12px;
+  color: var(--warning-color, #faad14);
+  white-space: nowrap;
+}
+.compactionBarSettings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.compactionBarSettings:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* Context-compaction reminder bubble — floats above the composer, left edge aligned
+   to the four-pointed-star (quick settings) button. Rendered inside .composerAnchor
+   (position:relative), so it's absolutely positioned and does NOT contribute to
+   --input-stack-height (never pushes the message list). No !important (project rule). */
+.composerAnchor {
+  position: relative;
+  /* The wrapper must not swallow clicks/scrolls over the composer's transparent padding;
+     it replaces .chatInputBar as .inputStack's direct child, which had pointer-events:none.
+     Children (bubble / chatInputWrapper) re-enable interaction. */
+  pointer-events: none;
+}
+.compactionBubble {
+  position: absolute;
+  pointer-events: auto; /* re-enable inside the pointer-events:none wrapper */
+  /* Align the left edge with the four-pointed-star button:
+     chatInputBar left padding (max(16px,(100%-1000px)/2)) + chatInputBottomLeft offset. */
+  left: calc(max(16px, calc((100% - 1000px) / 2)) + 6px);
+  bottom: calc(100% + 8px); /* sit above the composer, never covering the textarea */
+  z-index: 98;              /* below transient quick-settings/slash menus (99/100) so they take precedence */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  width: min(340px, calc(100% - 48px));
+  max-height: min(50vh, 240px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  transform-origin: left bottom;
+  animation: compactionBubbleIn 0.16s ease-out;
+}
+@keyframes compactionBubbleIn {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compactionBubble { animation: none; }
+}
+.compactionBubbleHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.compactionBubbleHeadRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.compactionBubbleCountdown {
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5ch;
+  text-align: right;
+  color: var(--color-warning, #d48806);
+  font-weight: 600;
+}
+.compactionBubbleClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.compactionBubbleClose:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.compactionBubbleClose:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.compactionBubbleBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.compactionBubbleAsk {
+  color: var(--text-primary);
+}
+.compactionBubbleProgress {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-warning, #d48806);
+  margin-top: 2px;
+  transition: width 0.25s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .compactionBubbleProgress { transition: none; }
+}
+/* Narrow screens / mobile: full-width-ish bubble pinned to the left star column.
+   The whole mobile chat sits under zoom:0.6 / scale(0.6), so enlarge the action
+   buttons too — otherwise the confirm/ignore buttons render ~7px and are untappable. */
+@media (max-width: 768px) {
+  .compactionBubble {
+    left: 31px;
+    right: 12px;
+    width: auto;
+    font-size: 20px;
+    padding: 13px 18px;
+    border-radius: 14px;
+  }
+  .compactionBubbleClose { width: 32px; height: 32px; font-size: 24px; }
+  .compactionBarConfirm { font-size: 18px; padding: 8px 18px; border-radius: 8px; }
+  .compactionBarSettings { width: 32px; height: 32px; font-size: 20px; }
+}
+:global(html.pad-mode) .compactionBubble {
+  left: calc(max(16px, calc((100% - 1000px) / 2)) + 6px);
+  right: auto;
+  width: min(340px, calc(100% - 48px));
+  font-size: 12px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+}
+:global(html.pad-mode) .compactionBubbleClose { width: 20px; height: 20px; font-size: 16px; }
+:global(html.pad-mode) .compactionBubble .compactionBarConfirm { font-size: 12px; padding: 4px 12px; border-radius: 5px; }
+:global(html.pad-mode) .compactionBubble .compactionBarSettings { width: 24px; height: 24px; font-size: 14px; }
+
 /* SDK turn/query failure pinned in the dialogue tail (sdk-error WS frame) — a
    persistent explanation where the failed turn would have answered, not a toast.
    .container > * gives children width:100%/max-width:1400px/margin auto, so the row

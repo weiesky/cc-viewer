@@ -162,6 +162,10 @@ Task definitions and scheduling state live in `preferences.json` (the `scheduled
 
 You can **Run now**, pause/resume, delete, and see the last 20 runs (an isolated-session run can jump straight to its session). Fires are silent (the message just appears in the conversation); completions and failures surface as a toast. Note: a task only fires while `ccv` is running, and the scheduler does not run in a workspace-management (unbound) process.
 
+### Context compaction settings
+
+Open **Context compaction** from the (+) menu to manage a list of compaction rules, each with a title, a custom script, a trigger threshold (a percentage of the context window, or an absolute size in K tokens), and an **execution timing**. When a turn-end check finds context usage above a rule's threshold, the timing decides what happens: **Ask the user** floats a bubble above the composer and `/compact <script>` is injected only after you click **Compact now**; **after 30s / 3min** shows the same bubble with a countdown and runs automatically when it ends (paused while hidden); **automatically** injects without any bubble. A built-in "default compaction rule" (75% / ask-the-user) is always present — it can't be deleted, but everything else (title / script / threshold / enabled / timing) is editable — and a dashed watermark line marks its threshold on the context usage bar once usage comes within 100K of it. Injection never happens mid-turn, with one exception: a built-in forced compaction fires when usage crosses 960K tokens, interrupting the current turn to inject the default rule's current script (user-edited, or the built-in fallback). Rules live in the global `contextCompaction` key in `preferences.json` and work in both SDK and PTY modes. The trigger is hardened against flapping: an over-limit reading is clamped (not fatal), hysteresis re-arms only after usage drops back below the line, a successful injection cools down for a few turns, and repeated failures open a circuit breaker.
+
 ### Programming mode
 
 After launching with ccv you'll see:

@@ -9,7 +9,7 @@ import ImageLightbox from '../common/ImageLightbox';
 import ConfirmRemoveButton from '../common/ConfirmRemoveButton';
 import styles from './ChatInputBar.module.css';
 import chrome from '../common/sharedChrome.module.css';
-import { UltraplanIcon, UploadIcon, TrashIcon, ScheduleIcon, ZapIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
+import { UltraplanIcon, UploadIcon, TrashIcon, ScheduleIcon, ZapIcon, CompressIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import SlashCommandMenu from './SlashCommandMenu';
@@ -63,7 +63,7 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, onAttachPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onOpenScheduleModal, onClearContext, isStreaming, turnActive, pendingImages, onRemovePendingImage, pendingQuotes, onRemovePendingQuote, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, askAutoAnswerMinutes, onAskAutoAnswerChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip, promptNavPopover }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, onAttachPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onOpenScheduleModal, onOpenCompactionSettings, compactionCount, onClearContext, isStreaming, turnActive, pendingImages, onRemovePendingImage, pendingQuotes, onRemovePendingQuote, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, askAutoAnswerMinutes, onAskAutoAnswerChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip, promptNavPopover }) {
   // SDK-layout switch: true under --sdk (composer always mounted), or under --terminal
   // while the PTY terminal is hidden (chat-only layout aligned with --sdk). When true,
   // the prompt-nav button renders in the left cluster (replacing mic) and mic moves to
@@ -624,6 +624,18 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                         <span className={chrome.quickMenuLabel}>{t('ui.schedule.menuItem')}</span>
                       </button>
                     )}
+                    {/* Context compaction settings (global entry, independent of project binding) */}
+                    {onOpenCompactionSettings && (
+                      <button
+                        className={chrome.quickMenuRow}
+                        onClick={() => { closePlusMenu(); onOpenCompactionSettings(); }}
+                        onMouseEnter={() => { qmHover.cancel(); if (quickExpanded) setQuickExpanded(null); }}
+                      >
+                        <span className={chrome.quickMenuRowIcon}><CompressIcon /></span>
+                        <span className={chrome.quickMenuLabel}>{t('ui.contextCompaction.menuItem')}</span>
+                        {compactionCount > 0 && <span className={chrome.quickMenuValue}>[{compactionCount}]</span>}
+                      </button>
+                    )}
                     {/* 桌面：与终端工具栏四芒星菜单同款级联结构（共享 QuickAutoApproveRows）。
                         改值必须走 AppBase handler（经 ChatView 钻取的 onAutoApproveChange /
                         onPlanAutoApproveChange），原因见组件内注释 */}
@@ -726,6 +738,13 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       <button className={styles.plusMenuItem} onClick={() => { closePlusMenu(); onOpenScheduleModal(); }}>
                         <ScheduleIcon />
                         <span>{t('ui.schedule.menuItem')}</span>
+                      </button>
+                    )}
+                    {/* Mobile: context compaction settings entry (flat menu), consistent with the desktop row */}
+                    {onOpenCompactionSettings && (
+                      <button className={styles.plusMenuItem} onClick={() => { closePlusMenu(); onOpenCompactionSettings(); }}>
+                        <CompressIcon />
+                        <span>{t('ui.contextCompaction.menuItem')}</span>
                       </button>
                     )}
                   </>

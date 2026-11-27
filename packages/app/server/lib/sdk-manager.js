@@ -39,6 +39,7 @@ import { seedSessionProxyProfile, clearSessionProxyProfile, clearSessionProxyPro
 import { readPrefsRaw } from './prefs-store.js';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
 import { AGENT_PROMPT_SNIPPET_LEN } from '@ccv/core/contentFilter';
+import { hasWireTaskLabel } from '@ccv/core/sdk-task-label';
 import {
   computeAutoApprove,
   createAutoApproveState,
@@ -473,6 +474,21 @@ function _normalizeSdkTask(msg) {
 const _SDK_TASK_TERMINAL = new Set(['completed', 'failed', 'stopped', 'killed']);
 function _foldSdkTask(prev, frame) {
   const next = { ...(prev || {}), taskId: frame.taskId };
+  // A task_started re-fire opens a NEW run for this taskId (the client tracker
+  // does the same — sdkTaskTracker.js resets status to in_progress on re-fire,
+  // "a task id may be reused after session reset or completion"). Reset the
+  // run-scoped fields so a previous incarnation's terminal state does not leak
+  // into the new run: a status-only task_notification/summary/usage/endTime
+  // from the old run must not survive, and the new run starts in 'running'.
+  // Without this, merge semantics (post fold-bug fix) would let `completed`
+  // stick across the re-fire, and the next reconnect replay would clobber the
+  // client's correct in_progress row back to the stale terminal one.
+  if (frame.subtype === 'task_started') {
+    delete next.status;
+    delete next.summary;
+    delete next.usage;
+    delete next.endTime;
+  }
   if (frame.sessionId != null) next.sessionId = frame.sessionId;
   if (frame.toolUseId != null) next.toolUseId = frame.toolUseId;
   if (frame.taskType != null) next.taskType = frame.taskType;
@@ -1820,8 +1836,13 @@ function _createSession(cwd, { freshKey = false } = {}) {
               _sdkTaskTable = new Map();
               _sdkTaskTableSessionId = sdkTaskFrame.sessionId;
             }
+            // Read prev BEFORE the LRU delete — otherwise _foldSdkTask always
+            // sees undefined and "merge" silently becomes "replace", wiping the
+            // started frame's description/toolUseId/promptSnippet on any
+            // status-only task_updated / task_notification.
+            const prev = _sdkTaskTable.get(sdkTaskFrame.taskId);
             _sdkTaskTable.delete(sdkTaskFrame.taskId); // re-insert for LRU order
-            _sdkTaskTable.set(sdkTaskFrame.taskId, _foldSdkTask(_sdkTaskTable.get(sdkTaskFrame.taskId), sdkTaskFrame));
+            _sdkTaskTable.set(sdkTaskFrame.taskId, _foldSdkTask(prev, sdkTaskFrame));
             while (_sdkTaskTable.size > _SDK_TASK_TABLE_CAP) {
               const oldest = _sdkTaskTable.keys().next().value;
               _sdkTaskTable.delete(oldest);
@@ -2836,6 +2857,39 @@ function _createSession(cwd, { freshKey = false } = {}) {
     return [];
   }
 
+  /**
+   * 960K forced compaction only: skips the idle gate and directly "enqueues one + send-now immediately",
+   * equivalent to the user manually sending now — after interrupting the current turn (q.interrupt), drain pushes this item out as the next turn.
+   * Reuses _sendQueuedNow's full lifecycle (occupies the dispatch slot / _interruptTurn / _suppressDrain reset),
+   * avoiding the naive "interrupt + sendUserMessage" combination getting the message stuck in the queue (_interruptTurn sets
+   * _suppressDrain=true, and busy enqueue does not reset it). Returns _sendQueuedNow's result (the cancelled list).
+   */
+  function _forceSendUserMessage(text) {
+    if (!_query) throw new Error('Agent SDK not available');
+    // The dispatch slot is owned by another in-flight send-now/drain: forcing now would have to
+    // preempt THAT, which the queue model forbids. Enqueue-then-send-now would silently park the
+    // /compact at the FIFO tail and still look like a success upstream (the "fake success" the
+    // rollback path exists to prevent). Fail fast so the caller reports a real, retryable failure.
+    if (_dispatching) {
+      const err = new Error('force-send while another message is dispatching');
+      err.code = 'busy';
+      throw err;
+    }
+    const item = _makeQueueItem(text);
+    _messageQueue.push(item);
+    const cancelled = _sendQueuedNow(item.id);
+    // _sendQueuedNow succeeded only if it actually took the dispatch slot (item no longer queued).
+    const stillQueued = _messageQueue.some((it) => it.id === item.id);
+    if (stillQueued) {
+      // Defensive: slot was free a moment ago but the item wasn't dispatched — don't leave a ghost.
+      _messageQueue = _messageQueue.filter((it) => it.id !== item.id);
+      const err = new Error('force-send did not take the dispatch slot');
+      err.code = 'busy';
+      throw err;
+    }
+    return { ok: true, cancelled: Array.isArray(cancelled) ? cancelled : [] };
+  }
+
   /** Remove one queued message (bubble ×). Returns true when found. The dispatching
    * item is locked until _startTurn accepts it: reject and re-broadcast so a stale
    * enabled bubble converges instead of silently dropping a message mid-commit. */
@@ -3016,6 +3070,7 @@ function _createSession(cwd, { freshKey = false } = {}) {
     sendUserMessage: _sendUserMessage,
     interruptTurn: _interruptTurn,
     sendQueuedNow: _sendQueuedNow,
+    forceSendUserMessage: _forceSendUserMessage,
     removeQueued: _removeQueued,
     clearQueued: _clearQueued,
     getQueueSnapshot: _getQueueSnapshot,
@@ -3029,6 +3084,26 @@ function _createSession(cwd, { freshKey = false } = {}) {
       const head = _pendingTurns[0] || null;
       return { type: 'sdk-session-state', state: _lastSessionState, sessionId: _sessionId || null, cwd: _cwd, instanceKey, turnId: _currentTurnId(), turnStartedAt: head ? head.startedAt : _lastTurnStartedAt, pendingApprovals: _pendingApprovals.size };
     },
+    // Atomic "can a turn start immediately" gate snapshot (used by compact injection etc.): returns all fields needed for live busy/idle in one call.
+    // Difference from getSessionStateSnapshot: state is derived from the live `_queryBusy`/`_pendingTurns`,
+    // not `_lastSessionState` (the latter still lingers at 'idle' during _startTurn's ensure window, causing misjudgment).
+    // When a fresh/resume session has not announced yet, _lastSessionState is null → state is derived as 'idle'
+    // (in that case _queryBusy/_pendingTurns are the truth for busy/idle).
+    getTurnGate: () => {
+      const queueLen = _getQueueSnapshot().length;
+      const busy = _queryBusy || _pendingTurns.length > 0;
+      const pendingApprovals = _pendingApprovals.size;
+      return {
+        exists: true,
+        state: busy ? 'running' : (_lastSessionState || 'idle'),
+        turnId: _currentTurnId(),
+        pendingApprovals,
+        queueLen,
+        instanceKey,
+        // Judgment for injecting a turn immediately: idle + no turn in flight + no pending approval + empty queue.
+        idle: !busy && pendingApprovals === 0 && queueLen === 0,
+      };
+    },
     getContextUsageSnapshot: () => _lastContextUsage,
     getMcpStatusSnapshot: () => _lastMcpStatus,
     getSkillsSnapshot: () => _lastSkillsSnapshot,
@@ -3038,12 +3113,21 @@ function _createSession(cwd, { freshKey = false } = {}) {
     // otherwise a client that missed the session boundary keeps its stale agents.
     // skipTranscript entries are tracked (they carry the session boundary) but hidden
     // from the replay, matching the live path that never shows ambient tasks.
+    // Label-less TERMINAL entries are also hidden: the predicate (hasWireTaskLabel)
+    // is shared with the client tracker and treats null/empty/whitespace-only
+    // description+summary as "no label" — a terminal ghost would render as a bare
+    // `#id` on the HUD with no live update to relabel it. In-flight entries stay
+    // visible regardless of label so a later task_progress(description) frame
+    // can still enrich them. Label-less entries still live in the table for
+    // session-boundary detection and LRU bookkeeping; the filter only spares
+    // the replay payload.
     getSdkTaskSnapshot: () => ({
       type: 'sdk-task-snapshot',
       cwd: _cwd,
       instanceKey,
       sessionId: _sdkTaskTableSessionId,
-      tasks: [..._sdkTaskTable.values()].filter((t) => t.skipTranscript !== true),
+      tasks: [..._sdkTaskTable.values()].filter((t) =>
+        t.skipTranscript !== true && hasWireTaskLabel(t)),
     }),
     fetchContextUsage: async () => {
       // On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
@@ -3421,6 +3505,21 @@ export function sendQueuedNow(id, anchor) {
   return sess ? sess.sendQueuedNow(id) : [];
 }
 
+/** 960K forced compaction: interrupt the current turn and inject one message immediately (routed to the anchor's session). */
+export function forceSendUserMessage(text, anchor) {
+  if (!_query) throw new Error('Agent SDK not available');
+  const sess = anchor ? _sessionForAnchor(anchor, { allowPrimaryFallback: true }) : _active();
+  if (!sess) {
+    const targetName = (anchor && (anchor.cwd || anchor.project || anchor.instanceKey)) || 'active';
+    console.warn(`[sdk-manager] no SDK session for force-send to "${targetName}"`);
+    const err = new Error('no SDK session for force send');
+    err.code = 'not-delivered';
+    throw err;
+  }
+  if (anchor && sess.instanceKey !== _activeKey) _activeKey = sess.instanceKey;
+  return sess.forceSendUserMessage(text);
+}
+
 /** Remove one queued message of the ACTIVE session (or an anchor's session —
  * a targeted action; does not switch active). */
 export function removeQueued(id, anchor) {
@@ -3661,6 +3760,18 @@ export function getSkillsSnapshot(anchor) {
 export function getSessionStateSnapshot(anchor) {
   const sess = anchor ? _sessionForAnchor(anchor) : _active();
   return sess ? sess.getSessionStateSnapshot() : null;
+}
+
+/**
+ * Atomic "can a turn start right now" gate for the anchored session (compaction inject).
+ * Resolved with allowPrimaryFallback:true — the SAME resolver sendUserMessage uses — so the
+ * gate's target is the session a send would actually land on (a same-cwd ambiguous project
+ * anchor resolves to the primary rather than reporting "no session"). Returns null when the
+ * anchor resolves to no registered session (callers treat that as not-idle / target-gone).
+ */
+export function getTurnGate(anchor) {
+  const sess = anchor ? _sessionForAnchor(anchor, { allowPrimaryFallback: true }) : _active();
+  return sess ? sess.getTurnGate() : null;
 }
 
 /** WS reconnect replay getter for the context-usage frame. No anchor → active session. */

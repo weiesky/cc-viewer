@@ -29,6 +29,7 @@
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore, persistSnapshot as persistTaskSnapshot, restoreSnapshot as restoreTaskSnapshot, clearPersistedSnapshot } from './taskStore.js';
 import { AGENT_TASK_TYPES } from './activeAgents.js';
 import { AGENT_PROMPT_SNIPPET_LEN } from '@ccv/core/contentFilter';
+import { hasWireTaskLabel, hasTrackerTaskLabel } from '@ccv/core/sdk-task-label';
 
 /** @type {Map<string, object>} */
 let _tasks = new Map();
@@ -345,6 +346,15 @@ export function applySnapshot(frame) {
     // Guard with `=== true` so a snapshot from an older server that lacks the
     // flag still seeds the task (absent ≠ ambient).
     if (t.skipTranscript === true) continue;
+    // Mirror of the server's getSdkTaskSnapshot filter (shared predicate in
+    // @ccv/core/sdk-task-label): a TERMINAL label-less entry renders on the HUD
+    // as a bare "#id" row with no live update coming to relabel it, so it is
+    // dropped from the authoritative replay. In-flight label-less entries stay
+    // visible so a later task_progress(description) can still enrich them.
+    // Belt-and-braces for an older/hand-built server replay; the snapshot is
+    // authoritative-replace, so this drop wins over any locally tracked row of
+    // the same taskId.
+    if (!hasWireTaskLabel(t)) continue;
     const taskId = String(t.taskId);
     next.set(taskId, {
       taskId,
@@ -422,6 +432,11 @@ export function restoreFromStorage(sessionId) {
   const next = new Map();
   for (const t of restored.tasks) {
     if (!t || t.taskId == null) continue;
+    // Same terminal label-less filter as applySnapshot, but over the client
+    // field names (subject/description) — restored checkpoints are written by
+    // the client tracker, not the wire. See @ccv/core/sdk-task-label for the
+    // field-name mapping.
+    if (!hasTrackerTaskLabel(t)) continue;
     // Normalize restored tasks: apply the same status whitelist as publish()
     // so a corrupted/tampered entry can't render as a phantom active agent.
     const status = (t.status && ['pending', 'in_progress', 'completed', 'failed'].includes(t.status))

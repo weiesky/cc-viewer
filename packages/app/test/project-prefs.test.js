@@ -91,6 +91,22 @@ describe('project-prefs lib + routes', { concurrency: false }, () => {
     assert.equal(out.themeColor, 'dark');
   });
 
+  it('resolveScoped keeps the GLOBAL contextCompaction and never lets a fork shadow it', () => {
+    const global = [{ title: 'g', script: 'sg', threshold: { mode: 'percent', value: 75 } }];
+    // A dirty/legacy fork carries its own copy — it must be dropped in favour of the global list.
+    const out = lib.resolveScoped(
+      { themeColor: 'light', contextCompaction: global },
+      { themeColor: 'dark', contextCompaction: [{ title: 'fork-shadow', script: 'x' }] },
+    );
+    assert.equal(out.themeColor, 'dark', 'unrelated fork keys still win');
+    assert.deepEqual(out.contextCompaction, global, 'global rules survive; fork copy is stripped');
+  });
+
+  it('resolveScoped omits contextCompaction when the global has none', () => {
+    const out = lib.resolveScoped({ themeColor: 'light' }, { themeColor: 'dark' });
+    assert.equal('contextCompaction' in out, false);
+  });
+
   it('resolveScoped lets fork win over global and keeps unforked global keys', () => {
     const out = lib.resolveScoped(
       { themeColor: 'light', expandThinking: false, expandDiff: true },

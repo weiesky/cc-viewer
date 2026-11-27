@@ -36,7 +36,9 @@ import ScratchTerminal from './ScratchTerminal';
 import { darkTerminalTheme, lightTerminalTheme, terminalFontFamily } from './terminalThemes';
 import { resizeImageIfNeeded } from '../../utils/imageResize';
 import UltraplanPanel, { readUltraplanPopoverSize, ultraplanOverlayInnerStyle } from './UltraplanPanel';
-import { UploadIcon, TrashIcon, ScheduleIcon, ZapIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
+import { UploadIcon, TrashIcon, ScheduleIcon, ZapIcon, CompressIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
+import CompactionSettingsModal from '../common/CompactionSettingsModal';
+import { normalizeCompactionConfig, assignCompactionIds } from '../../utils/contextCompaction';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import ScheduleTaskModal from '../common/ScheduleTaskModal';
@@ -229,6 +231,8 @@ class TerminalPanel extends React.Component {
       customUltraplanEditing: null,
       presetModalVisible: false,
       scheduleModalVisible: false,
+      compactionModalVisible: false,
+      compactionItems: [],
       presetItems: [],
       presetSelected: new Set(),
       presetAddVisible: false,
@@ -641,7 +645,9 @@ class TerminalPanel extends React.Component {
     const customExperts = Array.isArray(data.customUltraplanExperts) ? data.customUltraplanExperts : [];
     const expertOrder = Array.isArray(data.ultraplanExpertOrder) ? data.ultraplanExpertOrder : [];
     const expertHidden = Array.isArray(data.ultraplanExpertHidden) ? data.ultraplanExpertHidden : [];
-    const next = { presetItems: items, customUltraplanExperts: customExperts, ultraplanExpertOrder: expertOrder, ultraplanExpertHidden: expertHidden };
+    // Context compaction commands (global key, no prefix/built-in item; stable content-addressed id, shared with ChatView via assignCompactionIds)
+    const compactionItems = assignCompactionIds(normalizeCompactionConfig(data.contextCompaction), 'cc');
+    const next = { presetItems: items, customUltraplanExperts: customExperts, ultraplanExpertOrder: expertOrder, ultraplanExpertHidden: expertHidden, compactionItems };
     // 若当前选中的变体已不可见（被另一端删除 / 隐藏），回退到首个可见专家（无可见则 codeExpert）。
     const current = this.state.ultraplanVariant;
     const visible = visibleExpertKeys(customExperts, expertOrder, expertHidden);
@@ -1844,6 +1850,18 @@ class TerminalPanel extends React.Component {
                       <span className={chrome.quickMenuLabel}>{t('ui.schedule.menuItem')}</span>
                     </button>
                   )}
+                  {/* Context compaction settings (global entry, independent of viewProject): opens the compaction command management panel */}
+                  <button
+                    className={chrome.quickMenuRow}
+                    onClick={() => this.setState({ quickSettingsOpen: false, quickSettingsExpanded: null, compactionModalVisible: true })}
+                    onMouseEnter={() => { this._qmHover.cancel(); if (this.state.quickSettingsExpanded) this.setState({ quickSettingsExpanded: null }); }}
+                  >
+                    <span className={chrome.quickMenuRowIcon}><CompressIcon /></span>
+                    <span className={chrome.quickMenuLabel}>{t('ui.contextCompaction.menuItem')}</span>
+                    {this.state.compactionItems.filter(i => i.enabled !== false).length > 0 && (
+                      <span className={chrome.quickMenuValue}>[{this.state.compactionItems.filter(i => i.enabled !== false).length}]</span>
+                    )}
+                  </button>
                   <QuickAutoApproveRows
                     autoApproveSeconds={this.props.autoApproveSeconds}
                     planAutoApproveSeconds={this.props.planAutoApproveSeconds}
@@ -2142,9 +2160,6 @@ class TerminalPanel extends React.Component {
           width={800}
           styles={{ content: { background: 'var(--bg-elevated)', border: '1px solid var(--border-light)' }, header: { background: 'var(--bg-elevated)', borderBottom: 'none' } }}
         >
-          <div className={styles.presetSectionHeader}>
-            <span className={styles.presetSectionTitle}>{t('ui.terminal.agentTeamCustom')}</span>
-          </div>
           <div className={styles.presetList} onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}>
             {this.state.presetItems.length === 0 ? (
               <div className={styles.presetListEmptyHint}>—</div>
@@ -2236,6 +2251,14 @@ class TerminalPanel extends React.Component {
             />
           </div>
         </Modal>
+        {/* Context compaction settings panel (same structure as quick command management); the SDK snapshot's built-in threshold is passed via props for the conflict hint */}
+        <CompactionSettingsModal
+          open={this.state.compactionModalVisible}
+          onClose={() => this.setState({ compactionModalVisible: false })}
+          items={this.state.compactionItems}
+          onItemsChange={(items) => this.setState({ compactionItems: items })}
+          onSave={(payload) => { const fn = this.props.onUpdateGlobalPreferences || this.props.onUpdatePreferences; if (fn) fn(payload); }}
+        />
         <CustomUltraplanEditModal
           open={this.state.customUltraplanEditOpen}
           initial={this.state.customUltraplanEditing}

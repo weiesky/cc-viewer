@@ -14,6 +14,17 @@
  * the single-workspace behavior is byte-identical.
  *
  * L1-lib: pure module, Node builtins only, no imports.
+ *
+ * PTY-vs-SDK label policy: this module deliberately does NOT filter stub
+ * entries whose subject/description are both null. A PTY stub is the intended
+ * placeholder for a task whose TaskCreated hook was lost (or fired before
+ * cc-viewer started watching) — the HUD shows `#id` for a beat until the next
+ * TaskUpdate(subject) / TaskCompleted(subject) lands. That is a live,
+ * in-flight row, NOT an SDK-mode "label-less ghost" (a terminal residue with
+ * neither description nor summary on the wire). The SDK-side label-less filter
+ * is scoped to TERMINAL entries only and lives in sdk-manager.js /
+ * sdkTaskTracker.js / @ccv/core/sdk-task-label; PTY snapshot semantics stay
+ * byte-identical here.
  */
 
 /** @type {Map<string, {sessionId: string|null, tasks: Map<string, object>, lastUsedAt: number}>} */
